@@ -26,6 +26,7 @@ ensure_typescript() {
 }
 
 check_codex_parser_hash() {
+  "${ROOT_DIR}/Scripts/test_regenerate_codex_parser_hash.sh"
   "${ROOT_DIR}/Scripts/regenerate-codex-parser-hash.sh" --check
 }
 
@@ -162,6 +163,9 @@ run_portable_checks() {
   check_sparkle_signing_paths
   check_swift_static_sdk_installer
   check_mimo_usage_script
+  python3 "${ROOT_DIR}/Scripts/test_claude_swap_spend.py"
+  python3 "${ROOT_DIR}/Scripts/test_claude_swap_complications.py"
+  python3 "${ROOT_DIR}/Scripts/generate_settings_search_index.py" --check
   check_swift_test_sharding
   check_ci_path_gate
   check_ci_build_cache

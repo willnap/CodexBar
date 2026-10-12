@@ -90,7 +90,14 @@ defineProvider({
       if (/rejected the Management API key/.test(error.message)) throw error;
     }
     return {
-      cost: { used: balance, currency: "USD", period: "Prepaid credits" },
+      cost: {
+        used: balance,
+        balance,
+        balanceUpdatedAt: now.toISOString(),
+        usageIsUnavailable: true,
+        currency: "USD",
+        period: "Prepaid credits",
+      },
       identity: { loginMethod: "Management API" },
       dataConfidence: partial ? "estimated" : "exact",
       details: [

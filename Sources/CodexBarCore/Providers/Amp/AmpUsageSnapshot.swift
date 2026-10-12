@@ -194,10 +194,27 @@ extension AmpUsageSnapshot {
             secondary: subscriptionSecondary,
             tertiary: nil,
             extraRateWindows: extraRateWindows,
-            providerCost: nil,
+            providerCost: self.balanceSnapshot,
             details: details,
             updatedAt: self.updatedAt,
             identity: identity)
+    }
+
+    private var balanceSnapshot: ProviderCostSnapshot? {
+        let isWorkspace = self.individualCredits == nil
+        let balance = self.individualCredits ?? (self.workspaceBalances.count == 1
+            ? self.workspaceBalances.first?.remaining : nil)
+        guard let balance, balance.isFinite, balance >= 0 else { return nil }
+        return ProviderCostSnapshot(
+            used: balance,
+            limit: 0,
+            currencyCode: "USD",
+            period: "Credits balance",
+            balance: balance,
+            balanceUpdatedAt: self.updatedAt,
+            balanceIsWorkspace: isWorkspace,
+            usageIsUnavailable: true,
+            updatedAt: self.updatedAt)
     }
 
     private static func nextFreeTierReset(after date: Date) -> Date? {

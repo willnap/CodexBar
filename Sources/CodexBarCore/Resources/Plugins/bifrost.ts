@@ -149,6 +149,7 @@ defineProvider({
               source: text(budget.source_name),
               limit,
               used: number(budget.current_usage) ?? 0,
+              reportedCost: number(budget.current_usage),
               timing: timing(budget.reset_duration, budget.last_reset),
               models: array(budget.per_model_usage),
             },
@@ -249,6 +250,34 @@ defineProvider({
       }
       return String(value);
     };
+    const observedModels = (first?.models || []).map((model) => ({
+      tokens: number(model.total_tokens),
+      requests: number(model.total_requests),
+    }));
+    const observedSum = (values: Array<number | undefined>): number | undefined => {
+      if (!values.length || values.some((value) => value === undefined || !Number.isSafeInteger(value) || value < 0))
+        return undefined;
+      return values.reduce<number>((total, value) => total + value!, 0);
+    };
+    const reportedTokens = observedSum(observedModels.map((model) => model.tokens));
+    const reportedRequests = observedSum(observedModels.map((model) => model.requests));
+    const reportedCost = first?.reportedCost;
+    const costUsage =
+      reportedTokens === undefined && reportedRequests === undefined && reportedCost === undefined
+        ? undefined
+        : {
+            currency: "USD",
+            historyDays: 1,
+            historyCoverageIsEstablished: false,
+            historyLabel: `${first?.timing.label || "Budget"} reported model usage`,
+            windowEnd: ctx.date.now().toISOString().slice(0, 10),
+            entries: [],
+            totals: {
+              totalTokens: reportedTokens,
+              requests: reportedRequests,
+              cost: reportedCost !== undefined && reportedCost >= 0 ? reportedCost : undefined,
+            },
+          };
     const models = (first?.models || [])
       .map((model) => {
         const tokens = number(model.total_tokens);
@@ -301,6 +330,7 @@ defineProvider({
       secondary: windows[1]?.window,
       extraWindows,
       details,
+      costUsage,
       cost: first
         ? {
             used: first.used,

@@ -16,6 +16,10 @@ ARGS=(
   --timeout "${SUITE_TIMEOUT}"
 )
 
+if [[ -n "${CODEXBAR_TEST_DIRECT_WORKERS:-}" ]]; then
+  ARGS+=(--direct-workers "${CODEXBAR_TEST_DIRECT_WORKERS}")
+fi
+
 case "${RETRY_NON_TIMEOUT_FAILURES}" in
   0) ARGS+=(--no-retry-non-timeout-failures) ;;
   1) ;;

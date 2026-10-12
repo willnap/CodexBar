@@ -21,6 +21,13 @@ enum CodexBarLaunchMode: Equatable {
 enum CodexBarEntryPoint {
     @MainActor
     static func main() {
+        if CommandLine.arguments.contains("--native-symbol-smoke") {
+            exit(NativeSymbolSmoke.run())
+        }
+        if CommandLine.arguments.contains("--native-preview") {
+            NativeGaugePreviewApp.run()
+            return
+        }
         // Packaging launch smoke check (#2738): force the resource loads that
         // trapped in 0.48.0 and exit before any AppKit/UI setup.
         if CodexBarCoreResourceSmoke.isRequested() {
@@ -76,7 +83,7 @@ struct CodexBarApp: App {
         }
 
         let preferencesSelection = PreferencesSelection()
-        let settings = SettingsStore()
+        let settings = SettingsStore(configStore: NativeGaugeConfiguration.configStore())
         Self.applyLanguagePreference(from: settings)
         configureUsageFormatterLocalizationProvider()
         let managedCodexAccountCoordinator = ManagedCodexAccountCoordinator()
@@ -112,6 +119,9 @@ struct CodexBarApp: App {
         Settings {
             EmptyView()
         }
+        // The AppKit controller owns Settings; this scene only supplies menu commands.
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button(L("About CodexBar")) {
@@ -366,6 +376,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusController: StatusItemControlling?
     private var store: UsageStore?
+    private var historyPersistenceCoordinator: PlanUtilizationHistoryPersistenceCoordinator?
     private var settings: SettingsStore?
     private var account: AccountInfo?
     private var preferencesSelection: PreferencesSelection?
@@ -379,7 +390,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.settingsWindowController?.window === window
         })
     private var hasInstalledLimitResetObservers = false
-    private var isWaitingForConfigPersistence = false
+    private var isWaitingForTerminationPersistence = false
     #if DEBUG
     private var debugMemoryPressureObserver: NSObjectProtocol?
     #endif
@@ -395,10 +406,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func _test_configureSettings(_ settings: SettingsStore) {
         self.settings = settings
     }
+
+    func _test_configureHistoryPersistence(
+        _ coordinator: PlanUtilizationHistoryPersistenceCoordinator,
+        store: UsageStore? = nil)
+    {
+        self.historyPersistenceCoordinator = coordinator
+        self.store = store
+    }
     #endif
 
     func configure(_ dependencies: Dependencies) {
         self.store = dependencies.store
+        self.historyPersistenceCoordinator = dependencies.store.planUtilizationPersistenceCoordinator
         self.settings = dependencies.settings
         self.account = dependencies.account
         self.preferencesSelection = dependencies.selection
@@ -451,6 +471,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.installDebugMemoryPressureObserverIfNeeded()
         #endif
         self.ensureStatusController()
+        // Opt-in inspection hook; inert unless launched with --native-popup-preview-provider.
+        (self.statusController as? StatusItemController)?.openNativeOrbitLaunchPreviewIfRequested()
         DispatchQueue.main.async { [weak self] in
             self?.placeholderSettingsWindowGuard.sweep()
         }
@@ -494,16 +516,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard !self.isWaitingForConfigPersistence else { return .terminateLater }
-        guard let save = self.settings?.persistPendingConfigForTermination() else { return .terminateNow }
-        self.isWaitingForConfigPersistence = true
+        guard !self.isWaitingForTerminationPersistence else { return .terminateLater }
+        let save = self.settings?.persistPendingConfigForTermination()
+        let history = self.historyPersistenceCoordinator
+        // Capture accepted mutations before leaving the main actor, including deferred persistence enqueues.
+        // An unread startup store must never replace existing disk history with its empty in-memory state.
+        let latestHistory = self.store.flatMap { store in
+            store.planUtilizationHistoryLoaded ? store.planUtilizationHistory : nil
+        }
+        guard save != nil || history != nil else { return .terminateNow }
+        self.isWaitingForTerminationPersistence = true
         Task.detached {
-            await save.value
+            await save?.value
+            if await history?.flushForTermination(latestSnapshot: latestHistory) == false {
+                CodexBarLog.logger("plan-history").error("Failed to persist latest quota history before termination")
+            }
             // NSApplication may be inside a modal loop entered from the main dispatch queue.
             // A MainActor task cannot reliably resume there; deliver the reply on that run loop.
             RunLoop.main.perform(inModes: [.default, .modalPanel]) {
                 MainActor.assumeIsolated {
-                    self.isWaitingForConfigPersistence = false
+                    self.isWaitingForTerminationPersistence = false
                     self.replyToApplicationShouldTerminate(sender, true)
                 }
             }

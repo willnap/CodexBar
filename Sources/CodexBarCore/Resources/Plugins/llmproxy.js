@@ -88,13 +88,22 @@ defineProvider({
           void error;
           /* Optional quota groups are best effort. */
         }
+        const reportedRequests = number(stats.total_requests, true);
+        const cached = number(tokens.input_cached, true);
+        const uncached = number(tokens.input_uncached, true);
+        const output = number(tokens.output, true);
         return {
           name,
-          requests: _nullishCoalesce(number(stats.total_requests, true), () => 0),
+          reportedRequests,
+          reportedInput: cached === undefined || uncached === undefined ? undefined : cached + uncached,
+          reportedOutput: output,
+          reportedTokens:
+            cached === undefined || uncached === undefined || output === undefined
+              ? undefined
+              : cached + uncached + output,
+          requests: _nullishCoalesce(reportedRequests, () => 0),
           tokens:
-            _nullishCoalesce(number(tokens.input_cached, true), () => 0) +
-            _nullishCoalesce(number(tokens.input_uncached, true), () => 0) +
-            _nullishCoalesce(number(tokens.output, true), () => 0),
+            _nullishCoalesce(cached, () => 0) + _nullishCoalesce(uncached, () => 0) + _nullishCoalesce(output, () => 0),
           cost: number(stats.approx_cost),
         };
       })
@@ -107,6 +116,39 @@ defineProvider({
     );
     const sum = providers.reduce((sum, p) => sum + _nullishCoalesce(p.cost, () => 0), 0);
     const cost = _nullishCoalesce(number(summary.approx_cost), () => (sum > 0 ? sum : undefined));
+    const completeSum = (values) =>
+      values.length && values.every((value) => value !== undefined && value >= 0)
+        ? values.reduce((total, value) => total + value, 0)
+        : undefined;
+    const nonnegative = (value) => (value !== undefined && value >= 0 ? value : undefined);
+    const reportedRequests = _nullishCoalesce(nonnegative(number(summary.total_requests, true)), () =>
+      completeSum(providers.map((provider) => provider.reportedRequests)),
+    );
+    const reportedTokens = _nullishCoalesce(nonnegative(number(summary.total_tokens, true)), () =>
+      completeSum(providers.map((provider) => provider.reportedTokens)),
+    );
+    const reportedCost = _nullishCoalesce(nonnegative(number(summary.approx_cost)), () =>
+      completeSum(providers.map((provider) => provider.cost)),
+    );
+    const costUsage =
+      reportedRequests === undefined && reportedTokens === undefined && reportedCost === undefined
+        ? undefined
+        : {
+            currency: "USD",
+            historyDays: 1,
+            historyCoverageIsEstablished: false,
+            historyLabel: "Reported quota-stats usage",
+            windowEnd: ctx.date.now().toISOString().slice(0, 10),
+            entries: [],
+            totals: {
+              inputTokens: completeSum(providers.map((provider) => provider.reportedInput)),
+              outputTokens: completeSum(providers.map((provider) => provider.reportedOutput)),
+              totalTokens: reportedTokens,
+              requests: reportedRequests,
+              cost: reportedCost,
+              estimatedCost: reportedCost,
+            },
+          };
     const remaining = groups.flatMap((g) => (g.remaining === undefined ? [] : [g.remaining]));
     const resets = groups
       .flatMap((g) => {
@@ -143,10 +185,8 @@ defineProvider({
           ...(p.cost === undefined ? [] : [ctx.format.usd(p.cost)]),
         ].join(" · "),
       })),
-      cost:
-        cost === undefined
-          ? null
-          : { used: cost, limit: 0, currency: "USD", period: "Approx. spend", resetsAt: resets[0] },
+      costUsage,
+      cost: cost === undefined ? null : { used: cost, limit: 0, currency: "USD", period: "Approx. spend" },
       identity: { organization: `${active}/${credentials} active keys`, loginMethod: "quota-stats" },
     };
   },

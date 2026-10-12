@@ -4,6 +4,12 @@ extension StatusItemController {
     func prepareForAppShutdown() {
         guard !self.hasPreparedForAppShutdown else { return }
         self.hasPreparedForAppShutdown = true
+        self.closeNativeServicePopover()
+        for popover in self.nativeServicePopovers.values {
+            (popover.contentViewController as? NativeServicePopoverController)?.orbitState.accountSwitch?.stop()
+        }
+        self.nativeServicePopovers.removeAll()
+        self.nativeGaugeHosts.removeAll()
         #if DEBUG
         self.isReleasedForTesting = true
         #endif

@@ -13,6 +13,8 @@ extension UsageStore {
         let claudeOAuthHistoryPersistentRefHash: String?
         let claudeOAuthActiveAccountObservation: ClaudeOAuthActiveAccountObservation
         var claudeCredentialFingerprint: String?
+        var claudeCredentialSource: String?
+        var claudeCredentialProfileIdentifier: String?
 
         var codexSessionQuotaOwnerKey: CodexSessionQuotaOwnerKey? {
             UsageStore.codexSessionQuotaOwnerKey(for: self.codexExpectedGuard)
@@ -20,10 +22,24 @@ extension UsageStore {
     }
 
     func credentialAccount(provider: UsageProvider, context: ProviderRefreshOutcomeContext) -> String {
+        // Provider-specific by design: Claude clears its profile witness before Codex or Claude owner validation.
+        if provider == .claude { self.nativeClaudeCredentialPresentationScope = nil }
         if let account = Self.warningTokenAccountDiscriminator(context.tokenAccount) { return account }
         // Provider-specific by design: ambient CLI accounts use the refresh's already-validated ownership evidence.
         if provider == .codex { return context.codexSessionQuotaOwnerKey?.rawValue ?? "default" }
         if provider == .claude {
+            if case .stable(identity: nil) = context.claudeOAuthActiveAccountObservation,
+               let source = context.claudeCredentialSource,
+               let profile = context.claudeCredentialProfileIdentifier,
+               source == self.settings.claudeUsageDataSource.rawValue,
+               profile == self.nativeClaudeCredentialProfileIdentifier
+            {
+                let scope = context.claudeCredentialFingerprint.map {
+                    self.claudeCredentialNotificationScope(identity: nil, fingerprint: $0)
+                } ?? "claude-profile:\(profile):source:\(source)"
+                self.nativeClaudeCredentialPresentationScope = .init(scope: scope, source: source, profile: profile)
+                return scope
+            }
             let identity: String? = if case let .stable(identity) = context.claudeOAuthActiveAccountObservation {
                 identity
             } else { nil }

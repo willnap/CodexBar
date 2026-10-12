@@ -308,14 +308,16 @@ extension CostUsageScanner.ClaudeUsageRow {
         case costNanos = "c"
         case costPriced = "priced"
         case isIncomplete = "partial"
+        case organizationID = "o"
     }
 }
 
 /// Claude and Vertex retain their transcript cache. Codex deliberately has no route
 /// through this JSON I/O boundary; its only persistence authority is `CostUsageStore`.
 enum CostUsageClaudeCacheIO {
-    /// Compact row keys; older artifacts rebuild from their source transcripts.
-    private static let schemaVersion = 4
+    /// Compact row keys; older artifacts rebuild from their source transcripts. Organization attribution is
+    /// additive (absent on older rows); the history artifact that serves it is versioned by its file name instead.
+    static let schemaVersion = 4
 
     /// Decoded rows may be evicted under memory pressure; eight small persistence identities survive independently.
     /// The scanner still validates source scope and reprices rows.
@@ -375,11 +377,24 @@ enum CostUsageClaudeCacheIO {
         let root = cacheRoot ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
             .appendingPathComponent("CodexBar", isDirectory: true)
         // Parsing filters dates before selecting duplicate responses, so independent report windows
-        // need their own rows.
-        let suffix = reportContext == .spendDashboard ? "-history" : ""
+        // need their own rows. History rows carry transcript organization attribution (v7): its rows must come
+        // from a full parse, while the regular window keeps its v6 rows and needs no rebuild.
+        let name = reportContext == .spendDashboard
+            ? "\(provider.rawValue)-history-v7.json" : "\(provider.rawValue)-v6.json"
         return root
             .appendingPathComponent("cost-usage", isDirectory: true)
-            .appendingPathComponent("\(provider.rawValue)\(suffix)-v6.json", isDirectory: false)
+            .appendingPathComponent(name, isDirectory: false)
+    }
+
+    /// The v6 history artifact and its report memo carry unattributed rows that v7 replaces.
+    private static func removeLegacyHistoryArtifacts(provider: UsageProvider, replacing url: URL) {
+        let directory = url.deletingLastPathComponent()
+        for name in ["\(provider.rawValue)-history-v6.json", "\(provider.rawValue)-history-v6.report-memo.json"] {
+            let legacy = directory.appendingPathComponent(name, isDirectory: false)
+            if FileManager.default.fileExists(atPath: legacy.path) {
+                try? FileManager.default.removeItem(at: legacy)
+            }
+        }
     }
 
     static func load(
@@ -437,6 +452,9 @@ enum CostUsageClaudeCacheIO {
         let stamp = try self.write(cache, to: url, contentID: cache.contentID, checkCancellation: checkCancellation)
         if let stamp, CostUsageClaudeFileStamp.read(at: url) == stamp {
             ArtifactMemo.shared.entries.setObject(ArtifactMemo.Entry(stamp: stamp, cache: cache), forKey: key)
+        }
+        if stamp != nil, reportContext == .spendDashboard {
+            self.removeLegacyHistoryArtifacts(provider: provider, replacing: url)
         }
         return stamp
     }

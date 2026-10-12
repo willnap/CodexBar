@@ -12,17 +12,18 @@ struct SettingsSidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                SettingsSidebarSearchField(searchText: self.$searchText)
-                SettingsSidebarSortToggle(isOn: self.$settings.providersSortedAlphabetically)
-            }
-            .padding(.horizontal, 8)
-            .padding(.top, 16)
-            .padding(.bottom, 8)
+            SettingsSidebarSearchField(searchText: self.$searchText)
+                .padding(.horizontal, 8)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
 
             List(selection: self.selectionBinding) {
-                self.appPanesSection
+                if !self.matchingAppPanes.isEmpty { self.appPanesSection }
                 self.providersSection
+                if self.isSearching, self.matchingAppPanes.isEmpty, self.filteredProviders.isEmpty {
+                    Text(L("No matching settings"))
+                        .foregroundStyle(.secondary)
+                }
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
@@ -32,52 +33,87 @@ struct SettingsSidebarView: View {
 
     private var appPanesSection: some View {
         Section {
-            SettingsSidebarPaneRow(pane: .general, systemImage: "gearshape.fill", color: .gray)
-            SettingsSidebarPaneRow(pane: .iCloudSync, systemImage: "icloud.fill", color: .blue)
-            SettingsSidebarPaneRow(pane: .usageSpend, systemImage: "chart.bar.fill", color: .green)
-            SettingsSidebarPaneRow(pane: .notifications, systemImage: "bell.badge.fill", color: .red)
-            SettingsSidebarPaneRow(pane: .menuBar, systemImage: "menubar.rectangle", color: .blue)
-            SettingsSidebarPaneRow(pane: .menu, systemImage: "filemenu.and.selection", color: .teal)
-            SettingsSidebarPaneRow(pane: .advanced, systemImage: "slider.horizontal.3", color: .purple)
-            SettingsSidebarPaneRow(pane: .hooks, systemImage: "bolt.horizontal.circle.fill", color: .orange)
-            SettingsSidebarPaneRow(pane: .plugins, systemImage: "puzzlepiece.extension.fill", color: .indigo)
-            SettingsSidebarAboutRow()
-            if self.settings.debugMenuEnabled {
-                SettingsSidebarPaneRow(pane: .debug, systemImage: "ladybug.fill", color: .red)
+            ForEach(self.matchingAppPanes, id: \.self) { pane in
+                SettingsSidebarPaneRow(
+                    pane: pane,
+                    matchedSetting: self.isSearching ? SettingsSearchIndex.shared.match(
+                        pane: pane,
+                        query: self.searchText,
+                        usesNativeGauges: self.settings.usesNativeGauges,
+                        nativeDesignEnabled: self.settings.nativeDesignEnabled) : nil)
+            }
+        } header: {
+            if self.isSearching { Text(L("Settings")) }
+        }
+    }
+
+    private var matchingAppPanes: [SettingsPane] {
+        let panes: [SettingsPane] = [
+            .general, .iCloudSync, .usageSpend, .notifications, .menuBar, .menu, .advanced, .hooks, .plugins, .about,
+        ] + (self.settings.debugMenuEnabled ? [.debug] : [])
+        return panes.filter { !self.isSearching || SettingsSearchIndex.shared.match(
+            pane: $0,
+            query: self.searchText,
+            usesNativeGauges: self.settings.usesNativeGauges,
+            nativeDesignEnabled: self.settings.nativeDesignEnabled) != nil }
+    }
+
+    @ViewBuilder
+    private var providersSection: some View {
+        let providers = self.filteredProviders
+        if !providers.isEmpty {
+            if self.settings.settingsProvidersUsedFirst {
+                let groups = [
+                    (L("Enabled services"), providers.filter(self.isEnabled)),
+                    (L("Configured services"), providers.filter { !self.isEnabled($0) && self.isConfigured($0) }),
+                    (L("Available services"), providers.filter { !self.isEnabled($0) && !self.isConfigured($0) }),
+                ].filter { !$0.1.isEmpty }
+                ForEach(groups.indices, id: \.self) { index in
+                    self.providerSection(groups[index].1, title: groups[index].0, showsOrderControl: index == 0)
+                }
+            } else {
+                self.providerSection(providers, title: L("Providers"), showsOrderControl: true)
             }
         }
     }
 
-    private var providersSection: some View {
+    private func providerSection(
+        _ providers: [UsageProvider], title: String, showsOrderControl: Bool) -> some View
+    {
         Section {
-            ForEach(self.filteredProviders, id: \.self) { provider in
+            ForEach(providers, id: \.self) { provider in
                 SettingsSidebarProviderRow(
                     provider: provider,
                     store: self.store,
-                    isEnabled: self.enabledBinding(for: provider))
+                    isEnabled: self.enabledBinding(for: provider),
+                    matchedSetting: self.isSearching ? SettingsSearchIndex.shared.match(
+                        pane: .provider(provider.instanceID), query: self.searchText) : nil)
                     .tag(SettingsPane.provider(provider.instanceID))
                     .moveDisabled(!self.canReorderProviders)
             }
             .onMove { fromOffsets, toOffset in
                 guard self.canReorderProviders else { return }
-                self.settings.moveProvider(fromOffsets: fromOffsets, toOffset: toOffset)
-            }
-
-            if self.filteredProviders.isEmpty {
-                Text(L("No matching providers"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                self.settings.setProviderOrder(ProviderSettingsOrdering.reordered(
+                    self.settings.orderedProviders(),
+                    visible: providers.map(\.instanceID),
+                    fromOffsets: fromOffsets,
+                    toOffset: toOffset))
             }
         } header: {
-            HStack(spacing: 4) {
-                Text(L("tab_providers"))
-                Spacer()
-                Text(String(format: L("providers_on_count"), self.enabledProviderCount))
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
-                    .padding(.trailing, 10)
+            if showsOrderControl {
+                HStack {
+                    Text(L("Providers"))
+                    Spacer(minLength: 4)
+                    SettingsSidebarUsedFirstToggle(isOn: self.$settings.settingsProvidersUsedFirst)
+                }
+            } else {
+                Text(title)
             }
         }
+    }
+
+    private var isSearching: Bool {
+        !self.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var selectionBinding: Binding<SettingsPane?> {
@@ -91,30 +127,41 @@ struct SettingsSidebarView: View {
     }
 
     private var orderedProviders: [UsageProvider] {
-        guard self.settings.providersSortedAlphabetically else {
-            return self.settings.orderedProviders().compactMap(\.firstPartyProvider)
-        }
-        return CodexBarConfig.alphabeticalProviderOrder(enablement: { provider in
-            self.settings.isProviderEnabled(provider: provider, metadata: self.store.metadata(for: provider))
-        })
+        ProviderSettingsOrdering.prioritized(
+            self.settings.orderedProviders().compactMap(\.firstPartyProvider),
+            enabled: self.isEnabled,
+            configured: self.isConfigured,
+            usedFirst: self.settings.settingsProvidersUsedFirst)
     }
 
     private var filteredProviders: [UsageProvider] {
-        ProvidersPane.filteredProviders(
-            self.orderedProviders,
+        guard self.isSearching else { return self.orderedProviders }
+        if SettingsSearchIndex.matches(
             query: self.searchText,
-            displayName: { provider in self.store.metadata(for: provider).displayName })
+            text: "\(L("Providers")) \(L("Used providers first"))")
+        {
+            return self.orderedProviders
+        }
+        return self.orderedProviders.filter { provider in
+            let name = self.store.metadata(for: provider).displayName
+            let account = self.store.settingsAccountLabel(for: provider) ?? ""
+            return SettingsSearchIndex.matches(
+                query: self.searchText,
+                text: [name, provider.rawValue, account, SettingsSearchIndex.shared.providerSearchText(for: provider)]
+                    .joined(separator: " "))
+        }
     }
 
-    private var enabledProviderCount: Int {
-        self.orderedProviders.count(where: { provider in
-            self.settings.isProviderEnabled(provider: provider, metadata: self.store.metadata(for: provider))
-        })
+    private func isEnabled(_ provider: UsageProvider) -> Bool {
+        self.settings.isProviderEnabled(provider: provider, metadata: self.store.metadata(for: provider))
+    }
+
+    private func isConfigured(_ provider: UsageProvider) -> Bool {
+        !self.settings.tokenAccounts(for: provider).isEmpty || self.store.snapshot(for: provider.instanceID) != nil
     }
 
     private var canReorderProviders: Bool {
-        !self.settings.providersSortedAlphabetically
-            && self.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !self.isSearching
     }
 
     private func enabledBinding(for provider: UsageProvider) -> Binding<Bool> {
@@ -130,34 +177,47 @@ struct SettingsSidebarView: View {
 @MainActor
 private struct SettingsSidebarPaneRow: View {
     let pane: SettingsPane
-    let systemImage: String
-    let color: Color
+    let matchedSetting: String?
 
     var body: some View {
         HStack(spacing: 8) {
-            SettingsIconChip(systemImage: self.systemImage, color: self.color)
-            Text(self.pane.title)
-        }
-        .tag(self.pane)
-    }
-}
-
-@MainActor
-private struct SettingsSidebarAboutRow: View {
-    var body: some View {
-        HStack(spacing: 8) {
-            if let icon = NSApplication.shared.applicationIconImage {
+            if self.pane == .about, let icon = NSApplication.shared.applicationIconImage {
                 Image(nsImage: icon)
                     .resizable()
                     .scaledToFit()
                     .frame(width: SettingsIconChip.side, height: SettingsIconChip.side)
                     .accessibilityHidden(true)
             } else {
-                SettingsIconChip(systemImage: "info.circle.fill", color: .green)
+                SettingsIconChip(systemImage: self.icon.name, color: self.icon.color)
             }
-            Text(SettingsPane.about.title)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(self.pane.title)
+                if let matchedSetting = self.matchedSetting, matchedSetting != self.pane.title {
+                    Text(matchedSetting)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
         }
-        .tag(SettingsPane.about)
+        .tag(self.pane)
+    }
+
+    private var icon: (name: String, color: Color) {
+        switch self.pane {
+        case .general: ("gearshape.fill", .gray)
+        case .iCloudSync: ("icloud.fill", .blue)
+        case .usageSpend: ("chart.xyaxis.line", .green)
+        case .notifications: ("bell.badge.fill", .red)
+        case .menuBar: ("menubar.rectangle", .blue)
+        case .menu: ("filemenu.and.selection", .teal)
+        case .advanced: ("slider.horizontal.3", .purple)
+        case .hooks: ("bolt.fill", .orange)
+        case .plugins: ("puzzlepiece.extension.fill", .indigo)
+        case .about: ("info.circle.fill", .green)
+        case .debug: ("ladybug.fill", .red)
+        case .provider: ("square.stack.fill", .gray)
+        }
     }
 }
 
@@ -166,11 +226,14 @@ struct SettingsSidebarProviderRow: View {
     let provider: UsageProvider
     @Bindable var store: UsageStore
     @Binding var isEnabled: Bool
+    var matchedSetting: String?
 
     var body: some View {
         HStack(spacing: 8) {
             Group {
-                if let brand = ProviderBrandIcon.image(for: self.provider) {
+                if NativeGaugeConfiguration.isEnabled {
+                    NativeProviderSymbolView(provider: self.provider, size: 18)
+                } else if let brand = ProviderBrandIcon.image(for: self.provider) {
                     Image(nsImage: brand)
                         .resizable()
                         .scaledToFit()
@@ -180,12 +243,29 @@ struct SettingsSidebarProviderRow: View {
                         .scaledToFit()
                 }
             }
-            .frame(width: 16, height: 16)
+            .frame(width: 18, height: 18)
             .foregroundStyle(self.isEnabled ? .primary : .secondary)
             .accessibilityHidden(true)
 
-            Text(self.store.metadata(for: self.provider).displayName)
-                .foregroundStyle(self.isEnabled ? .primary : .secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(self.store.metadata(for: self.provider).displayName)
+                    .foregroundStyle(self.isEnabled ? .primary : .secondary)
+                if let matchedSetting = self.matchedSetting,
+                   matchedSetting != self.store.metadata(for: self.provider).displayName
+                {
+                    Text(matchedSetting)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                if let account = self.accountLabel {
+                    Text(account)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
 
             Spacer(minLength: 4)
 
@@ -209,6 +289,13 @@ struct SettingsSidebarProviderRow: View {
             }
         }
         .accessibilityLabel(self.accessibilityLabel)
+        .accessibilityValue(self.accountLabel ?? "")
+    }
+
+    private var accountLabel: String? {
+        guard self.isEnabled, self.store.settings.usesNativeGauges,
+              !self.store.settings.hidePersonalInfo else { return nil }
+        return self.store.settingsAccountLabel(for: self.provider)
     }
 
     private var accessibilityLabel: String {
@@ -254,8 +341,10 @@ private struct SettingsSidebarSearchField: View {
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
-            TextField(L("Search providers"), text: self.$searchText)
+            TextField(L("Search settings"), text: self.$searchText)
                 .textFieldStyle(.plain)
+                .accessibilityLabel(L("Search settings"))
+                .onExitCommand { self.searchText = "" }
 
             if !self.searchText.isEmpty {
                 Button {
@@ -280,24 +369,23 @@ private struct SettingsSidebarSearchField: View {
     }
 }
 
-private struct SettingsSidebarSortToggle: View {
+private struct SettingsSidebarUsedFirstToggle: View {
     @Binding var isOn: Bool
 
     var body: some View {
         Button {
             self.isOn.toggle()
         } label: {
-            Image(systemName: "arrow.up.arrow.down")
+            Image(systemName: "arrow.up.to.line")
                 .font(.callout)
                 .foregroundStyle(self.isOn ? Color.accentColor : Color.secondary)
                 .frame(width: 24, height: 24)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(self.isOn
-            ? L("Sorted alphabetically (enabled first) — click to use your custom order")
-            : L("Sort providers alphabetically (enabled first)"))
-        .accessibilityLabel(L("Sort providers alphabetically"))
+        .help(L("Used providers first"))
+        .accessibilityLabel(L("Used providers first"))
+        .accessibilityValue(self.isOn ? L("On") : L("Off"))
         .accessibilityAddTraits(self.isOn ? .isSelected : [])
     }
 }

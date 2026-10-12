@@ -1,7 +1,7 @@
 import Foundation
 
 /// Provider-specific spend/budget snapshot (e.g. Claude "Extra usage" monthly spend vs limit).
-public struct ProviderCostSnapshot: Equatable, Codable, Sendable {
+public struct ProviderCostSnapshot: Equatable, Hashable, Codable, Sendable {
     public let used: Double
     public let limit: Double
     public let currencyCode: String
@@ -20,6 +20,10 @@ public struct ProviderCostSnapshot: Equatable, Codable, Sendable {
     public let balanceUpdatedAt: Date?
     /// Codex shared workspace provenance; nil for other providers and legacy balance observations.
     public let balanceIsWorkspace: Bool?
+    /// A balance-only response cannot establish zero spending. Optional for older cached observations.
+    public let usageIsUnavailable: Bool?
+    /// The provider reports this spend allowance as turned off (e.g. Claude extra usage disabled), not merely zero.
+    public let isDisabled: Bool?
     public let updatedAt: Date
     /// Codex-only unavailable observation. Optional for compatibility with successful and legacy snapshots.
     var balanceIsUnavailable: Bool?
@@ -35,6 +39,8 @@ public struct ProviderCostSnapshot: Equatable, Codable, Sendable {
         balance: Double? = nil,
         balanceUpdatedAt: Date? = nil,
         balanceIsWorkspace: Bool? = nil,
+        usageIsUnavailable: Bool? = nil,
+        isDisabled: Bool? = nil,
         updatedAt: Date)
     {
         self.used = used
@@ -47,13 +53,15 @@ public struct ProviderCostSnapshot: Equatable, Codable, Sendable {
         self.balance = balance
         self.balanceUpdatedAt = balanceUpdatedAt
         self.balanceIsWorkspace = balanceIsWorkspace
+        self.usageIsUnavailable = usageIsUnavailable
+        self.isDisabled = isDisabled
         self.updatedAt = updatedAt
         self.balanceIsUnavailable = nil
     }
 
     /// Projects a positive spend budget into a quota meter without assigning it a time-window cadence.
     package var spendLimitWindow: RateWindow? {
-        guard self.limit > 0 else { return nil }
+        guard self.usageIsUnavailable != true, self.limit > 0 else { return nil }
         return RateWindow(
             usedPercent: max(0, min(100, (self.used / self.limit) * 100)),
             windowMinutes: nil,
@@ -86,6 +94,8 @@ public struct ProviderCostSnapshot: Equatable, Codable, Sendable {
             balance: balance,
             balanceUpdatedAt: balanceUpdatedAt,
             balanceIsWorkspace: balanceIsWorkspace,
+            usageIsUnavailable: self.usageIsUnavailable,
+            isDisabled: self.isDisabled,
             updatedAt: self.updatedAt)
         result.balanceIsUnavailable = balanceIsUnavailable
         return result

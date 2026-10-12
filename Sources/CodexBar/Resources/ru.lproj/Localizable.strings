@@ -2507,3 +2507,112 @@
 "Pace sign" = "Знак темпа расхода";
 "Ahead of pace is +" = "Опережение темпа — +";
 "Reserve is +" = "Запас — +";
+
+"Sign In…" = "Sign In…";
+
+"Connect…" = "Connect…";
+
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+
+// Native gauge settings and states.
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Custom gauges" = "Custom gauges";
+"Each enabled service has its own gauge. Manage services in the sidebar." = "Each enabled service has its own gauge. Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Legacy" = "Legacy";
+"Legacy icons" = "Legacy icons";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Style" = "Style";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+
+/* Settings search and provider ordering */
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+
+// Native orbit popup
+"Available" = "Доступно";
+"24h" = "24h";
+"No history yet" = "Истории пока нет";
+"Recorded available usage" = "Записанный доступный лимит";
+
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+
+"Local usage totals" = "Local usage totals";
+
+"Time period" = "Период";
+
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Период истории, токенов и расходов для всех аккаунтов. Индикаторы квот показывают текущую доступность.";
+
+"Active %@ account" = "Активный аккаунт %@";
+
+"Use in %@" = "Использовать в %@";
+
+"Use this account in %@" = "Использовать этот аккаунт в %@";
+
+"Use %@ in %@" = "Использовать %@ в %@";
+
+"Last updated %@" = "Последнее обновление %@";
+
+"No observations" = "Нет наблюдений";
+
+"History begins with recorded usage. Missing time is left empty." = "История начинается с записанных данных об использовании. Периоды без данных остаются пустыми.";
+
+"native_orbit_range_help" = "Период истории, токенов и расходов для всех аккаунтов. Индикаторы квот показывают текущую доступность.";
+
+"1d" = "1 дн.";
+"<1m ago" = "<1м назад";
+"Auto switch" = "Автопереключение";
+"Now" = "Сейчас";
+"Updating…" = "Обновление…";
+
+"Local Claude archive" = "Локальный архив Claude";
+
+"Account not recorded" = "Аккаунт не записан";
+
+"Anonymous observations from this provider. No account identity was recorded." = "Анонимные измерения этого провайдера. Идентификатор аккаунта не записан.";
+
+"History begins with recorded usage." = "История начинается с зарегистрированного использования.";
+
+"%d observations · %d/%d days" = "%d измерений · %d/%d дней";
+
+"No observations in this period" = "Нет измерений за этот период";
+
+"Last observed %@" = "Последнее измерение %@";
+
+"First observed %@" = "Первое измерение %@";
+
+"Connecting lines hold the last recorded value." = "Соединительные линии сохраняют последнее записанное значение.";
+
+"Local Codex archive" = "Локальный архив Codex";
+
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Журналы сеансов могут повторять кэшированные значения квот. Идентификатор аккаунта не записывается.";
+
+"%ds ago" = "%dс назад";
+
+"Local Kimi archive" = "Локальный архив Kimi";
+"Lines connect nearby observations. Gaps have no recorded data." = "Линии соединяют близкие по времени измерения. В промежутках нет записанных данных.";
+"native_refresh_timed_out" = "Обновление занимает больше времени, чем ожидалось. Оно продолжается в фоновом режиме.";
+"native_orbit_range_day" = "Д";
+"native_orbit_range_week" = "Н";
+"native_orbit_range_month" = "М";
+"Last 7 days" = "Последние 7 дней";

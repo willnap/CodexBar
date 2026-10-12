@@ -371,6 +371,8 @@ public struct FactoryStatusSnapshot: Sendable {
     public let tokenRateLimits: FactoryTokenRateLimits?
     public let extraUsageBalanceCents: Int?
     public let overagePreference: String?
+    public let updatedAt: Date
+    public let hasMeasuredUserTokens: Bool
 
     public init(
         standardUserTokens: Int64,
@@ -391,7 +393,9 @@ public struct FactoryStatusSnapshot: Sendable {
         rawJSON: String?,
         tokenRateLimits: FactoryTokenRateLimits? = nil,
         extraUsageBalanceCents: Int? = nil,
-        overagePreference: String? = nil)
+        overagePreference: String? = nil,
+        updatedAt: Date = Date(),
+        hasMeasuredUserTokens: Bool = true)
     {
         self.standardUserTokens = standardUserTokens
         self.standardOrgTokens = standardOrgTokens
@@ -412,6 +416,8 @@ public struct FactoryStatusSnapshot: Sendable {
         self.tokenRateLimits = tokenRateLimits
         self.extraUsageBalanceCents = extraUsageBalanceCents
         self.overagePreference = overagePreference
+        self.updatedAt = updatedAt
+        self.hasMeasuredUserTokens = hasMeasuredUserTokens
     }
 
     /// Convert to UsageSnapshot for the common provider interface
@@ -465,13 +471,14 @@ public struct FactoryStatusSnapshot: Sendable {
             primary: primary,
             secondary: secondary,
             tertiary: nil,
-            providerCost: nil,
-            updatedAt: Date(),
+            providerCost: self.balanceSnapshot,
+            costUsage: self.legacyTokenSnapshot,
+            updatedAt: self.updatedAt,
             identity: identity)
     }
 
     private func tokenRateLimitsUsageSnapshot(from limits: FactoryTokenRateLimits) -> UsageSnapshot {
-        let now = Date()
+        let now = self.updatedAt
         let primary = limits.standard.fiveHour.rateWindow(windowMinutes: 5 * 60, title: "5h", now: now)
         let secondary = limits.standard.weekly.rateWindow(windowMinutes: 7 * 24 * 60, title: "7-day", now: now)
         let tertiary = limits.standard.monthly.rateWindow(windowMinutes: nil, title: "Monthly", now: now)
@@ -514,22 +521,54 @@ public struct FactoryStatusSnapshot: Sendable {
             accountEmail: self.accountEmail,
             accountOrganization: self.organizationName,
             loginMethod: loginMethod)
-        let providerCost = self.extraUsageBalanceCents.map {
-            ProviderCostSnapshot(
-                used: Double($0) / 100.0,
-                limit: 0,
-                currencyCode: "USD",
-                period: "Extra usage balance",
-                updatedAt: now)
-        }
         return UsageSnapshot(
             primary: primary,
             secondary: secondary,
             tertiary: tertiary,
             extraRateWindows: coreWindows,
-            providerCost: providerCost,
+            providerCost: self.balanceSnapshot,
             updatedAt: now,
             identity: identity)
+    }
+
+    private var balanceSnapshot: ProviderCostSnapshot? {
+        self.extraUsageBalanceCents.map {
+            let balance = Double($0) / 100
+            return ProviderCostSnapshot(
+                used: balance,
+                limit: 0,
+                currencyCode: "USD",
+                period: "Extra usage balance",
+                balance: balance,
+                balanceUpdatedAt: self.updatedAt,
+                usageIsUnavailable: true,
+                updatedAt: self.updatedAt)
+        }
+    }
+
+    private var legacyTokenSnapshot: CostUsageTokenSnapshot? {
+        guard self.hasMeasuredUserTokens,
+              let start = self.periodStart, let end = self.periodEnd,
+              start <= self.updatedAt, self.updatedAt < end,
+              self.standardUserTokens >= 0, self.premiumUserTokens >= 0
+        else { return nil }
+        let (tokens, overflow) = self.standardUserTokens.addingReportingOverflow(self.premiumUserTokens)
+        guard !overflow, let count = Int(exactly: tokens) else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let days = (calendar.dateComponents(
+            [.day], from: calendar.startOfDay(for: start), to: calendar.startOfDay(for: self.updatedAt)).day ?? 0) + 1
+        return CostUsageTokenSnapshot(
+            sessionTokens: nil,
+            sessionCostUSD: nil,
+            last30DaysTokens: count,
+            last30DaysCostUSD: nil,
+            currencyCode: "XXX",
+            historyDays: days,
+            historyCoverageIsEstablished: false,
+            historyLabel: "Billing period",
+            daily: [],
+            updatedAt: self.updatedAt)
     }
 
     private func calculateUsagePercent(used: Int64, allowance: Int64, apiRatio: Double?) -> Double {
@@ -1429,7 +1468,8 @@ public struct FactoryStatusProbe: Sendable {
             organizationName: authInfo.organization?.name,
             accountEmail: nil, // Email is in JWT, not in auth response body
             userId: userId ?? usageData.userId,
-            rawJSON: nil)
+            rawJSON: nil,
+            hasMeasuredUserTokens: usage?.standard?.userTokens != nil || usage?.premium?.userTokens != nil)
     }
 
     private func buildTokenRateLimitsSnapshot(

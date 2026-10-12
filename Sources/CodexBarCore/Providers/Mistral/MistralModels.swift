@@ -255,10 +255,24 @@ public struct MistralUsageSnapshot: Codable, Sendable {
         return UsageSnapshot(
             primary: nil,
             secondary: nil,
-            providerCost: nil,
+            providerCost: self.walletCost,
             mistralUsage: self,
             updatedAt: self.updatedAt,
             identity: identity)
+    }
+
+    /// The spendable credit wallet as a balance-only observation. Billed API spend stays in `mistralUsage`
+    /// because the wallet cannot establish what was spent.
+    private var walletCost: ProviderCostSnapshot? {
+        guard let credits = self.credits, let balance = credits.measuredAvailableAmount else { return nil }
+        return ProviderCostSnapshot(
+            used: 0,
+            limit: 0,
+            currencyCode: credits.currency,
+            balance: balance,
+            balanceUpdatedAt: self.updatedAt,
+            usageIsUnavailable: true,
+            updatedAt: self.updatedAt)
     }
 
     public func toCostUsageTokenSnapshot(historyDays: Int = 30) -> CostUsageTokenSnapshot {
@@ -556,8 +570,13 @@ public struct MistralCreditsSnapshot: Codable, Equatable, Sendable {
     }
 
     public var availableAmount: Double {
+        self.measuredAvailableAmount ?? 0
+    }
+
+    /// Spendable wallet amount, or nil when any credit component is not a finite reading.
+    package var measuredAvailableAmount: Double? {
         let amount = self.walletAmount + self.creditNotesAmount - self.ongoingUsageBalance
-        return amount.isFinite ? max(0, amount) : 0
+        return amount.isFinite ? max(0, amount) : nil
     }
 
     public var formattedAvailableAmount: String {

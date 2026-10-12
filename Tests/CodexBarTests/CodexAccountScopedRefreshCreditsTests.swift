@@ -6,7 +6,9 @@ import Testing
 extension CodexAccountScopedRefreshTests {
     @Test
     func `credits refresh honors explicit codex oauth source without raw CLI fallback`() async throws {
-        let settings = self.makeSettingsStore(suite: "CodexAccountScopedRefreshTests-oauth-credits-source")
+        let settings = self.makeSettingsStore(
+            suite: "CodexAccountScopedRefreshTests-oauth-credits-source",
+            nativeDesignEnabled: true)
         settings.refreshFrequency = .manual
         settings.codexUsageDataSource = .oauth
         settings._test_liveSystemCodexAccount = self.liveAccount(email: "alpha@example.com")
@@ -16,6 +18,7 @@ extension CodexAccountScopedRefreshTests {
             environmentBase: ["CODEX_CLI_PATH": "/missing/codex"])
         let usage = self.codexSnapshot(email: "alpha@example.com", usedPercent: 10)
         store._setSnapshotForTesting(usage, provider: .codex)
+        store._cancelPlanUtilizationHistoryLoadForTesting()
 
         let oauthStrategy = TestCodexFetchStrategy(
             loader: { usage },
@@ -45,6 +48,9 @@ extension CodexAccountScopedRefreshTests {
         #expect(store.credits?.remaining == 77)
         #expect(store.lastCreditsError == nil)
         #expect(store.lastCreditsSource == .api)
+        let entries = store.planUtilizationHistory[.codex]?.accounts.values.flatMap(\.self)
+            .filter { $0.name.rawValue == "nativeMetric:balance" }.flatMap(\.entries)
+        #expect(entries?.last?.nativeMetrics?.balance?.value == 77)
     }
 
     @Test

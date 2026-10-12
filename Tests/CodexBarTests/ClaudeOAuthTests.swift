@@ -750,7 +750,7 @@ struct ClaudeOAuthTests {
         #expect(
             ClaudeOAuthUsageFetcher._userAgentForTesting(versionString: "2.1.70 (Claude Code)")
                 == "claude-code/2.1.70")
-        #expect(ClaudeOAuthUsageFetcher._userAgentForTesting(versionString: nil) == "claude-code/2.1.0")
+        #expect(ClaudeOAuthUsageFetcher._userAgentForTesting(versionString: nil) == "claude-code/2.1.296")
     }
 
     @Test
@@ -763,7 +763,7 @@ struct ClaudeOAuthTests {
                 return "2.1.70 (Claude Code)"
             })
 
-        #expect(fallback == "claude-code/2.1.0")
+        #expect(fallback == "claude-code/2.1.296")
         #expect(detectionCount == 0)
 
         let detected = ClaudeOAuthUsageFetcher._userAgentForTesting(

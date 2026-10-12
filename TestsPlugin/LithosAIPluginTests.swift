@@ -20,7 +20,12 @@ struct LithosAIPluginTests {
         """))
         #expect(usage.primary == nil)
         #expect(usage.secondary == nil)
-        #expect(usage.providerCost?.used == 4.70709986)
+        #expect(usage.providerCost?.used == 2.360066994)
+        #expect(usage.providerCost?.balance == 4.70709986)
+        #expect(usage.providerCost?.usageIsUnavailable != true)
+        #expect(usage.costUsage?.last30DaysCostUSD == 2.360066994)
+        #expect(usage.costUsage?.sessionCostUSD == nil)
+        #expect(usage.costUsage?.last30DaysTokens == nil)
         #expect(usage.providerCost?.currencyCode == "USD")
         #expect(usage.providerCost?.limit == 0)
         #expect(usage.identity?.accountEmail == "person@example.test")
@@ -36,7 +41,11 @@ struct LithosAIPluginTests {
         async throws
     {
         let usage = try await Self.fetch(engine, fixture: Fixture(balance: balance))
-        #expect(usage.providerCost?.used == Double(balance)! / 1e9)
+        #expect(usage.providerCost?.used == 0)
+        #expect(usage.providerCost?.balance == Double(balance)! / 1e9)
+        #expect(usage.providerCost?.usageIsUnavailable != true)
+        #expect(usage.costUsage?.last30DaysCostUSD == 0)
+        #expect(usage.costUsage?.last30DaysTokens == nil)
         #expect(usage.primary == nil)
         #expect(usage.details.flatMap(\.rows).first { $0.label == "Today (UTC)" }?.value == "$0.00")
         if balance == "1000000" {
@@ -64,6 +73,9 @@ struct LithosAIPluginTests {
     {
         let usage = try await Self.fetch(engine, fixture: Fixture(spend: spend))
         #expect(usage.providerCost?.used == 4.70709986)
+        #expect(usage.providerCost?.balance == 4.70709986)
+        #expect(usage.providerCost?.usageIsUnavailable == true)
+        #expect(usage.costUsage == nil)
         #expect(usage.details.flatMap(\.rows).first { $0.label == "Spend" }?.value == "Unavailable")
         #expect(!usage.details.flatMap(\.rows).contains { $0.label == "Today (UTC)" })
     }
@@ -156,7 +168,8 @@ struct LithosAIPluginTests {
             guard self.sessions <= 2 else { return nil }
             return .init(
                 header: "__Host-console_session=fixture-\(self.sessions); __Host-console_csrf=csrf-\(self.sessions)",
-                source: "Synthetic", origin: "https://console.lithosai.cloud")
+                source: "Synthetic",
+                origin: "https://console.lithosai.cloud")
         }
 
         func data(for request: URLRequest) async throws -> (Data, URLResponse) {
@@ -171,7 +184,10 @@ struct LithosAIPluginTests {
             switch url.path {
             case "/api/me":
                 #expect(request.value(forHTTPHeaderField: "X-Organization-Id") == nil)
-                body = #"{"user":{"email":"person@example.test"},"activeOrganization":{"id":"org-fixture","name":"Synthetic Organization"}}"#
+                body = """
+                {"user":{"email":"person@example.test"},
+                 "activeOrganization":{"id":"org-fixture","name":"Synthetic Organization"}}
+                """
             case "/api/billing":
                 #expect(request.value(forHTTPHeaderField: "X-Organization-Id") == "org-fixture")
                 body = "{\"balanceNanos\":\(self.balance),\"hasCard\":true,\"onHold\":false}"

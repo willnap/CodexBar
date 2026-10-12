@@ -19,6 +19,14 @@ struct PlanUtilizationSeriesName: RawRepresentable, Hashable, Codable, Expressib
     static let antigravityGemini: Self = "antigravityGemini"
     static let antigravityClaudeGPT: Self = "antigravityClaudeGPT"
 
+    var isNativeQuotaObservation: Bool {
+        self.rawValue.hasPrefix("nativeQuota:")
+    }
+
+    var isNativeMetricObservation: Bool {
+        self.rawValue.hasPrefix("nativeMetric:")
+    }
+
     var isQuotaObservation: Bool {
         self == .antigravityGemini || self == .antigravityClaudeGPT
     }
@@ -35,10 +43,136 @@ struct PlanUtilizationSeriesName: RawRepresentable, Hashable, Codable, Expressib
     }
 }
 
+struct PlanUtilizationHistoricalPeriod: Codable, Equatable, Hashable, Sendable {
+    let startsAt: Date
+    let approximate: Bool
+    let accountingComplete: Bool
+    let boundaryToleranceSeconds: Double?
+    let coverageComplete: Bool?
+    let coverageStart: Date?
+    let dataAsOf: Date?
+    let sourcePeriodID: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case startsAt, startsAtReferenceTime, approximate, accountingComplete
+        case boundaryToleranceSeconds, coverageComplete, coverageStartReferenceTime, dataAsOfReferenceTime,
+             sourcePeriodID
+    }
+
+    init(
+        startsAt: Date,
+        approximate: Bool,
+        accountingComplete: Bool,
+        boundaryToleranceSeconds: Double? = nil,
+        coverageComplete: Bool? = nil,
+        coverageStart: Date? = nil,
+        dataAsOf: Date? = nil,
+        sourcePeriodID: String? = nil)
+    {
+        self.startsAt = startsAt
+        self.approximate = approximate
+        self.accountingComplete = accountingComplete
+        self.boundaryToleranceSeconds = boundaryToleranceSeconds
+        self.coverageComplete = coverageComplete
+        self.coverageStart = coverageStart
+        self.dataAsOf = dataAsOf
+        self.sourcePeriodID = sourcePeriodID
+    }
+
+    init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        if let exact = try values.decodeIfPresent(Double.self, forKey: .startsAtReferenceTime), exact.isFinite {
+            self.startsAt = Date(timeIntervalSinceReferenceDate: exact)
+        } else {
+            self.startsAt = try values.decode(Date.self, forKey: .startsAt)
+        }
+        self.approximate = try values.decode(Bool.self, forKey: .approximate)
+        self.accountingComplete = try values.decode(Bool.self, forKey: .accountingComplete)
+        self.boundaryToleranceSeconds = try values.decodeIfPresent(Double.self, forKey: .boundaryToleranceSeconds)
+        self.coverageComplete = try values.decodeIfPresent(Bool.self, forKey: .coverageComplete)
+        self.coverageStart = try values.decodeIfPresent(Double.self, forKey: .coverageStartReferenceTime)
+            .flatMap { $0.isFinite ? Date(timeIntervalSinceReferenceDate: $0) : nil }
+        self.dataAsOf = try values.decodeIfPresent(Double.self, forKey: .dataAsOfReferenceTime)
+            .flatMap { $0.isFinite ? Date(timeIntervalSinceReferenceDate: $0) : nil }
+        self.sourcePeriodID = try values.decodeIfPresent(String.self, forKey: .sourcePeriodID)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(self.startsAt, forKey: .startsAt)
+        try values.encode(self.startsAt.timeIntervalSinceReferenceDate, forKey: .startsAtReferenceTime)
+        try values.encode(self.approximate, forKey: .approximate)
+        try values.encode(self.accountingComplete, forKey: .accountingComplete)
+        try values.encodeIfPresent(self.boundaryToleranceSeconds, forKey: .boundaryToleranceSeconds)
+        try values.encodeIfPresent(self.coverageComplete, forKey: .coverageComplete)
+        try values.encodeIfPresent(
+            self.coverageStart?.timeIntervalSinceReferenceDate,
+            forKey: .coverageStartReferenceTime)
+        try values.encodeIfPresent(self.dataAsOf?.timeIntervalSinceReferenceDate, forKey: .dataAsOfReferenceTime)
+        try values.encodeIfPresent(self.sourcePeriodID, forKey: .sourcePeriodID)
+    }
+}
+
 struct PlanUtilizationHistoryEntry: Codable, Equatable, Hashable, Sendable {
     let capturedAt: Date
     let usedPercent: Double
     let resetsAt: Date?
+    let historicalPeriod: PlanUtilizationHistoricalPeriod?
+    let nativeMetrics: NativeOrbitMetricObservation?
+
+    private enum CodingKeys: String, CodingKey {
+        case capturedAt, usedPercent, resetsAt
+        case capturedAtReferenceTime, resetsAtReferenceTime
+        case historicalPeriod, nativeMetrics
+    }
+
+    init(
+        capturedAt: Date,
+        usedPercent: Double,
+        resetsAt: Date?,
+        historicalPeriod: PlanUtilizationHistoricalPeriod? = nil,
+        nativeMetrics: NativeOrbitMetricObservation? = nil)
+    {
+        self.capturedAt = capturedAt
+        self.usedPercent = usedPercent
+        self.resetsAt = resetsAt
+        self.historicalPeriod = historicalPeriod
+        self.nativeMetrics = nativeMetrics
+    }
+
+    init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let exactCapture = try values.decodeIfPresent(Double.self, forKey: .capturedAtReferenceTime)
+        let exactReset = try values.decodeIfPresent(Double.self, forKey: .resetsAtReferenceTime)
+        self.capturedAt = if let exactCapture, exactCapture.isFinite {
+            Date(timeIntervalSinceReferenceDate: exactCapture)
+        } else {
+            try values.decode(Date.self, forKey: .capturedAt)
+        }
+        self.nativeMetrics = try values.decodeIfPresent(NativeOrbitMetricObservation.self, forKey: .nativeMetrics)
+        self.usedPercent = try values.decode(Double.self, forKey: .usedPercent)
+        self.historicalPeriod = try values.decodeIfPresent(
+            PlanUtilizationHistoricalPeriod.self,
+            forKey: .historicalPeriod)
+        self.resetsAt = if let exactReset, exactReset.isFinite {
+            Date(timeIntervalSinceReferenceDate: exactReset)
+        } else {
+            try values.decodeIfPresent(Date.self, forKey: .resetsAt)
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        // Keep the existing ISO dates for older clients, plus exact reference times so a restart cannot
+        // round distinct source observations into the same second and replace one with another.
+        try values.encode(self.capturedAt, forKey: .capturedAt)
+        try values.encode(self.usedPercent, forKey: .usedPercent)
+        try values.encodeIfPresent(self.resetsAt, forKey: .resetsAt)
+        try values.encode(self.capturedAt.timeIntervalSinceReferenceDate, forKey: .capturedAtReferenceTime)
+        try values.encodeIfPresent(self.resetsAt?.timeIntervalSinceReferenceDate, forKey: .resetsAtReferenceTime)
+        try values.encodeIfPresent(self.historicalPeriod, forKey: .historicalPeriod)
+        try values.encodeIfPresent(self.nativeMetrics, forKey: .nativeMetrics)
+    }
 
     static func precedes(_ lhs: Self, _ rhs: Self) -> Bool {
         if lhs.capturedAt != rhs.capturedAt {
@@ -60,7 +194,10 @@ struct PlanUtilizationSeriesHistory: Codable, Equatable, Sendable {
 
     /// Zero is reserved for observed quota samples with no advertised reset cadence.
     var hasSupportedCadence: Bool {
-        self.windowMinutes > 0 || (self.windowMinutes == 0 && self.name.isQuotaObservation)
+        self
+            .windowMinutes > 0 ||
+            (self.windowMinutes == 0 && (self.name.isQuotaObservation || self.name.isNativeQuotaObservation
+                    || self.name.isNativeMetricObservation))
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -205,6 +342,7 @@ private struct ProviderHistoryDocument: Codable, Sendable {
 
 struct PlanUtilizationHistoryStore: Sendable {
     fileprivate static let providerSchemaVersion = 1
+    private static let log = CodexBarLog.logger("plan-history")
 
     let directoryURL: URL?
 
@@ -226,25 +364,34 @@ struct PlanUtilizationHistoryStore: Sendable {
         await Task.detached(priority: .utility) { self.load() }.value
     }
 
-    func save(_ providers: [ProviderInstanceID: PlanUtilizationHistoryBuckets]) {
-        guard let directoryURL = self.directoryURL else { return }
+    @discardableResult
+    func save(_ providers: [ProviderInstanceID: PlanUtilizationHistoryBuckets]) -> Set<ProviderInstanceID> {
+        guard let directoryURL = self.directoryURL else { return [] }
+        let knownInstanceIDs = Set(UsageProvider.allCases.map(\.instanceID)).union(providers.keys)
         do {
             try FileManager.default.createDirectory(
                 at: directoryURL,
                 withIntermediateDirectories: true)
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            encoder.outputFormatting = [.sortedKeys]
+        } catch {
+            Self.log.error("Failed to create quota history directory: \(error.localizedDescription)")
+            return knownInstanceIDs
+        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+        var failures: Set<ProviderInstanceID> = []
 
-            let knownInstanceIDs = Set(UsageProvider.allCases.map(\.instanceID)).union(providers.keys)
-            for instanceID in knownInstanceIDs.sorted(by: { $0.rawValue < $1.rawValue }) {
+        for instanceID in knownInstanceIDs.sorted(by: { $0.rawValue < $1.rawValue }) {
+            do {
                 let fileURL = self.providerFileURL(for: instanceID)
                 let buckets = providers[instanceID] ?? PlanUtilizationHistoryBuckets()
                 let unscoped = Self.sortedHistories(buckets.unscoped)
                 let accounts = Self.sortedAccounts(buckets.accounts)
                 guard !unscoped.isEmpty || !accounts.isEmpty || !buckets.sessionEquivalentWindowPairIdentities.isEmpty
                 else {
-                    try? FileManager.default.removeItem(at: fileURL)
+                    if FileManager.default.fileExists(atPath: fileURL.path) {
+                        try FileManager.default.removeItem(at: fileURL)
+                    }
                     continue
                 }
 
@@ -261,10 +408,12 @@ struct PlanUtilizationHistoryStore: Sendable {
                     continue
                 }
                 try data.write(to: fileURL, options: Data.WritingOptions.atomic)
+            } catch {
+                failures.insert(instanceID)
+                Self.log.error("Failed to save \(instanceID.rawValue) quota history: \(error.localizedDescription)")
             }
-        } catch {
-            // Best-effort persistence only.
         }
+        return failures
     }
 
     func load() -> [ProviderInstanceID: PlanUtilizationHistoryBuckets] {

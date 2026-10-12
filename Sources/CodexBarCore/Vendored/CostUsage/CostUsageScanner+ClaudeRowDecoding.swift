@@ -42,6 +42,8 @@ extension CostUsageScanner.ClaudeUsageRow {
         self.costNanos = try values.decode(Int.self, forKey: .costNanos)
         self.costPriced = try values.decodeIfPresent(Bool.self, forKey: .costPriced)
         self.isIncomplete = try values.decodeIfPresent(Bool.self, forKey: .isIncomplete)
+        self.organizationID = try values.decodeIfPresent(String.self, forKey: .organizationID)
+            .map { pool?.intern($0) ?? $0 }
     }
 }
 

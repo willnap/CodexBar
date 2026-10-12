@@ -2,9 +2,11 @@ import Foundation
 
 extension SettingsStore {
     var menuObservationToken: Int {
+        _ = self.nativeGaugeStyle
         _ = self.providerOrder
         _ = self.providerEnablement
         _ = self.refreshFrequency
+        _ = self.refreshAllProvidersOnMenuOpen
         _ = self.adaptiveActivityScanConsent
         _ = self.launchAtLogin
         _ = self.debugMenuEnabled

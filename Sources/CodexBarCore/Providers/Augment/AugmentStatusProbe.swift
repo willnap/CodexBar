@@ -218,13 +218,28 @@ public struct AugmentStatusSnapshot: Sendable {
             accountOrganization: nil,
             loginMethod: self.accountPlan)
 
+        let updatedAt = Date()
         return UsageSnapshot(
             primary: primary,
             secondary: nil,
             tertiary: nil,
-            providerCost: nil,
-            updatedAt: Date(),
+            providerCost: self.creditBalance(updatedAt: updatedAt),
+            updatedAt: updatedAt,
             identity: identity)
+    }
+
+    /// Remaining Augment credits are the account's spendable balance in credit units, never money or spending.
+    func creditBalance(updatedAt: Date) -> ProviderCostSnapshot? {
+        guard let remaining = self.creditsRemaining, remaining.isFinite, remaining >= 0 else { return nil }
+        return ProviderCostSnapshot(
+            used: 0,
+            limit: 0,
+            currencyCode: "Credits",
+            period: "Credits remaining",
+            balance: remaining,
+            balanceUpdatedAt: updatedAt,
+            usageIsUnavailable: true,
+            updatedAt: updatedAt)
     }
 
     private static func formatResetDate(_ date: Date) -> String {

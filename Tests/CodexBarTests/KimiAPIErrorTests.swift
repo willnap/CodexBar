@@ -8,7 +8,7 @@ struct KimiAPIErrorTests {
         #expect(error.localizedDescription.contains("Run kimi"))
         #expect(error.localizedDescription.contains("Settings > Providers > Kimi"))
         #expect(error.localizedDescription.contains("KIMI_CODE_API_KEY"))
-        #expect(error.localizedDescription.contains("does not refresh"))
+        #expect(error.localizedDescription.contains("sign in again"))
     }
 
     @Test
@@ -17,7 +17,7 @@ struct KimiAPIErrorTests {
         #expect(KimiAPIError.invalidToken.errorDescription?.contains("invalid") == true)
         #expect(KimiAPIError.missingAPIKey.errorDescription?.contains("Settings > Providers > Kimi") == true)
         #expect(KimiAPIError.missingAPIKey.errorDescription?.contains("KIMI_CODE_API_KEY") == true)
-        #expect(KimiAPIError.expiredCodeCredential.errorDescription?.contains("does not refresh") == true)
+        #expect(KimiAPIError.expiredCodeCredential.errorDescription?.contains("sign in again") == true)
         #expect(KimiAPIError.invalidCodeCredential.errorDescription?.contains("invalid") == true)
         #expect(KimiAPIError.invalidAPIKey.errorDescription?.contains("API key") == true)
         #expect(KimiAPIError.invalidRequest("Bad request").errorDescription?.contains("Bad request") == true)

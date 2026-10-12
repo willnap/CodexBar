@@ -1,8 +1,36 @@
 import CodexBarCore
 import Foundation
+import Observation
 
 extension StatusItemController {
+    func observeStoreIconChanges() {
+        withObservationTracking {
+            _ = self.store.iconObservationToken
+            if self.settings.usesNativeGauges {
+                _ = self.settings.cachedCodexAccountMenuProjection
+                _ = self.store.accountSnapshots
+                _ = self.store.codexAccountSnapshots
+                _ = self.store.claudeSwapLastError
+            }
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.observeStoreIconChanges()
+                let signature = self.storeIconObservationSignature()
+                guard signature != self.lastObservedStoreIconWorkSignature else { return }
+                // Reuse the signature we just computed for the change check; `updateIcons` would
+                // otherwise recompute the identical value on the same main-actor turn.
+                self.updateIcons(precomputedStoreIconSignature: signature)
+            }
+        }
+    }
+
     func storeIconObservationSignature() -> String {
+        if self.settings.usesNativeGauges {
+            return UsageProvider.allCases.filter { self.isVisible($0) }.map {
+                "\($0.rawValue)=\(self.store.nativeServicePresentation(for: $0).iconSignature)"
+            }.joined(separator: "||")
+        }
         let showBrandPercent = self.settings.menuBarShowsBrandIconWithPercent
         let mergeIcons = self.shouldMergeIcons
         let visibleProviders = self.store.enabledProvidersForDisplay().map(\.rawValue).sorted().joined(separator: ",")

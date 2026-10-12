@@ -37,6 +37,7 @@ defineProvider({
     const spent = money(data?.total_used);
     if (spent < 0) return fail();
     return {
+      cost: { used: spent, balance, limit: 0, currency: "USD", period: "Lifetime", usageIsUnavailable: false },
       details: [
         {
           title: "Team credits",

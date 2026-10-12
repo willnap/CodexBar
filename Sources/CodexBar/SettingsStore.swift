@@ -248,6 +248,7 @@ final class SettingsStore {
     #endif
 
     @ObservationIgnored let userDefaults: UserDefaults
+    @ObservationIgnored let nativeDesignEnabled: Bool
     @ObservationIgnored let configStore: CodexBarConfigStore
     @ObservationIgnored let antigravityOAuthCredentialsStore: AntigravityOAuthCredentialsStore
     @ObservationIgnored let keychainAccessPolicy: SettingsStoreKeychainAccessPolicy
@@ -258,7 +259,7 @@ final class SettingsStore {
     @ObservationIgnored var configLoading = false
     @ObservationIgnored var cachedCodexAccountReconciliationSnapshot:
         CachedCodexAccountReconciliationSnapshot?
-    @ObservationIgnored var cachedCodexAccountMenuProjection: CachedCodexAccountMenuProjection?
+    var cachedCodexAccountMenuProjection: CachedCodexAccountMenuProjection?
     @ObservationIgnored var codexAccountReconciliationGeneration: UInt = 0
     #if DEBUG
     @ObservationIgnored var _test_configPersistenceUsesDebounce = false
@@ -283,12 +284,12 @@ final class SettingsStore {
     static func resolveSharedDefaults(
         _ resolve: () -> UserDefaults? = { AppGroupSupport.sharedDefaults() }) -> UserDefaults?
     {
-        guard !self.isRunningTests else { return nil }
+        guard !self.isRunningTests, !NativeGaugeConfiguration.isEnabled else { return nil }
         return resolve()
     }
 
     static func shouldBridgeSharedDefaults(for _: UserDefaults) -> Bool {
-        !self.isRunningTests
+        !self.isRunningTests && !NativeGaugeConfiguration.isEnabled
     }
 
     init(
@@ -324,9 +325,12 @@ final class SettingsStore {
         tokenAccountStore: any ProviderTokenAccountStoring = FileTokenAccountStore(),
         antigravityOAuthCredentialsStore: AntigravityOAuthCredentialsStore = AntigravityOAuthCredentialsStore(),
         keychainAccessPolicy: SettingsStoreKeychainAccessPolicy = .live,
-        performInitialProviderDetection: Bool = !SettingsStore.isRunningTests)
+        performInitialProviderDetection: Bool = !SettingsStore.isRunningTests,
+        nativeDesignEnabled: Bool = NativeGaugeConfiguration.isEnabled)
     {
         // Legacy credential migration must see the saved policy, including shared-defaults fallback.
+        self.nativeDesignEnabled = nativeDesignEnabled
+        NativeGaugePreferences.prepare(defaults: userDefaults, isNative: nativeDesignEnabled)
         keychainAccessPolicy.setDisabled(Self.loadDebugDisableKeychainAccess(userDefaults: userDefaults))
         if !Self.isRunningTests {
             _ = UserProviderPluginRegistry.refresh()
@@ -399,6 +403,7 @@ final class SettingsStore {
         userDefaults.removeObject(forKey: "showCodexUsage")
         userDefaults.removeObject(forKey: "showClaudeUsage")
         LaunchAtLoginManager.setEnabled(self.launchAtLogin)
+        if self.nativeDesignEnabled, !Self.isRunningTests { self.restoreNativeFolderAccess() }
         if performInitialProviderDetection {
             self.runInitialProviderDetectionIfNeeded()
         }
@@ -542,6 +547,7 @@ extension SettingsStore {
             userDefaults.set(iCloudSyncDeviceID, forKey: "iCloudSyncDeviceID")
         }
         return SettingsDefaultsState(
+            nativeGaugeStyleRaw: userDefaults.string(forKey: "nativeGaugeStyle") ?? NativeGaugeStyle.laurel.rawValue,
             refreshFrequency: refreshFrequency,
             adaptiveActivityScanConsent: adaptiveActivityScanConsent,
             refreshAllProvidersOnMenuOpen: userDefaults.object(
@@ -673,6 +679,7 @@ extension SettingsStore {
             providerDetectionCompleted: userDefaults.object(forKey: "providerDetectionCompleted") as? Bool ?? false,
             providersSortedAlphabetically: userDefaults.object(
                 forKey: "providersSortedAlphabetically") as? Bool ?? false,
+            settingsProvidersUsedFirst: userDefaults.object(forKey: "settingsProvidersUsedFirst") as? Bool ?? true,
             appLanguageRaw: userDefaults.string(forKey: "appLanguage"),
             terminalAppRaw: userDefaults.string(forKey: "terminalApp"),
             agentSessionsEnabled: userDefaults.object(forKey: "agentSessionsEnabled") as? Bool ?? false,

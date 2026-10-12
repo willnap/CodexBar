@@ -2510,3 +2510,112 @@
 "Pace sign" = "Signe del ritme";
 "Ahead of pace is +" = "Per sobre del ritme és +";
 "Reserve is +" = "La reserva és +";
+
+"Sign In…" = "Sign In…";
+
+"Connect…" = "Connect…";
+
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+
+// Native gauge settings and states.
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Custom gauges" = "Custom gauges";
+"Each enabled service has its own gauge. Manage services in the sidebar." = "Each enabled service has its own gauge. Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Legacy" = "Legacy";
+"Legacy icons" = "Legacy icons";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Style" = "Style";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+
+/* Settings search and provider ordering */
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+
+// Native orbit popup
+"Available" = "Disponible";
+"24h" = "24h";
+"No history yet" = "Encara no hi ha historial";
+"Recorded available usage" = "Ús disponible registrat";
+
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+
+"Local usage totals" = "Local usage totals";
+
+"Time period" = "Període";
+
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Període de l’historial, els tokens i la despesa de tots els comptes. Els indicadors de quota mostren la disponibilitat actual.";
+
+"Active %@ account" = "Compte %@ actiu";
+
+"Use in %@" = "Utilitza a %@";
+
+"Use this account in %@" = "Utilitza aquest compte a %@";
+
+"Use %@ in %@" = "Utilitza %@ a %@";
+
+"Last updated %@" = "Darrera actualització %@";
+
+"No observations" = "Sense observacions";
+
+"History begins with recorded usage. Missing time is left empty." = "L’historial comença amb les dades d’ús registrades. Els períodes sense dades queden buits.";
+
+"native_orbit_range_help" = "Període de l’historial, els tokens i la despesa de tots els comptes. Els indicadors de quota mostren la disponibilitat actual.";
+
+"1d" = "1d";
+"<1m ago" = "fa <1min";
+"Auto switch" = "Canvi automàtic";
+"Now" = "Ara";
+"Updating…" = "S’està actualitzant…";
+
+"Local Claude archive" = "Arxiu local de Claude";
+
+"Account not recorded" = "Compte no identificat";
+
+"Anonymous observations from this provider. No account identity was recorded." = "Observacions anònimes d’aquest proveïdor. No s’ha registrat la identitat del compte.";
+
+"History begins with recorded usage." = "L’historial comença amb l’ús registrat.";
+
+"%d observations · %d/%d days" = "%d observacions · %d/%d dies";
+
+"No observations in this period" = "No hi ha observacions en aquest període";
+
+"Last observed %@" = "Última observació %@";
+
+"First observed %@" = "Primera observació %@";
+
+"Connecting lines hold the last recorded value." = "Les línies de connexió mantenen el darrer valor registrat.";
+
+"Local Codex archive" = "Arxiu local de Codex";
+
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Els registres de sessió poden repetir lectures de quota en memòria cau. No s’hi registra la identitat del compte.";
+
+"%ds ago" = "fa %ds";
+
+"Local Kimi archive" = "Arxiu local de Kimi";
+"Lines connect nearby observations. Gaps have no recorded data." = "Les línies connecten mesures properes. Els buits no tenen dades registrades.";
+"native_refresh_timed_out" = "L’actualització està trigant més del previst. Continua en segon pla.";
+"native_orbit_range_day" = "D";
+"native_orbit_range_week" = "S";
+"native_orbit_range_month" = "M";
+"Last 7 days" = "Darrers 7 dies";

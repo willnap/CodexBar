@@ -24,7 +24,11 @@ extension StatusItemController {
     }
 
     func isEnabled(_ provider: UsageProvider) -> Bool {
-        self.store.isEnabled(provider)
+        if self.settings.usesNativeGauges {
+            return self.settings.isProviderEnabledCached(
+                provider: provider, metadataByProvider: self.store.providerMetadata)
+        }
+        return self.store.isEnabled(provider)
     }
 }
 
@@ -82,37 +86,49 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
             if provider == .codex {
                 self.menuCardRefreshMonitor.publishResolvedModelIfCompatible(for: provider)
             }
-            await self.store.refreshProviderStatus(provider)
-            guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
-            await self.store.refreshTokenUsageNow(for: provider, force: true)
-            guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
-            // Provider-specific by design: Codex refresh also owns OpenAI dashboard and reset-credit enrichment.
-            if provider == .codex {
-                await self.store.refreshCreditsNow(minimumSnapshotUpdatedAt: refreshStartedAt)
-                guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
-                await self.store.refreshOpenAIDashboardIfNeeded(
-                    force: true,
-                    expectedGuard: self.store.freshCodexOpenAIWebRefreshGuard(),
-                    bypassCoalescing: true)
-                guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
-                if self.store.openAIDashboardRequiresLogin {
-                    await self.store.refreshProvider(.codex)
-                    guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
-                    await self.store.refreshCreditsNow(minimumSnapshotUpdatedAt: refreshStartedAt)
-                    guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
-                }
-            }
-            self.store.scheduleStorageFootprintRefresh(for: [provider], force: true)
-            self.store.persistWidgetSnapshot(reason: "provider-refresh")
-            if refreshOpenMenusWhenComplete {
-                self.refreshOpenMenusAfterExplicitStoreAction()
-            } else {
-                self.invalidateMenus()
-            }
+            await self.performStoreRefreshEnrichment(
+                for: provider,
+                refreshStartedAt: refreshStartedAt,
+                refreshOpenMenusWhenComplete: refreshOpenMenusWhenComplete)
         }
     }
 
-    private func withProviderInteraction(
+    /// The stages that follow a provider's usage fetch: status, token usage and, for Codex, credits.
+    func performStoreRefreshEnrichment(
+        for provider: UsageProvider,
+        refreshStartedAt: Date,
+        refreshOpenMenusWhenComplete: Bool) async
+    {
+        await self.store.refreshProviderStatus(provider)
+        guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+        await self.store.refreshTokenUsageNow(for: provider, force: true)
+        guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+        // Provider-specific by design: Codex refresh also owns OpenAI dashboard and reset-credit enrichment.
+        if provider == .codex {
+            await self.store.refreshCreditsNow(minimumSnapshotUpdatedAt: refreshStartedAt)
+            guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+            await self.store.refreshOpenAIDashboardIfNeeded(
+                force: true,
+                expectedGuard: self.store.freshCodexOpenAIWebRefreshGuard(),
+                bypassCoalescing: true)
+            guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+            if self.store.openAIDashboardRequiresLogin {
+                await self.store.refreshProvider(.codex)
+                guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+                await self.store.refreshCreditsNow(minimumSnapshotUpdatedAt: refreshStartedAt)
+                guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+            }
+        }
+        self.store.scheduleStorageFootprintRefresh(for: [provider], force: true)
+        self.store.persistWidgetSnapshot(reason: "provider-refresh")
+        if refreshOpenMenusWhenComplete {
+            self.refreshOpenMenusAfterExplicitStoreAction()
+        } else {
+            self.invalidateMenus()
+        }
+    }
+
+    func withProviderInteraction(
         _ interaction: ProviderInteraction,
         operation: () async -> Void) async
     {
@@ -931,5 +947,20 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
         case .cancelled: "cancelled"
         case let .failed(message): "failed(\(message))"
         }
+    }
+}
+
+extension StatusItemController {
+    func switchAccountSubtitle(for target: UsageProvider) -> String? {
+        guard self.loginTask != nil, let provider = self.activeLoginProvider, provider == target
+        else { return nil }
+        let base: String
+        switch self.loginPhase {
+        case .idle: return nil
+        case .requesting: base = L("Requesting login…")
+        case .waitingBrowser: base = L("Waiting in browser…")
+        }
+        let prefix = ProviderDescriptorRegistry.descriptor(for: provider).metadata.displayName
+        return "\(prefix): \(base)"
     }
 }

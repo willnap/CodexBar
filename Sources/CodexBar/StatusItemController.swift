@@ -142,6 +142,12 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     let menuRefreshEnabledForController: Bool
     var statusItem: NSStatusItem
     var statusItems: [ProviderInstanceID: NSStatusItem] = [:]
+    var nativeGaugeHosts: [ProviderInstanceID: NativeGaugeHostingView] = [:]
+    var nativeUsagePopover: NSPopover?
+    var nativeServicePopovers: [ProviderInstanceID: NSPopover] = [:]
+    let nativePopoverRefreshScheduler = NativePopoverRefreshScheduler()
+    var nativeServiceRoute = NativeServicePresentationRoute()
+    var nativeSystemSourcePrepared = false
     /// App intent survives Tahoe changing `NSStatusItem.isVisible` after Control Center rejects its scene.
     var expectedVisibleStatusItemAutosaveNames: Set<String> = []
     var lastMenuProvider: ProviderInstanceID?
@@ -540,22 +546,6 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         self.completeParentMenuRebuildAfterHostedSubviewCloseIfNeeded()
     }
 
-    private func observeStoreIconChanges() {
-        withObservationTracking {
-            _ = self.store.iconObservationToken
-        } onChange: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.observeStoreIconChanges()
-                let signature = self.storeIconObservationSignature()
-                guard signature != self.lastObservedStoreIconWorkSignature else { return }
-                // Reuse the signature we just computed for the change check; `updateIcons` would
-                // otherwise recompute the identical value on the same main-actor turn.
-                self.updateIcons(precomputedStoreIconSignature: signature)
-            }
-        }
-    }
-
     private func observeDebugForceAnimation() {
         withObservationTracking {
             _ = self.store.debugForceAnimation
@@ -682,6 +672,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         guard !self.isReleasedForTesting else { return }
         #endif
         self.synchronizeAgentSessionsForSettingsChange()
+        self.detachNativePresentationIfNeeded()
         let previousOrder = self.lastProviderOrder
         let orderChanged = self.settings.providerOrder != previousOrder
         let localizationChanged = self.menuLocalizationSignature() != self.lastMenuLocalizationSignature
@@ -831,6 +822,10 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     }
 
     private func attachMenus(fallback: UsageProvider? = nil) {
+        if self.settings.usesNativeGauges {
+            self.attachNativeServiceButtons()
+            return
+        }
         for provider in UsageProvider.allCases {
             // Only access/create the status item if it's actually needed
             let shouldHaveItem = self.isEnabled(provider) || fallback == provider
@@ -896,6 +891,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     }
 
     private func removeProviderStatusItem(for instanceID: ProviderInstanceID) {
+        self.removeNativeServicePopover(for: instanceID)
         if let menu = self.providerMenus.removeValue(forKey: instanceID) {
             let menuID = ObjectIdentifier(menu)
             if menuID == self.providerSwitcherShortcutMenuID {
@@ -909,24 +905,6 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         item.menu = nil
         self.lastAppliedProviderIconRenderSignatures.removeValue(forKey: instanceID)
         self.removeStatusItemPreservingPlacement(item)
-    }
-
-    func isVisible(_ provider: UsageProvider) -> Bool {
-        self.store.debugForceAnimation || self.isEnabled(provider)
-            || self.fallbackProvider == provider
-    }
-
-    func switchAccountSubtitle(for target: UsageProvider) -> String? {
-        guard self.loginTask != nil, let provider = self.activeLoginProvider, provider == target
-        else { return nil }
-        let base: String
-        switch self.loginPhase {
-        case .idle: return nil
-        case .requesting: base = L("Requesting login…")
-        case .waitingBrowser: base = L("Waiting in browser…")
-        }
-        let prefix = ProviderDescriptorRegistry.descriptor(for: provider).metadata.displayName
-        return "\(prefix): \(base)"
     }
 
     deinit {

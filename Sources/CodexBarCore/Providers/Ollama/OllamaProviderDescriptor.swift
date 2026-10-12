@@ -70,6 +70,8 @@ public enum OllamaProviderDescriptor {
                         tertiary: metadata.opusLabel ?? "Sonnet",
                         showsTertiary: metadata.supportsOpus)
                 },
+                // The Credits section already shows the wallet carried for the native extra-usage dial.
+                costPresenter: { _ in ProviderCostPresentation(showsGenericFallback: false) },
                 menuBarBalanceDetailLabels: ["Credit balance"],
                 // Retain saved history, but chart only currently reported quota periods.
                 planUtilizationSeriesResolver: { snapshot in
@@ -81,7 +83,8 @@ public enum OllamaProviderDescriptor {
                         series.insert(.weekly)
                     }
                     return series
-                }),
+                },
+                menuCard: ProviderMenuCardPresentation(costVisibilityResolver: { _ in false })),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .web, .api],
                 pipeline: ProviderFetchPipeline(resolveStrategies: self.resolveStrategies)),
@@ -109,9 +112,34 @@ public enum OllamaProviderDescriptor {
         return "Monthly"
     }
 
+    static let creditBalanceLabel = "Credit balance"
+
+    /// Purchased credits are the extra-usage wallet. Both sources carry the typed amount on the "Credit balance"
+    /// row; it becomes a balance-only observation that never establishes spending.
+    static func attachingCreditBalance(to usage: UsageSnapshot) -> UsageSnapshot {
+        guard usage.providerCost == nil,
+              let balance = usage.details.first(where: { $0.title == "Credits" })?.rows
+                  .first(where: { $0.label == Self.creditBalanceLabel })?.usageValue,
+                  balance.isFinite
+        else { return usage }
+        return usage.with(providerCost: ProviderCostSnapshot(
+            used: 0,
+            limit: 0,
+            currencyCode: "USD",
+            period: Self.creditBalanceLabel,
+            balance: balance,
+            balanceUpdatedAt: usage.updatedAt,
+            usageIsUnavailable: true,
+            updatedAt: usage.updatedAt))
+    }
+
     static func apiStrategy(
-        transport: any ProviderHTTPTransport = ProviderHTTPClient.shared) -> ScriptFetchStrategy
+        transport: any ProviderHTTPTransport = ProviderHTTPClient.shared) -> OllamaAPIFetchStrategy
     {
+        OllamaAPIFetchStrategy(script: self.apiScriptStrategy(transport: transport))
+    }
+
+    private static func apiScriptStrategy(transport: any ProviderHTTPTransport) -> ScriptFetchStrategy {
         ScriptFetchStrategy(
             id: "ollama.api",
             provider: .ollama,
@@ -146,6 +174,44 @@ public enum OllamaProviderDescriptor {
             return [OllamaStatusFetchStrategy(), self.apiStrategy()]
         }
         return [OllamaStatusFetchStrategy()]
+    }
+}
+
+/// The API plugin keeps its upstream snapshot; the app attaches the typed wallet balance it reported.
+struct OllamaAPIFetchStrategy: ProviderFetchStrategy {
+    let script: ScriptFetchStrategy
+
+    var id: String {
+        self.script.id
+    }
+
+    var kind: ProviderFetchKind {
+        self.script.kind
+    }
+
+    func isAvailable(_ context: ProviderFetchContext) async -> Bool {
+        await self.script.isAvailable(context)
+    }
+
+    func fetch(_ context: ProviderFetchContext) async throws -> ProviderFetchResult {
+        let result = try await self.script.fetch(context)
+        return ProviderFetchResult(
+            usage: OllamaProviderDescriptor.attachingCreditBalance(to: result.usage),
+            credits: result.credits,
+            dashboard: result.dashboard,
+            sourceLabel: result.sourceLabel,
+            strategyID: result.strategyID,
+            strategyKind: result.strategyKind,
+            supplementalUsageTask: result.supplementalUsageTask,
+            diagnostic: result.diagnostic)
+    }
+
+    func shouldFallback(on error: Error, context: ProviderFetchContext) -> Bool {
+        self.script.shouldFallback(on: error, context: context)
+    }
+
+    func diagnostic(forPriorFailure error: Error) -> String? {
+        self.script.diagnostic(forPriorFailure: error)
     }
 }
 
@@ -193,7 +259,7 @@ struct OllamaStatusFetchStrategy: ProviderFetchStrategy {
                 })
         }
         return self.makeResult(
-            usage: snap.toUsageSnapshot(),
+            usage: OllamaProviderDescriptor.attachingCreditBalance(to: snap.toUsageSnapshot()),
             sourceLabel: "web")
     }
 

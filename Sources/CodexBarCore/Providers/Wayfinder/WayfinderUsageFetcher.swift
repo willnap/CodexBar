@@ -182,6 +182,18 @@ public struct WayfinderUsageSnapshot: Codable, Sendable, Equatable {
             primary: nil,
             secondary: nil,
             providerCost: nil,
+            costUsage: CostUsageTokenSnapshot(
+                sessionTokens: nil,
+                sessionCostUSD: nil,
+                last30DaysTokens: self.tokens >= 0 ? self.tokens : nil,
+                last30DaysCostUSD: self.priced && self.realized.isFinite && self.realized >= 0 ? self.realized : nil,
+                last30DaysRequests: self.requests >= 0 ? self.requests : nil,
+                currencyCode: self.priced ? "USD" : "XXX",
+                historyDays: 30,
+                historyLabel: "Last 30 days",
+                costProvenance: self.priced ? .listPriceEstimate : .unknown,
+                daily: [],
+                updatedAt: self.updatedAt),
             details: [.makeSection(title: "Usage", rows: detailRows)],
             updatedAt: self.updatedAt,
             identity: ProviderIdentitySnapshot(

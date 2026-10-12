@@ -153,7 +153,8 @@ struct ProvidersPane: View {
     static func filteredProviders(
         _ providers: [UsageProvider],
         query: String,
-        displayName: (UsageProvider) -> String) -> [UsageProvider]
+        displayName: (UsageProvider) -> String,
+        supplementarySearchText: (UsageProvider) -> String = { _ in "" }) -> [UsageProvider]
     {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else { return providers }
@@ -161,6 +162,7 @@ struct ProvidersPane: View {
         return providers.filter { provider in
             displayName(provider).localizedCaseInsensitiveContains(trimmedQuery)
                 || provider.rawValue.localizedCaseInsensitiveContains(trimmedQuery)
+                || supplementarySearchText(provider).localizedCaseInsensitiveContains(trimmedQuery)
         }
     }
 
@@ -172,6 +174,10 @@ struct ProvidersPane: View {
     private func triggerRefresh(for provider: UsageProvider) {
         Task { @MainActor in
             await ProviderSettingsRefreshInteraction.perform {
+                if self.store.claudeSwapSettingsAccount(for: provider) != nil {
+                    await self.store.refreshClaudeSwapAccounts()
+                    return
+                }
                 // Provider-specific by design: Codex account reconciliation must refresh managed profile state too.
                 if provider == .codex {
                     await self.store.refreshCodexAccountScopedState(allowDisabled: true)
@@ -192,6 +198,11 @@ struct ProvidersPane: View {
     }
 
     func providerSubtitle(_ provider: UsageProvider) -> String {
+        if let account = self.store.claudeSwapSettingsAccount(for: provider) {
+            let usageText = account.error != nil ? L("last_fetch_failed")
+                : account.snapshot?.updatedAt.relativeDescription() ?? L("usage_not_fetched_yet")
+            return "\(account.sourceLabel ?? "")\n\(usageText)"
+        }
         let meta = self.store.metadata(for: provider)
         let usageText: String
         if self.store.isStale(provider: provider) {
@@ -370,6 +381,11 @@ struct ProvidersPane: View {
     }
 
     func providerErrorDisplay(_ provider: UsageProvider) -> ProviderErrorDisplay? {
+        if let account = self.store.claudeSwapSettingsAccount(for: provider) {
+            guard let error = account.error, !error.isEmpty else { return nil }
+            let full = PersonalInfoRedactor.redactEmails(in: error, isEnabled: self.settings.hidePersonalInfo) ?? error
+            return ProviderErrorDisplay(preview: self.truncated(full, prefix: ""), full: full)
+        }
         guard let full = self.store.error(for: provider) ?? self.store.diagnostic(for: provider),
               !full.isEmpty
         else { return nil }
@@ -544,8 +560,10 @@ struct ProvidersPane: View {
             })
     }
 
-    private func unfilteredMenuCardModel(for provider: UsageProvider) -> UsageMenuCardView.Model {
-        UsageMenuCardView.Model.make(self.store.menuCardInput(for: provider, context: .settings))
+    func unfilteredMenuCardModel(for provider: UsageProvider) -> UsageMenuCardView.Model {
+        let context: UsageMenuCardContext = self.store.claudeSwapSettingsAccount(for: provider)
+            .map { .settingsAccount($0) } ?? .settings
+        return UsageMenuCardView.Model.make(self.store.menuCardInput(for: provider, context: context))
     }
 
     func openAIWebDiagnostic(for provider: UsageProvider) -> String? {

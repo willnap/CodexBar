@@ -153,6 +153,7 @@ extension UsageStore {
                 self.lastCodexAccountScopedRefreshGuard = applyGuard
                 self.persistPublishedCodexCreditsIntoAccountSnapshotsIfNeeded()
             }
+            await self.recordNativeCodexCreditHistory(credits, expectedGuard: applyGuard)
             let codexSnapshot = await MainActor.run {
                 self.snapshots[.codex]
             }
@@ -403,7 +404,8 @@ extension UsageStore {
             error: row.error,
             sourceLabel: row.sourceLabel,
             credits: self.credits,
-            weeklyResetCandidate: row.weeklyResetCandidate)
+            weeklyResetCandidate: row.weeklyResetCandidate,
+            accountUsageHistory: row.accountUsageHistory)
         self.codexAccountUsageSnapshotStore?.store(self.codexAccountSnapshots)
     }
 

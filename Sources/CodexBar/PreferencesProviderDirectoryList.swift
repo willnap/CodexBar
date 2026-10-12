@@ -5,6 +5,7 @@ import SwiftUI
 struct ProviderSettingsDirectoryListRowView: View {
     let descriptor: ProviderSettingsDirectoryListDescriptor
     @Binding private var paths: [String]
+    @State private var persistenceError: String?
 
     init(descriptor: ProviderSettingsDirectoryListDescriptor) {
         self.descriptor = descriptor
@@ -37,11 +38,25 @@ struct ProviderSettingsDirectoryListRowView: View {
                     panel.showsHiddenFiles = true
                     guard await panel.begin() == .OK else { return }
                     var paths = self.paths
-                    for url in panel.urls where !paths.contains(url.path) {
-                        paths.append(url.path)
+                    self.persistenceError = nil
+                    for url in panel.urls {
+                        if NativeGaugeConfiguration.isEnabled {
+                            do {
+                                try NativeFolderAccessStore.shared.remember(url)
+                                paths = NativeFolderAccessStore.shared.remapping(paths)
+                            } catch {
+                                self.persistenceError = L("Folder access could not be saved. Choose the folder again.")
+                                continue
+                            }
+                        }
+                        let path = url.standardizedFileURL.path
+                        if !paths.contains(path) { paths.append(path) }
                     }
                     self.paths = paths
                 }
+            }
+            if let persistenceError {
+                Text(persistenceError).foregroundStyle(.secondary)
             }
         } header: {
             Text(L(self.descriptor.title))

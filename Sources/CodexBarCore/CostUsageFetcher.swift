@@ -311,6 +311,23 @@ public struct CostUsageFetcher: Sendable {
         return options
     }
 
+    /// Claude local-usage projections share the spend-history transcript cache, so they must use the exact scan
+    /// options of a Claude token refresh; any difference would invalidate that cache instead of reusing it.
+    func claudeTranscriptScanOptions(calendar: Calendar?) -> CostUsageScanner.Options {
+        // Provider-specific by design: Claude org projections must reuse the exact Claude transcript cache options.
+        var options = Self.resolvedScannerOptions(
+            self.scannerOptions(calendar: calendar),
+            provider: .claude,
+            codexHomePath: nil)
+        Self.configureScannerRefresh(
+            &options,
+            provider: .claude,
+            allowVertexClaudeFallback: false,
+            forceRefresh: false,
+            bypassScannerDebounce: true)
+        return options
+    }
+
     package func codexScanCatchUpStatus(
         codexHomePath: String? = nil,
         calendar: Calendar? = nil,

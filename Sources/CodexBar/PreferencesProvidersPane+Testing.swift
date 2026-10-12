@@ -58,7 +58,8 @@ extension ProvidersPane {
     }
 
     func _test_menuCardModel(for provider: UsageProvider) -> UsageMenuCardView.Model {
-        self.store.menuCardModel(for: provider, context: .settings)
+        self.unfilteredMenuCardModel(for: provider)
+            .applyingUsageItemVisibility(hiddenItemIDs: self.settings.hiddenUsageItemIDs(for: provider))
     }
 
     func _test_openAIWebDiagnostic(for provider: UsageProvider) -> String? {

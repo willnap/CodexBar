@@ -133,6 +133,7 @@ extension MiniMaxUsageSnapshot {
                 secondary: secondaryWindow,
                 tertiary: tertiaryWindow,
                 providerCost: self.pointsBalanceSnapshot(),
+                costUsage: self.billingSummary.map(Self.costUsageSnapshot),
                 details: self.detailSections(),
                 subscriptionExpiresAt: self.subscriptionExpiresAt,
                 subscriptionRenewsAt: self.subscriptionRenewsAt,
@@ -162,11 +163,34 @@ extension MiniMaxUsageSnapshot {
             secondary: nil,
             tertiary: nil,
             providerCost: self.pointsBalanceSnapshot(),
+            costUsage: self.billingSummary.map(Self.costUsageSnapshot),
             details: self.detailSections(),
             subscriptionExpiresAt: self.subscriptionExpiresAt,
             subscriptionRenewsAt: self.subscriptionRenewsAt,
             updatedAt: self.updatedAt,
             identity: identity)
+    }
+
+    private static func costUsageSnapshot(_ billing: MiniMaxBillingSummary) -> CostUsageTokenSnapshot {
+        CostUsageTokenSnapshot(
+            sessionTokens: billing.todayTokens,
+            sessionCostUSD: billing.todayCash,
+            last30DaysTokens: billing.last30DaysTokens,
+            last30DaysCostUSD: billing.last30DaysCash,
+            // Billing cash has no currency field; the points balance is a separate unit.
+            currencyCode: "XXX",
+            costProvenance: .vendorMetered,
+            daily: billing.daily.map {
+                .init(
+                    date: $0.day,
+                    inputTokens: nil,
+                    outputTokens: nil,
+                    totalTokens: $0.tokens,
+                    costUSD: $0.cash,
+                    modelsUsed: nil,
+                    modelBreakdowns: nil)
+            },
+            updatedAt: billing.updatedAt)
     }
 
     private func detailSections() -> [ProviderDetailSection] {
@@ -293,6 +317,9 @@ extension MiniMaxUsageSnapshot {
             limit: 0,
             currencyCode: "Points",
             period: "MiniMax points balance",
+            balance: pointsBalance,
+            balanceUpdatedAt: self.updatedAt,
+            usageIsUnavailable: true,
             updatedAt: self.updatedAt)
     }
 }

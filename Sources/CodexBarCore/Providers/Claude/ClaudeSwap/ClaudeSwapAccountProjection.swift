@@ -43,8 +43,12 @@ public enum ClaudeSwapAccountProjection {
                 provider: .claude,
                 displayLabel: self.decoratedLabel(label, row: row),
                 accountEmail: row.email.isEmpty ? nil : row.email,
+                accountOrganizationName: row.organizationName,
+                sourceOrganizationID: row.organizationID,
                 isActive: row.isActive,
                 canActivate: list.supportsAccountSwitching && self.canActivate(row),
+                // Schema v1 slots are reusable and expose no stable owner ID; unattended activation fails closed.
+                autoSwitchEligible: false,
                 usesLastKnownUsage: projected.usesLastKnownUsage,
                 snapshot: snapshot,
                 error: self.errorText(for: row, usage: projected, now: now),
@@ -233,6 +237,9 @@ public enum ClaudeSwapAccountProjection {
             primary: primary,
             secondary: secondary,
             extraRateWindows: extra.isEmpty ? nil : extra,
+            providerCost: snapshot.providerCost,
+            costUsage: snapshot.costUsage,
+            claudeResetCredits: snapshot.claudeResetCredits,
             updatedAt: snapshot.updatedAt,
             identity: identity,
             dataConfidence: snapshot.dataConfidence)
@@ -270,15 +277,19 @@ public enum ClaudeSwapAccountProjection {
                 used: spend.used,
                 limit: spend.limit,
                 currencyCode: spend.currencyCode,
+                period: spend.period,
                 resetsAt: spend.resetsAt,
+                isDisabled: spend.isDisabled ? true : nil,
                 updatedAt: updatedAt)
         }
-        guard primary != nil || secondary != nil || !scoped.isEmpty || providerCost != nil else { return nil }
+        guard primary != nil || secondary != nil || !scoped.isEmpty || providerCost != nil ||
+            measurement.resetCredits != nil else { return nil }
         return UsageSnapshot(
             primary: primary,
             secondary: secondary,
             extraRateWindows: scoped.isEmpty ? nil : scoped,
             providerCost: providerCost,
+            claudeResetCredits: measurement.resetCredits,
             updatedAt: updatedAt,
             identity: self.identitySnapshot(for: row))
     }

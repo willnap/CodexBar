@@ -115,10 +115,25 @@ public enum VeniceWebUsageFetcher {
         return UsageSnapshot(
             primary: nil,
             secondary: nil,
+            providerCost: Self.creditBalance(total: veniceCredits, subscription: availableCredits, now: now),
             details: details,
             updatedAt: now,
             identity: identity,
             dataConfidence: .exact)
+    }
+
+    /// The session's spendable credit balance, in Venice credits rather than money; it never establishes spending.
+    private static func creditBalance(total: Double?, subscription: Double?, now: Date) -> ProviderCostSnapshot? {
+        guard let balance = total ?? subscription else { return nil }
+        return ProviderCostSnapshot(
+            used: 0,
+            limit: 0,
+            currencyCode: "Credits",
+            period: total == nil ? "Subscription credits available" : "Total credits available",
+            balance: balance,
+            balanceUpdatedAt: now,
+            usageIsUnavailable: true,
+            updatedAt: now)
     }
 
     private static func sessionObject(from data: Data) throws -> [String: Any] {

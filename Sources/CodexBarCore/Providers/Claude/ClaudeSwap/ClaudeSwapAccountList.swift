@@ -32,6 +32,8 @@ public struct ClaudeSwapAccountRow: Equatable, Sendable {
     /// Display-only workspace name from cswap schema v1; always present, may be empty.
     /// Never identity, never logged, never persisted.
     public let organizationName: String
+    /// Optional source-issued UUID for local transcript attribution. Never credential material or persisted.
+    public let organizationID: String?
     /// Display-only user-chosen cswap alias; omitted unless non-empty.
     /// Never identity, never logged, never persisted.
     public let alias: String?
@@ -43,6 +45,7 @@ public struct ClaudeSwapAccountRow: Equatable, Sendable {
     /// The adapter's measurement time, which can precede this list refresh.
     public let usageFetchedAt: Date?
     public let spend: ClaudeSwapSpendWindow?
+    public let resetCredits: ClaudeRateLimitResetCreditsSnapshot?
     /// Excluded from source-owned rotation, but still eligible for explicit switching.
     public let isDisabled: Bool
     public let lastGoodUsage: ClaudeSwapLastGoodUsage?
@@ -51,6 +54,7 @@ public struct ClaudeSwapAccountRow: Equatable, Sendable {
         number: Int,
         email: String,
         organizationName: String = "",
+        organizationID: String? = nil,
         alias: String? = nil,
         isActive: Bool,
         usageStatus: ClaudeSwapUsageStatus,
@@ -59,12 +63,14 @@ public struct ClaudeSwapAccountRow: Equatable, Sendable {
         scoped: [ClaudeSwapScopedUsageWindow] = [],
         usageFetchedAt: Date? = nil,
         spend: ClaudeSwapSpendWindow? = nil,
+        resetCredits: ClaudeRateLimitResetCreditsSnapshot? = nil,
         isDisabled: Bool = false,
         lastGoodUsage: ClaudeSwapLastGoodUsage? = nil)
     {
         self.number = number
         self.email = email
         self.organizationName = organizationName
+        self.organizationID = organizationID.flatMap { UUID(uuidString: $0)?.uuidString.lowercased() }
         self.alias = alias
         self.isActive = isActive
         self.usageStatus = usageStatus
@@ -73,6 +79,7 @@ public struct ClaudeSwapAccountRow: Equatable, Sendable {
         self.scoped = scoped
         self.usageFetchedAt = usageFetchedAt
         self.spend = spend
+        self.resetCredits = resetCredits
         self.isDisabled = isDisabled
         self.lastGoodUsage = lastGoodUsage
     }
@@ -82,7 +89,8 @@ public struct ClaudeSwapAccountRow: Equatable, Sendable {
             fiveHour: self.fiveHour,
             sevenDay: self.sevenDay,
             scoped: self.scoped,
-            spend: self.spend)
+            spend: self.spend,
+            resetCredits: self.resetCredits)
     }
 }
 
@@ -245,6 +253,7 @@ public enum ClaudeSwapListParser {
             number: number,
             email: email,
             organizationName: organizationName,
+            organizationID: row["organizationUuid"] as? String,
             alias: alias,
             isActive: isActive,
             usageStatus: ClaudeSwapUsageStatus(rawValue: rawStatus),
@@ -253,6 +262,7 @@ public enum ClaudeSwapListParser {
             scoped: self.parseScopedWindows(usage?["scoped"]),
             usageFetchedAt: ISO8601DateParser.parse(row["usageFetchedAt"] as? String),
             spend: self.parseSpendWindow(usage?["spend"]),
+            resetCredits: self.parseResetCredits(usage?["resetCredits"], at: row["usageFetchedAt"]),
             isDisabled: row["disabled"] as? Bool ?? false,
             lastGoodUsage: self.parseLastGoodUsage(row, slot: number))
     }
@@ -266,7 +276,8 @@ public enum ClaudeSwapListParser {
             fiveHour: try? self.parseWindow(raw["fiveHour"], slot: slot, name: "lastGoodUsage.fiveHour"),
             sevenDay: try? self.parseWindow(raw["sevenDay"], slot: slot, name: "lastGoodUsage.sevenDay"),
             scoped: self.parseScopedWindows(raw["scoped"]),
-            spend: self.parseSpendWindow(raw["spend"]))
+            spend: self.parseSpendWindow(raw["spend"]),
+            resetCredits: self.parseResetCredits(raw["resetCredits"], at: row["lastGoodFetchedAt"]))
         guard !measurement.isEmpty else { return nil }
         return ClaudeSwapLastGoodUsage(measurement: measurement, fetchedAt: fetchedAt)
     }
@@ -276,15 +287,44 @@ public enum ClaudeSwapListParser {
               let used = self.finiteDouble(window["used"]),
               let limit = self.finiteDouble(window["limit"]),
               let percent = self.finiteDouble(window["pct"]),
-              used >= 0, limit > 0
+              used >= 0, limit >= 0
         else { return nil }
+        let enabled = window["enabled"] as? NSNumber
+        let isDisabled = enabled.map { CFGetTypeID($0) == CFBooleanGetTypeID() && !$0.boolValue } ?? false
+        guard limit > 0 || isDisabled else { return nil }
         let currency = (window["currency"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         return ClaudeSwapSpendWindow(
             used: used,
-            limit: limit,
-            usedPercent: min(max(percent, 0), 100),
+            limit: isDisabled ? 0 : limit,
+            usedPercent: isDisabled ? 0 : min(max(percent, 0), 100),
             currencyCode: currency.flatMap { $0.isEmpty ? nil : $0 } ?? "USD",
-            resetsAt: ISO8601DateParser.parse(window["resetsAt"] as? String))
+            resetsAt: ISO8601DateParser.parse(window["resetsAt"] as? String),
+            period: (window["period"] as? String) == "Monthly" ? "Monthly" : nil,
+            isDisabled: isDisabled)
+    }
+
+    /// Decode only display-safe expiry lists. Missing inventory stays unknown; explicit empty lists mean zero.
+    private static func parseResetCredits(_ raw: Any?, at timestamp: Any?) -> ClaudeRateLimitResetCreditsSnapshot? {
+        guard let raw = raw as? [String: Any],
+              let timestamp = timestamp as? String, let date = ISO8601DateParser.parse(timestamp),
+              let available = raw["availableExpirations"] as? [Any],
+              let used = raw["usedExpirations"] as? [Any],
+              available.count + used.count <= ClaudeLimitResetStatusResponse.maximumResets else { return nil }
+        func expirations(_ values: [Any]) -> [Date?]? {
+            var result: [Date?] = []
+            for value in values {
+                if value is NSNull {
+                    result.append(nil)
+                } else if let text = value as? String, let date = ISO8601DateParser.parse(text) {
+                    result.append(date)
+                } else {
+                    return nil
+                }
+            }
+            return result
+        }
+        guard let available = expirations(available), let used = expirations(used) else { return nil }
+        return .init(expirations: available, updatedAt: date, usedExpirations: used)
     }
 
     private static func parseWindow(_ raw: Any?, slot: Int, name: String) throws -> ClaudeSwapUsageWindow? {

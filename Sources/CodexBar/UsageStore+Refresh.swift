@@ -208,6 +208,13 @@ extension UsageStore {
                 self.refreshingProviders.remove(provider.instanceID)
             }
         }
+        // Provider-specific by design: Claude transcripts and Kimi wires can publish while their quota fetch fails.
+        if provider == .kimi {
+            self.scheduleNativeKimiLocalUsageRefresh(generation: generation)
+        }
+        if provider == .claude {
+            self.scheduleNativeClaudeLocalUsageRefresh()
+        }
         var retryMode: ProviderRefreshRetryMode?
         while !Task.isCancelled,
               self.isCurrentProviderRefreshGeneration(provider, generation: generation)
@@ -336,7 +343,9 @@ extension UsageStore {
                 provider: provider,
                 accounts: tokenAccountPreparation.accounts,
                 generation: generation)
-            return nil
+            guard self.isCurrentProviderRefreshGeneration(provider, generation: generation) else { return nil }
+            if self.settings.effectiveSelectedTokenAccount(for: provider) != nil { return nil }
+            // Saved-account monitoring does not replace the automatic source's own refresh.
         } else {
             _ = await MainActor.run {
                 self.reconcileSelectedTokenAccountSnapshotBeforeRefresh(
@@ -432,7 +441,11 @@ extension UsageStore {
             codexLimitResetOwnerKey: publishedCodexLimitResetOwnerKey,
             claudeOAuthHistoryPersistentRefHash: claudeReconciliation.oauthHistoryPersistentRefHash,
             claudeOAuthActiveAccountObservation: claudeReconciliation.oauthActiveAccountObservation,
-            claudeCredentialFingerprint: claudeReconciliation.credentialFingerprint)
+            claudeCredentialFingerprint: claudeReconciliation.credentialFingerprint,
+            // Provider-specific by design: Claude's fetch source and profile guard anonymous authentication ownership.
+            claudeCredentialSource: fetchContext.settings?.claude?.usageDataSource.rawValue,
+            claudeCredentialProfileIdentifier: provider == .claude
+                ? ClaudeOAuthCredentialsStore.credentialsProfileIdentifier(environment: fetchContext.env) : nil)
         return await self.completeProviderRefreshPass(
             provider: provider,
             outcome: outcome,
@@ -924,6 +937,8 @@ extension UsageStore {
                   visibleAccounts: visibleAccounts) == currentOwnerKey
         else { return }
 
+        let priorHistory = Self.codexPriorAccountSnapshot(matching: account, in: self.codexAccountSnapshots)?
+            .accountUsageHistory
         var currentSnapshots = Self.codexAccountSnapshots(
             self.codexAccountSnapshots,
             reconciledWith: projection).filter { $0.id != account.id }
@@ -932,7 +947,8 @@ extension UsageStore {
             snapshot: Self.codexVisibleAccountSnapshotRelabeledForCurrentProjection(snapshot, account: account),
             error: nil,
             sourceLabel: sourceLabel,
-            credits: self.credits))
+            credits: self.credits,
+            accountUsageHistory: priorHistory))
         self.codexAccountSnapshots = currentSnapshots
         self.codexAccountUsageSnapshotStore?.store(currentSnapshots)
     }

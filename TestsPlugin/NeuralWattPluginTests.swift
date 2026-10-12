@@ -253,6 +253,10 @@ struct NeuralWattPluginTests {
     @Test(arguments: ProviderPluginTransportTests.engines)
     func `native quota fixtures retain windows balances and identity`(engine: ProviderPluginEngineKind) async throws {
         let balances: [Double] = [32.6774, 4.5, 30, 0, 0, 1, 3, 8, 5, 5]
+        let spending: [Double] = [19.6626, 0.5, 70, 0, 0, 1, 3, 2, 5, 5]
+        let limits: [Double] = [52.34, 5, 100, 0, 0, 0, 0, 10, 10, 0]
+        let usageUnavailable = [false, false, false, true, true, true, true, false, false, true]
+        let sourceDate = try #require(ISO8601DateFormatter().date(from: "2026-04-16T18:30:00Z"))
         let percentages: [Double?] = [13.9023 / 20 * 100, nil, nil, nil, 25, 40, nil, nil, nil, nil]
         let labels: [String?] = [
             "Standard plan",
@@ -268,8 +272,11 @@ struct NeuralWattPluginTests {
         ]
         for (index, fixture) in Self.fixtures.enumerated() {
             let usage = try await Self.fetch(fixture, engine: engine)
-            #expect(usage.providerCost?.used == balances[index])
-            #expect(usage.providerCost?.limit == 0)
+            #expect(usage.providerCost?.used == spending[index])
+            #expect(usage.providerCost?.limit == limits[index])
+            #expect(usage.providerCost?.balance == balances[index])
+            #expect(usage.providerCost?.usageIsUnavailable == usageUnavailable[index])
+            #expect(usage.providerCost?.balanceUpdatedAt == (index < 2 ? sourceDate : usage.updatedAt))
             #expect(usage.providerCost?.currencyCode == "USD")
             #expect(usage.providerCost?.period == "Neuralwatt prepaid balance")
             #expect(usage.primary?.usedPercent == percentages[index])
@@ -279,6 +286,24 @@ struct NeuralWattPluginTests {
             #expect(usage.providerCost?.updatedAt == usage.updatedAt)
             #expect(usage.secondary == nil)
             #expect(usage.tertiary == nil)
+            if index < 2 {
+                let report = try #require(usage.costUsage)
+                #expect(report.last30DaysTokens == (index == 0 ? 1_116_658_995 : 1000))
+                #expect(report.last30DaysRequests == (index == 0 ? 23902 : 10))
+                #expect(report.last30DaysCostUSD == (index == 0 ? 160.1463 : 0.5))
+                #expect(report.historyDays == 16)
+                #expect(report.historyCoverageIsEstablished == false)
+                #expect(report.historyLabel == "Reported month")
+                #expect(report.currencyCode == "USD")
+                #expect(report.costProvenance == .vendorMetered)
+                #expect(report.updatedAt == sourceDate)
+                #expect(report.daily.isEmpty)
+                #expect(report.sessionTokens == nil)
+                #expect(report.sessionRequests == nil)
+                #expect(report.sessionCostUSD == nil)
+            } else {
+                #expect(usage.costUsage == nil)
+            }
             if index == 0 {
                 #expect(usage.primary?.resetDescription == "13.90 / 20 kWh")
                 #expect(usage.primary?.windowMinutes == 43200)
@@ -306,7 +331,11 @@ struct NeuralWattPluginTests {
              "subscription":{"kwh_used":1.125,"kwh_remaining":2.675}}
             """#,
             engine: engine)
-        #expect(usage.providerCost?.used == 7)
+        #expect(usage.providerCost?.used == 3)
+        #expect(usage.providerCost?.limit == 10)
+        #expect(usage.providerCost?.balance == 7)
+        #expect(usage.providerCost?.usageIsUnavailable == false)
+        #expect(usage.providerCost?.balanceUpdatedAt == usage.updatedAt)
         #expect(usage.primary?.resetDescription == "1.12 / 3.80 kWh")
         let empty = try await Self.fetch(#"{"balance":{"total_credits_usd":10}}"#, engine: engine)
         #expect(empty.primary == nil)

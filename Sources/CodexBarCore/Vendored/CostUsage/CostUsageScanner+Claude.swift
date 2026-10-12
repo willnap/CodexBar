@@ -135,6 +135,9 @@ extension CostUsageScanner {
         providerFilter: ClaudeLogProviderFilter,
         startOffset: Int64 = 0,
         pricingResolver: CostUsagePricing.ClaudeResolver,
+        organizationID: String? = nil,
+        preserveCumulativeChunks: Bool = false,
+        initialOrganizationsBySession: [String: String] = [:],
         checkCancellation: CancellationCheck? = nil) throws -> ClaudeParseResult
     {
         func toInt(_ v: Any?) -> Int {
@@ -149,6 +152,8 @@ extension CostUsageScanner {
         let pathRole = Self.claudePathRole(fileURL: fileURL)
         var keyedRows: [ClaudeRowKey: ClaudeUsageRow] = [:]
         var unkeyedRows: [ClaudeUsageRow] = []
+        // Only event-owned evidence can attribute a request. Reading a later/current login would leak history.
+        var attribution = ClaudeOrganizationTracker(organizationsBySession: initialOrganizationsBySession)
 
         let maxLineBytes = 512 * 1024
         // Keep the full line so usage at the tail isn't dropped on large tool outputs.
@@ -166,6 +171,7 @@ extension CostUsageScanner {
                 onLine: { line in
                     guard !line.bytes.isEmpty else { return }
                     guard !line.wasTruncated else { return }
+                    attribution.observe(line.bytes)
                     guard line.bytes.containsAscii(#""type":"assistant""#) else { return }
                     guard line.bytes.containsAscii(#""usage""#) else { return }
                     let couldContainMetadata = providerFilter != .all && Self.couldContainVertexAIMetadata(line.bytes)
@@ -183,6 +189,15 @@ extension CostUsageScanner {
                             type == "assistant"
                         else { return }
                         let message = obj.dictionary("message")
+                        let sessionId = obj["sessionId"] as? String
+                            ?? obj["session_id"] as? String
+                            ?? obj.dictionary("metadata")?["sessionId"] as? String
+                            ?? message?.dictionary("metadata")?["sessionId"] as? String
+                        guard Self.claudeOrganizationMatches(
+                            organizationID,
+                            sessionID: sessionId,
+                            organizationsBySession: attribution.organizationsBySession)
+                        else { return }
                         if providerFilter != .all {
                             let isVertex = Self.isVertexAIUsageEntry(
                                 obj: obj, message: message, scanMetadata: couldContainMetadata)
@@ -198,7 +213,11 @@ extension CostUsageScanner {
                             dayKey: dayKey,
                             since: range.scanSinceKey,
                             until: range.scanUntilKey)
-                        else { return }
+                        else {
+                            attribution.excludedRowsAfterScanWindow = attribution.excludedRowsAfterScanWindow
+                                || dayKey > range.scanUntilKey
+                            return
+                        }
 
                         guard let message else { return }
                         guard let model = message["model"] as? String else { return }
@@ -235,18 +254,16 @@ extension CostUsageScanner {
 
                         let messageId = message["id"] as? String
                         let requestId = obj["requestId"] as? String
-                        let sessionId = obj["sessionId"] as? String
-                            ?? obj["session_id"] as? String
-                            ?? obj.dictionary("metadata")?["sessionId"] as? String
-                            ?? message.dictionary("metadata")?["sessionId"] as? String
                         let normalizedModel = pricingResolver.normalize(model)
+                        let timestampUnixMs = Int64((timestamp.timeIntervalSince1970 * 1000).rounded())
+                        let organization = attribution.organization(session: sessionId, at: timestampUnixMs)
                         let row = ClaudeUsageRow(
                             dayKey: dayKey,
                             model: rowStrings.intern(normalizedModel),
                             sessionId: sessionId.map(rowStrings.intern),
                             messageId: messageId,
                             requestId: requestId,
-                            timestampUnixMs: Int64((timestamp.timeIntervalSince1970 * 1000).rounded()),
+                            timestampUnixMs: timestampUnixMs,
                             isSidechain: toBool(obj["isSidechain"]),
                             pathRole: pathRole,
                             input: input,
@@ -256,10 +273,11 @@ extension CostUsageScanner {
                             output: output,
                             costNanos: costNanos ?? 0,
                             costPriced: costNanos != nil,
-                            isIncomplete: isIncomplete ? true : nil)
+                            isIncomplete: isIncomplete ? true : nil,
+                            organizationID: organization.map(rowStrings.intern))
 
                         // Keep the final cumulative chunk for each response.
-                        if let key = Self.claudeCanonicalRowKey(row) {
+                        if let key = Self.claudeCanonicalRowKey(row, preservingChunks: preserveCumulativeChunks) {
                             if Self.shouldReplaceClaudeRow(keyedRows[key], with: row) {
                                 keyedRows[key] = row
                             }
@@ -275,7 +293,80 @@ extension CostUsageScanner {
         }
 
         let rows = Self.orderedClaudeRows(keyed: keyedRows, unkeyed: unkeyedRows)
-        return ClaudeParseResult(rows: rows, parsedBytes: parsedBytes)
+        var result = ClaudeParseResult(rows: rows, parsedBytes: parsedBytes)
+        // Without newly committed bytes the resumed state still describes `parsedBytes`.
+        attribution.apply(
+            to: &result,
+            committed: parsedBytes > startOffset,
+            initialOrganizationsBySession: initialOrganizationsBySession)
+        return result
+    }
+
+    /// Per-file transcript ownership state: `credential_org` events attach a session to an organization.
+    private struct ClaudeOrganizationTracker {
+        private static let marker = Data(#""credential_org""#.utf8)
+
+        var organizationsBySession: [String: String]
+        var firstAttachmentUnixMs: Int64?
+        var excludedRowsAfterScanWindow = false
+
+        mutating func observe(_ bytes: Data) {
+            guard bytes.range(of: Self.marker) != nil else { return }
+            guard let obj = try? ClaudeJSONObject.decode(bytes) else {
+                self.organizationsBySession.removeAll()
+                return
+            }
+            guard obj["type"] as? String == "attachment",
+                  let attachment = obj.dictionary("attachment"),
+                  attachment["type"] as? String == "credential_org" else { return }
+            guard let sessionID = obj["sessionId"] as? String
+                ?? obj["session_id"] as? String
+                ?? obj.dictionary("metadata")?["sessionId"] as? String,
+                !sessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else {
+                self.organizationsBySession.removeAll()
+                return
+            }
+            let organization = (attachment["organizationUuid"] as? String)
+                .flatMap { UUID(uuidString: $0)?.uuidString.lowercased() }
+            self.organizationsBySession[sessionID] = organization
+            if organization != nil, let text = obj["timestamp"] as? String, let date = ISO8601DateParser.parse(text) {
+                self.noteAttribution(at: Int64((date.timeIntervalSince1970 * 1000).rounded()))
+            }
+        }
+
+        /// An undated attachment still precedes its first attributed request.
+        mutating func organization(session: String?, at timestampUnixMs: Int64) -> String? {
+            guard let organization = session.flatMap({ self.organizationsBySession[$0] }) else { return nil }
+            self.noteAttribution(at: timestampUnixMs)
+            return organization
+        }
+
+        func apply(
+            to result: inout ClaudeParseResult,
+            committed: Bool,
+            initialOrganizationsBySession: [String: String])
+        {
+            guard committed else {
+                result.organizationsBySession = initialOrganizationsBySession
+                return
+            }
+            result.organizationsBySession = self.organizationsBySession
+            result.firstOrganizationAttachmentUnixMs = self.firstAttachmentUnixMs
+            result.excludedRowsAfterScanWindow = self.excludedRowsAfterScanWindow
+        }
+
+        private mutating func noteAttribution(at unixMs: Int64) {
+            self.firstAttachmentUnixMs = min(self.firstAttachmentUnixMs ?? unixMs, unixMs)
+        }
+    }
+
+    private static func claudeOrganizationMatches(
+        _ expected: String?, sessionID: String?, organizationsBySession: [String: String]) -> Bool
+    {
+        guard let expected else { return true }
+        guard let sessionID else { return false }
+        return organizationsBySession[sessionID] == expected
     }
 
     private static func claudeOneHourCacheCreationTokens(usage: ClaudeJSONObject, total: Int) -> Int {
@@ -301,11 +392,15 @@ extension CostUsageScanner {
         return .session(sessionId: sessionId, messageId: messageId)
     }
 
+    private static func claudeCanonicalRowKey(_ row: ClaudeUsageRow, preservingChunks: Bool) -> ClaudeRowKey? {
+        preservingChunks ? nil : self.claudeCanonicalRowKey(row)
+    }
+
     private static func shouldReplaceClaudeRow(_ existing: ClaudeUsageRow?, with row: ClaudeUsageRow) -> Bool {
         row.isIncomplete != true || existing == nil || existing?.isIncomplete == true
     }
 
-    private static func mergeClaudeRows(existing: [ClaudeUsageRow], delta: [ClaudeUsageRow]) -> [ClaudeUsageRow] {
+    static func mergeClaudeRows(existing: [ClaudeUsageRow], delta: [ClaudeUsageRow]) -> [ClaudeUsageRow] {
         var keyedRows: [ClaudeRowKey: ClaudeUsageRow] = [:]
         var unkeyedRows: [ClaudeUsageRow] = []
 
@@ -613,6 +708,8 @@ extension CostUsageScanner {
         let changedPaths: Set<String>
         let pricingResolver: CostUsagePricing.ClaudeResolver
         let checkCancellation: CancellationCheck?
+        /// The window's end moved forward: only files that skipped later-dated rows can gain rows.
+        var reparseRowsAfterPreviousWindow = false
     }
 
     private static func processClaudeFile(
@@ -624,17 +721,19 @@ extension CostUsageScanner {
         let stamp = source.stamp
         let cached = state.cache.files[path]
         let sameFile = state.sourceFileIDs[path] == stamp.fileID
+        let skippedLaterRows = state.reparseRowsAfterPreviousWindow && cached?.claudeExcludedRowsAfterScanWindow == true
 
         if let cached, sameFile,
            cached.mtimeUnixMs == stamp.mtimeUnixMs,
            cached.size == stamp.size,
            !state.forceFullScan,
+           !skippedLaterRows,
            !state.changedPaths.contains(path)
         {
             return
         }
 
-        let startOffset: Int64 = if let cached, sameFile, !state.forceFullScan,
+        let startOffset: Int64 = if let cached, sameFile, !state.forceFullScan, !skippedLaterRows,
                                     stamp.size > cached.size,
                                     cached.claudeRows != nil,
                                     let parsedBytes = cached.parsedBytes, parsedBytes > 0, parsedBytes <= stamp.size
@@ -648,22 +747,29 @@ extension CostUsageScanner {
         #if DEBUG
         Self.recordClaudeScanWork(.transcriptParse(startOffset: startOffset))
         #endif
+        let resumed = startOffset > 0 ? cached : nil
         let parsed = try Self.parseClaudeFileCancellable(
             fileURL: source.url,
             range: state.range,
             providerFilter: state.providerFilter,
             startOffset: startOffset,
             pricingResolver: state.pricingResolver,
+            initialOrganizationsBySession: resumed?.claudeOrganizationsBySession ?? [:],
             checkCancellation: state.checkCancellation)
         let rows = startOffset > 0 ? Self.mergeClaudeRows(existing: cached?.claudeRows ?? [], delta: parsed.rows)
             : parsed.rows
-        let usage = CostUsageFileUsage(
+        var usage = CostUsageFileUsage(
             mtimeUnixMs: stamp.mtimeUnixMs,
             size: stamp.size,
             days: [:],
             parsedBytes: parsed.parsedBytes,
             codexCostCacheComplete: true,
             claudeRows: rows)
+        usage.claudeOrganizationsBySession = parsed.organizationsBySession.isEmpty ? nil : parsed.organizationsBySession
+        let attachments = [resumed?.claudeFirstOrganizationAttachmentUnixMs, parsed.firstOrganizationAttachmentUnixMs]
+        usage.claudeFirstOrganizationAttachmentUnixMs = attachments.compactMap(\.self).min()
+        let excluded = resumed?.claudeExcludedRowsAfterScanWindow == true || parsed.excludedRowsAfterScanWindow
+        usage.claudeExcludedRowsAfterScanWindow = excluded ? true : nil
         state.cache.files[path] = usage
         state.sourceFileIDs[path] = stamp.fileID
     }
@@ -746,9 +852,14 @@ extension CostUsageScanner {
         var cache = artifact.usage
         let nowMs = Int64(now.timeIntervalSince1970 * 1000)
         let refreshMs = Int64(max(0, options.refreshMinIntervalSeconds) * 1000)
-        let windowExpanded = Self.requestedWindowExpandsCache(range: range, cache: cache)
+        // A day rollover extends a certified window's end. Rows dated after the old end cannot have been written
+        // before it was scanned unless a file recorded skipping them, so only those files are reparsed.
+        let windowRolledForward = !options.forceRescan
+            && Self.claudeWindowRolledForward(range: range, cache: cache, priorMemo: priorMemo, reportKey: reportKey)
+        let windowExpanded = !windowRolledForward && Self.requestedWindowExpandsCache(range: range, cache: cache)
         // Matching bounds alone cannot prove that legacy partial scans retained each file's narrow-window winner.
-        let hasWindowScopedBaseline = priorMemo?.certifiesWindow(reportKey: reportKey, cache: cache) == true
+        let hasWindowScopedBaseline = windowRolledForward
+            || priorMemo?.certifiesWindow(reportKey: reportKey, cache: cache) == true
         let needsWindowScopedRebuild = reportContext != nil && !hasWindowScopedBaseline
         let sourceInventoryChanged = priorMemo.map { $0.sourceInventory != sourceInventory } ?? false
         let cacheArtifactChanged = priorMemo.map {
@@ -761,6 +872,7 @@ extension CostUsageScanner {
         let shouldMutateCache = options.forceRescan
             || sourceIdentitiesChanged
             || windowExpanded
+            || windowRolledForward
             || needsWindowScopedRebuild
             || sourceInventoryChanged
             || cacheArtifactChanged
@@ -796,7 +908,8 @@ extension CostUsageScanner {
                 forceFullScan: forceFullScan,
                 changedPaths: changedPaths,
                 pricingResolver: pricingResolver,
-                checkCancellation: checkCancellation)
+                checkCancellation: checkCancellation,
+                reparseRowsAfterPreviousWindow: windowRolledForward)
 
             for path in inventory.files.keys.sorted() {
                 guard let source = inventory.files[path] else { continue }
@@ -867,6 +980,23 @@ extension CostUsageScanner {
         return report
     }
 
+    private static func claudeWindowRolledForward(
+        range: CostUsageDayRange,
+        cache: CostUsageCache,
+        priorMemo: CostUsageClaudeReportMemo.Entry?,
+        reportKey: CostUsageClaudeReportMemoKey) -> Bool
+    {
+        guard let cachedSince = cache.scanSinceKey, let cachedUntil = cache.scanUntilKey,
+              range.scanSinceKey >= cachedSince, range.scanUntilKey > cachedUntil,
+              let priorMemo, priorMemo.hasWindowScopedRows,
+              priorMemo.reportKey.cacheArtifactStamp == reportKey.cacheArtifactStamp,
+              priorMemo.reportKey.scanConfiguration == reportKey.scanConfiguration,
+              priorMemo.reportKey.scanSinceKey == cachedSince,
+              priorMemo.reportKey.scanUntilKey == cachedUntil
+        else { return false }
+        return true
+    }
+
     private static func claudeReportMemoKey(
         provider: UsageProvider,
         providerFilter: ClaudeLogProviderFilter,
@@ -897,20 +1027,23 @@ extension CostUsageScanner {
         cache: CostUsageCache,
         range: CostUsageDayRange,
         now: Date = Date(),
-        modelsDevCacheRoot: URL? = nil) -> CostUsageDailyReport
+        modelsDevCacheRoot: URL? = nil,
+        includeRequestCounts: Bool = false) -> CostUsageDailyReport
     {
         self.buildClaudeReportFromCache(
             cache: cache,
             rows: self.reconciledClaudeRows(cache: cache),
             range: range,
-            pricingResolver: CostUsagePricing.ClaudeResolver(now: now, cacheRoot: modelsDevCacheRoot))
+            pricingResolver: CostUsagePricing.ClaudeResolver(now: now, cacheRoot: modelsDevCacheRoot),
+            includeRequestCounts: includeRequestCounts)
     }
 
-    private static func buildClaudeReportFromCache(
+    static func buildClaudeReportFromCache(
         cache: CostUsageCache,
         rows: [ClaudeUsageRow],
         range: CostUsageDayRange,
-        pricingResolver: CostUsagePricing.ClaudeResolver) -> CostUsageDailyReport
+        pricingResolver: CostUsagePricing.ClaudeResolver,
+        includeRequestCounts: Bool = false) -> CostUsageDailyReport
     {
         var entries: [CostUsageDailyReport.Entry] = []
         var temporalBuckets = TemporalBuckets()
@@ -1011,6 +1144,9 @@ extension CostUsageScanner {
                 cacheReadTokens: dayHasTokens ? dayCacheRead.value : nil,
                 cacheCreationTokens: dayHasTokens ? dayCacheCreate.value : nil,
                 totalTokens: dayHasTokens ? dayTotal : nil,
+                requestCount: includeRequestCounts
+                    ? daySampleCount.value.flatMap { CheckedSum.integers([$0, dayIncompleteCount]) }
+                    : nil,
                 costUSD: entryCost,
                 modelsUsed: modelNames,
                 modelBreakdowns: sortedBreakdown,

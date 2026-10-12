@@ -30,6 +30,11 @@ public enum VeniceProviderDescriptor {
         color: ProviderColor(hex: 0x3C8FDD),
         confetti: [0x0E2942, 0xF7F5ED, 0x3C8FDD],
         noDataMessage: "Venice per-day cost history is not available via API.",
+        pluginResultPolicy: ProviderPluginResultPolicy(cardMapper: VeniceAPIBalance.mapPluginCard),
+        // Balances feed the native extra-usage dial; the detail rows and quota lane already describe them.
+        presentation: ProviderUsagePresentation(
+            costPresenter: { _ in ProviderCostPresentation(showsGenericFallback: false) },
+            menuCard: ProviderMenuCardPresentation(costVisibilityResolver: { _ in false })),
         aliases: ["ven"],
         webSource: .init(
             settingsSection: .init(VeniceProviderSettingsKey.self, cookieSettings: VeniceProviderSettings.self),

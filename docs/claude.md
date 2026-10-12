@@ -185,6 +185,10 @@ the cookie import.
   - `Authorization: Bearer <access_token>`
   - `anthropic-beta: oauth-2025-04-20`
   - Reset inventory uses `claude-cli/<detected-version> (external, cli)`; eligibility remains server-controlled.
+    The server withholds the inventory from other client identities (`ineligible_reason: "surface"`) and from
+    outdated versions (`"cli_version"`; 2.1.0 is refused). When `claude --version` cannot run (background
+    refreshes), the version is read from the install layout (`…/claude/versions/<version>` or the
+    `@anthropic-ai/claude-code` package manifest); the fallback is the newest version verified eligible.
 - Mapping:
   - `five_hour` → session window.
   - `seven_day` → weekly window; also becomes the primary fallback when `five_hour` is absent or has no utilization.

@@ -18,6 +18,20 @@ extension StatusItemController {
         var countdownResetDates: [Date] = []
         var absoluteResetDates: [Date] = []
         for provider in providers {
+            if self.settings.usesNativeGauges {
+                let gauge = self.store.nativeServicePresentation(for: provider).gauge
+                if self.settings.paceVisible, gauge.health == .live,
+                   gauge.resolvedWindows.contains(where: {
+                       $0.period >= 6 * 86400 && $0.period <= 8 * 86400 && $0.usedFraction != nil
+                           && $0.countdown?.isReliable == true && ($0.countdown?.nextReset ?? .distantPast) > now
+                   })
+                {
+                    // Pace changes with elapsed time even when an adaptive network refresh is idle.
+                    let secondsIntoMinute = now.timeIntervalSince1970.truncatingRemainder(dividingBy: 60)
+                    delays.append(60 - secondsIntoMinute + Self.menuBarCountdownRefreshEpsilon)
+                }
+                continue
+            }
             let resolution = self.renderedMenuBarLayoutResolution(for: provider)
             if !resolution.usesLegacyRendering,
                self.settings.menuBarIconStyle == .iconAndPercent
@@ -57,7 +71,9 @@ extension StatusItemController {
             // the reset itself, whichever comes first; the next icon update schedules any later boundary.
             delays.append(delay)
         }
-        delays += self.menuBarWeeklyPaceRefreshDelays(providers: providers, now: now)
+        if !self.settings.usesNativeGauges {
+            delays += self.menuBarWeeklyPaceRefreshDelays(providers: providers, now: now)
+        }
 
         if self.menuBarObservesCodexReset(providers: providers) {
             let projection = self.store.codexConsumerProjection(surface: .menuBar, now: now)

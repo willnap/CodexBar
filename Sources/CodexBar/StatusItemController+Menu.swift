@@ -1112,7 +1112,7 @@ extension StatusItemController {
     }
 
     @discardableResult
-    private func handleCodexVisibleAccountSelection(_ account: CodexVisibleAccount, menu: NSMenu?) -> Bool {
+    func handleCodexVisibleAccountSelection(_ account: CodexVisibleAccount, menu: NSMenu?) -> Bool {
         // Provider-specific by design: managed Codex selection rebuilds after account-scoped reconciliation.
         let visibleAccountID = account.id
         self.advanceMenuInteraction(for: menu)

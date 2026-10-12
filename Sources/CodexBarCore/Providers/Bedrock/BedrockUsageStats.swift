@@ -36,8 +36,9 @@ public struct BedrockUsageSnapshot: Codable, Sendable {
     }
 
     public var totalTokens: Int? {
-        guard let input = self.inputTokens, let output = self.outputTokens else { return nil }
-        return input + output
+        guard let input = self.inputTokens, let output = self.outputTokens, input >= 0, output >= 0 else { return nil }
+        let (total, overflow) = input.addingReportingOverflow(output)
+        return overflow ? nil : total
     }
 }
 
@@ -47,7 +48,7 @@ extension BedrockUsageSnapshot {
             RateWindow(
                 usedPercent: usedPercent,
                 windowMinutes: nil,
-                resetsAt: Self.endOfCurrentMonth(),
+                resetsAt: Self.endOfCurrentMonth(at: self.updatedAt),
                 resetDescription: "Monthly budget")
         } else {
             nil
@@ -58,7 +59,7 @@ extension BedrockUsageSnapshot {
             limit: self.monthlyBudget ?? 0,
             currencyCode: "USD",
             period: "Monthly",
-            resetsAt: Self.endOfCurrentMonth(),
+            resetsAt: Self.endOfCurrentMonth(at: self.updatedAt),
             updatedAt: self.updatedAt)
 
         var loginParts: [String] = []
@@ -84,16 +85,32 @@ extension BedrockUsageSnapshot {
             secondary: nil,
             tertiary: nil,
             providerCost: cost,
+            costUsage: self.cloudWatchTokenSnapshot,
             updatedAt: self.updatedAt,
             identity: identity)
     }
 
-    private static func endOfCurrentMonth() -> Date? {
-        let calendar = Calendar.current
-        guard let range = calendar.range(of: .day, in: .month, for: Date()) else { return nil }
-        let components = calendar.dateComponents([.year, .month], from: Date())
-        guard let startOfMonth = calendar.date(from: components) else { return nil }
-        return calendar.date(byAdding: .day, value: range.count, to: startOfMonth)
+    private var cloudWatchTokenSnapshot: CostUsageTokenSnapshot? {
+        let requests = self.requestCount.flatMap { $0 >= 0 ? $0 : nil }
+        guard self.totalTokens != nil || requests != nil else { return nil }
+        return CostUsageTokenSnapshot(
+            sessionTokens: nil,
+            sessionCostUSD: nil,
+            last30DaysTokens: self.totalTokens,
+            last30DaysCostUSD: nil,
+            last30DaysRequests: requests,
+            currencyCode: "XXX",
+            historyDays: 14,
+            historyCoverageIsEstablished: false,
+            historyLabel: "CloudWatch last 14 days",
+            daily: [],
+            updatedAt: self.updatedAt)
+    }
+
+    private static func endOfCurrentMonth(at date: Date) -> Date? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar.dateInterval(of: .month, for: date)?.end
     }
 
     static func formattedTokenCount(_ count: Int) -> String {

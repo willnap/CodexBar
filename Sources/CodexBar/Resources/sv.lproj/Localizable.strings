@@ -2505,3 +2505,112 @@
 "Pace sign" = "Tecken för förbrukningstakt";
 "Ahead of pace is +" = "Över förbrukningstakten är +";
 "Reserve is +" = "Reserv är +";
+
+"Sign In…" = "Sign In…";
+
+"Connect…" = "Connect…";
+
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+
+// Native gauge settings and states.
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Custom gauges" = "Custom gauges";
+"Each enabled service has its own gauge. Manage services in the sidebar." = "Each enabled service has its own gauge. Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Legacy" = "Legacy";
+"Legacy icons" = "Legacy icons";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Style" = "Style";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+
+/* Settings search and provider ordering */
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+
+// Native orbit popup
+"Available" = "Tillgängligt";
+"24h" = "24h";
+"No history yet" = "Ingen historik ännu";
+"Recorded available usage" = "Registrerat tillgängligt utrymme";
+
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+
+"Local usage totals" = "Local usage totals";
+
+"Time period" = "Tidsperiod";
+
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Tidsperiod för historik, token och kostnader för alla konton. Kvotmätarna visar aktuell tillgänglighet.";
+
+"Active %@ account" = "Aktivt %@-konto";
+
+"Use in %@" = "Använd i %@";
+
+"Use this account in %@" = "Använd detta konto i %@";
+
+"Use %@ in %@" = "Använd %@ i %@";
+
+"Last updated %@" = "Senast uppdaterad %@";
+
+"No observations" = "Inga observationer";
+
+"History begins with recorded usage. Missing time is left empty." = "Historiken börjar med registrerad användning. Perioder utan data lämnas tomma.";
+
+"native_orbit_range_help" = "Tidsperiod för historik, token och kostnader för alla konton. Kvotmätarna visar aktuell tillgänglighet.";
+
+"1d" = "1 d";
+"<1m ago" = "<1min sedan";
+"Auto switch" = "Automatiskt byte";
+"Now" = "Nu";
+"Updating…" = "Uppdaterar…";
+
+"Local Claude archive" = "Lokalt Claude-arkiv";
+
+"Account not recorded" = "Kontot registrerades inte";
+
+"Anonymous observations from this provider. No account identity was recorded." = "Anonyma mätvärden från denna leverantör. Kontots identitet registrerades inte.";
+
+"History begins with recorded usage." = "Historiken börjar med registrerad användning.";
+
+"%d observations · %d/%d days" = "%d observationer · %d/%d dagar";
+
+"No observations in this period" = "Inga observationer under denna period";
+
+"Last observed %@" = "Senast observerad %@";
+
+"First observed %@" = "Först observerad %@";
+
+"Connecting lines hold the last recorded value." = "Sammanbindande linjer behåller det senast registrerade värdet.";
+
+"Local Codex archive" = "Lokalt Codex-arkiv";
+
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Sessionsloggar kan upprepa cachade kvotvärden. Kontots identitet registreras inte.";
+
+"%ds ago" = "för %ds sedan";
+
+"Local Kimi archive" = "Lokalt Kimi-arkiv";
+"Lines connect nearby observations. Gaps have no recorded data." = "Linjer förbinder mätningar som ligger nära i tiden. Luckor saknar registrerade data.";
+"native_refresh_timed_out" = "Uppdateringen tar längre tid än väntat. Den fortsätter i bakgrunden.";
+"native_orbit_range_day" = "D";
+"native_orbit_range_week" = "V";
+"native_orbit_range_month" = "M";
+"Last 7 days" = "Senaste 7 dagarna";

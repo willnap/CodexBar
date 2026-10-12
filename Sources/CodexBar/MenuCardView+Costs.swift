@@ -482,7 +482,7 @@ extension UsageMenuCardView.Model {
         }
 
         if style == .extraUsageBalance {
-            let balance = formatCost(cost.used)
+            let balance = formatCost(cost.balance ?? cost.used)
             return ProviderCostSection(
                 title: L("Extra usage"),
                 percentUsed: nil,
@@ -491,7 +491,7 @@ extension UsageMenuCardView.Model {
         }
 
         if style == .zenBalance {
-            let balance = formatCost(cost.used)
+            let balance = formatCost(cost.balance ?? cost.used)
             return ProviderCostSection(
                 title: L("Zen balance"),
                 percentUsed: nil,
@@ -500,7 +500,7 @@ extension UsageMenuCardView.Model {
         }
 
         if style == .pointsBalance {
-            let balance = String(format: "%.0f", cost.used)
+            let balance = String(format: "%.0f", cost.balance ?? cost.used)
             return ProviderCostSection(
                 title: L("Credits"),
                 percentUsed: nil,
@@ -509,7 +509,7 @@ extension UsageMenuCardView.Model {
         }
 
         if style == .prepaidCredits {
-            let balance = UsageFormatter.currencyString(cost.used, currencyCode: cost.currencyCode)
+            let balance = UsageFormatter.currencyString(cost.balance ?? cost.used, currencyCode: cost.currencyCode)
             return ProviderCostSection(
                 title: L("Credits"),
                 percentUsed: nil,
@@ -530,12 +530,16 @@ extension UsageMenuCardView.Model {
         }
 
         if style == .payAsYouGoBalance {
-            let balance = formatCost(cost.used)
+            let balance = formatCost(cost.balance ?? cost.used)
             return ProviderCostSection(
                 title: L("metric_mistral_payg"),
                 percentUsed: nil,
                 spendLine: "\(L("Balance")): \(balance)",
                 percentLine: nil)
+        }
+
+        if cost.usageIsUnavailable == true {
+            return Self.unavailableSpendSection(cost: cost, preferredCurrencyCode: preferredCurrencyCode)
         }
 
         if style == .creditsUsage {
@@ -610,7 +614,7 @@ extension UsageMenuCardView.Model {
             limit = formatCost(cost.limit)
         } else if cost.currencyCode == "Quota" {
             title = L("Quota usage")
-            used = String(format: "%.0f", cost.used)
+            used = String(format: "%.0f", cost.balance ?? cost.used)
             limit = String(format: "%.0f", cost.limit)
         } else {
             title = L("Extra usage")
@@ -636,6 +640,22 @@ extension UsageMenuCardView.Model {
             percentLine: String(format: L("%.0f%% used"), min(100, max(0, percentUsed))),
             balanceLine: nil,
             personalSpendLine: personalSpendLine)
+    }
+
+    private static func unavailableSpendSection(
+        cost: ProviderCostSnapshot,
+        preferredCurrencyCode: String) -> ProviderCostSection?
+    {
+        guard let balance = cost.balance else { return nil }
+        let value = Locale.commonISOCurrencyCodes.contains(cost.currencyCode.uppercased())
+            ? UsageFormatter.convertedCostString(
+                balance, preferredCurrency: preferredCurrencyCode, providerCurrency: cost.currencyCode)
+            : balance.formatted(.number.precision(.fractionLength(0...2))) + " " + cost.currencyCode
+        return ProviderCostSection(
+            title: L("Credits"),
+            percentUsed: nil,
+            spendLine: "\(L("Balance")): \(value)",
+            percentLine: nil)
     }
 
     /// Provider-specific by design: Claude cloud credits share the inline balance style of prepaid credits.

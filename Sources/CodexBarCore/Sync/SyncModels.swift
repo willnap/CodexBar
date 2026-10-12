@@ -46,6 +46,9 @@ public struct ProviderIntentPayload: Codable, Sendable {
     public var kiloEnabledOrganizationIDs: [String]?
     public var deepseekProfileID: String?
     public var deepseekProfileScope: String?
+    /// Omitted by older clients; an empty dictionary explicitly clears the bindings.
+    public var deepseekProfileBindings: [String: String]?
+    public var deepseekPlatformTokenScopes: [String: String]?
 
     public init(config: ProviderConfig, schemaVersion: Int = CodexBarSyncSchema.currentVersion) {
         self.schemaVersion = schemaVersion
@@ -67,6 +70,8 @@ public struct ProviderIntentPayload: Codable, Sendable {
         self.kiloEnabledOrganizationIDs = config.kiloEnabledOrganizationIDs
         self.deepseekProfileID = config.deepseekProfileID
         self.deepseekProfileScope = config.deepseekProfileScope
+        self.deepseekProfileBindings = config.sanitizedDeepSeekProfileBindings
+        self.deepseekPlatformTokenScopes = config.sanitizedDeepSeekPlatformTokenScopes
     }
 
     public func applying(
@@ -105,6 +110,8 @@ public struct ProviderIntentPayload: Codable, Sendable {
         result.kiloEnabledOrganizationIDs = self.kiloEnabledOrganizationIDs
         result.deepseekProfileID = self.deepseekProfileID
         result.deepseekProfileScope = self.deepseekProfileScope
+        if let bindings = self.deepseekProfileBindings { result.deepseekProfileBindings = bindings }
+        if let scopes = self.deepseekPlatformTokenScopes { result.deepseekPlatformTokenScopes = scopes }
 
         if let value = secretFields[ProviderIntentSecretField.apiKey.rawValue] {
             result.apiKey = value.isEmpty ? nil : value

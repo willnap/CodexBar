@@ -255,7 +255,7 @@ defineProvider({
                 reasoningTokens,
                 requests,
                 cost,
-                estimatedCost,
+                ...(estimatedCost > 0 ? { estimatedCost } : {}),
                 model,
               });
               if (entries.length > 10000) throw new TypeError("activity.data exceeds 10000 distinct rows");
@@ -263,8 +263,10 @@ defineProvider({
             costUsage = {
               currency: "USD",
               historyDays: 30,
+              historyCoverageIsEstablished: true,
               historyLabel: "Last 30 days (UTC)",
               windowEnd: latestCompleted,
+              metrics: { totalTokens: true, requests: true, cost: true },
               entries,
             };
             activityDetails = {

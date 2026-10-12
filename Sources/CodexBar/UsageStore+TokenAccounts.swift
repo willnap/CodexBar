@@ -2,6 +2,10 @@ import CodexBarCore
 import Foundation
 
 extension UsageStore {
+    func shouldFetchNativeCodexAccountUsageHistory(isRunningTests: Bool = SettingsStore.isRunningTests) -> Bool {
+        self.settings.nativeDesignEnabled && !isRunningTests
+    }
+
     func activateCachedTokenAccountSnapshot(provider: UsageProvider, accountID: UUID) {
         guard self.settings.effectiveSelectedTokenAccount(for: provider)?.id == accountID else { return }
         self.invalidateGenericWidgetUsage(for: provider)
@@ -147,20 +151,31 @@ extension UsageStore {
             tokenOverride: nil)
     }
 
+    // swiftlint:disable:next function_body_length
     func refreshCodexVisibleAccountsForMenu(
         generation: UInt64? = nil,
         requestedAccountIDs: Set<String>? = nil) async
     {
         let projection = self.freshCodexVisibleAccountProjectionForAccountRefresh()
-        let accounts = self.limitedCodexVisibleAccounts(
+        let visibleAccounts = self.limitedCodexVisibleAccounts(
             projection.visibleAccounts.filter { requestedAccountIDs?.contains($0.id) ?? true },
             snapshots: self.codexAccountSnapshots,
             activeVisibleAccountID: projection.activeVisibleAccountID)
-        guard requestedAccountIDs != nil ? !accounts.isEmpty : accounts.count > 1 else {
+        guard visibleAccounts.count >= (requestedAccountIDs != nil || self.settings.nativeDesignEnabled ? 1 : 2) else {
             if requestedAccountIDs != nil { return }
             self.codexAccountSnapshots = []
             return
         }
+        let now = Date()
+        let visibleIDs = Set(projection.visibleAccounts.map(\.id))
+        self.nativeCodexAccountRefreshAttempts = self.nativeCodexAccountRefreshAttempts.filter {
+            visibleIDs.contains($0.key)
+        }
+        let accounts = visibleAccounts.filter {
+            requestedAccountIDs != nil || self.codexAccountIsDueForNativeRefresh(
+                $0, priorSnapshots: self.codexAccountSnapshots, now: now)
+        }
+        guard !accounts.isEmpty else { return }
         let managedAccountIDsWithReadableAuthAtStart = self.codexManagedAccountIDsWithReadableAuth()
 
         let originalVisibleAccountID = projection.activeVisibleAccountID
@@ -210,6 +225,8 @@ extension UsageStore {
                 }
                 continue
             }
+            self.recordNativeCodexAccountRefreshAttempt(
+                account: account, outcome: outcome, projection: currentProjection)
             let resolved = self.resolveCodexAccountOutcome(
                 outcome,
                 account: account,
@@ -229,7 +246,8 @@ extension UsageStore {
                     error: snapshot.error,
                     sourceLabel: snapshot.sourceLabel,
                     credits: snapshot.credits,
-                    weeklyResetCandidate: result.pendingWeeklyResetCandidate))
+                    weeklyResetCandidate: result.pendingWeeklyResetCandidate,
+                    accountUsageHistory: result.accountUsageHistory ?? priorSnapshot?.accountUsageHistory))
             }
             if account.id == originalVisibleAccountID {
                 selectedOutcome = outcome
@@ -246,6 +264,13 @@ extension UsageStore {
         let currentSnapshots = Self.codexAccountSnapshots(retained + snapshots, reconciledWith: currentProjection)
         self.codexAccountSnapshots = currentSnapshots
         self.codexAccountUsageSnapshotStore?.store(currentSnapshots)
+        await self.recordNativeCodexAccountHistory(
+            currentSnapshots.filter { fetchedIDs.contains($0.id) },
+            projection: currentProjection,
+            generation: generation)
+        // Provider-specific by design: Codex sibling history must finish in the same verified refresh generation.
+        guard !Task.isCancelled,
+              self.isCurrentProviderRefreshGeneration(.codex, generation: generation) else { return }
 
         // A view-only refresh of a sibling owns its row, not the globally followed presentation.
         if requestedAccountIDs != nil, !accounts.contains(where: \.isActive) { return }
@@ -516,18 +541,20 @@ extension UsageStore {
         generation: UInt64? = nil,
         sleep: (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) async
     {
-        guard let selectedAccount = self.settings.effectiveSelectedTokenAccount(for: provider) else {
-            self.reconcileSelectedTokenAccountSnapshotBeforeRefresh(provider: provider, accounts: accounts)
-            return
-        }
-        let limitedAccounts = self.limitedTokenAccounts(accounts, selected: selectedAccount)
+        let selectedAccount = self.settings.effectiveSelectedTokenAccount(for: provider)
+        self.reconcileSelectedTokenAccountSnapshotBeforeRefresh(provider: provider, accounts: accounts)
+        guard selectedAccount != nil || self.settings.nativeDesignEnabled else { return }
+        let limitedAccounts = self.tokenAccountsDueForNativeRefresh(
+            provider: provider,
+            accounts: self.limitedTokenAccounts(accounts, selected: selectedAccount),
+            selected: selectedAccount,
+            now: Date())
 
         // Capture the prior per-account snapshot state so we can preserve last-good
         // data when an in-flight refresh is cancelled (e.g. menu tab switches). Without
         // this, cancellation produces empty/error snapshots and the menu briefly shows
         // misleading cards for accounts that previously had valid data.
         self.pruneTokenAccountSnapshots(provider: provider, accounts: accounts)
-        self.activateCachedTokenAccountSnapshot(provider: provider, accountID: selectedAccount.id)
         let priorSnapshots = self.accountSnapshots[provider.instanceID] ?? []
         let priorByAccountID = Dictionary(
             uniqueKeysWithValues: priorSnapshots.map { ($0.account.id, $0) })
@@ -554,6 +581,7 @@ extension UsageStore {
             }
             if !isCancellation {
                 sawAnyNonCancellationOutcome = true
+                self.recordNativeTokenAccountRefreshAttempt(provider: provider, account: account, outcome: outcome)
             }
             let resolved = self.resolveAccountOutcome(
                 outcome,
@@ -566,7 +594,7 @@ extension UsageStore {
             if let usage = resolved.freshUsage {
                 historySamples.append((account: account, snapshot: usage))
             }
-            if account.id == selectedAccount.id {
+            if account.id == selectedAccount?.id {
                 selectedOutcome = outcome
                 resolvedSelectedAccount = account
                 selectedSnapshot = resolved.usage
@@ -580,13 +608,15 @@ extension UsageStore {
         let shouldPreservePriorState =
             !sawAnyNonCancellationOutcome && snapshots.allSatisfy { $0.snapshot == nil }
         if !shouldPreservePriorState {
-            self.accountSnapshots[provider.instanceID] = snapshots
+            let fetchedIDs = Set(limitedAccounts.map(\.id))
+            self.accountSnapshots[provider.instanceID] = priorSnapshots
+                .filter { !fetchedIDs.contains($0.id) } + snapshots
         }
 
         self.scheduleSupplementalUsageUpdates(
             provider: provider,
             results: results,
-            selectedAccountID: selectedAccount.id,
+            selectedAccountID: selectedAccount?.id,
             generation: generation)
 
         if let selectedOutcome, let resolvedSelectedAccount {
@@ -625,6 +655,7 @@ extension UsageStore {
         _ accounts: [ProviderTokenAccount],
         selected: ProviderTokenAccount?) -> [ProviderTokenAccount]
     {
+        if self.settings.nativeDesignEnabled { return accounts }
         let limit = Self.tokenAccountMenuSnapshotLimit
         if accounts.count <= limit {
             return accounts
@@ -646,6 +677,7 @@ extension UsageStore {
             accounts,
             snapshots: snapshots,
             activeVisibleAccountID: activeVisibleAccountID)
+        if self.settings.nativeDesignEnabled { return accounts }
         let limit = Self.tokenAccountMenuSnapshotLimit
         if accounts.count <= limit {
             return accounts
@@ -800,7 +832,10 @@ extension UsageStore {
                 pendingWeeklyResetCandidate: priorSnapshot?.weeklyResetCandidate,
                 descriptor: descriptor,
                 context: context,
-                resetCreditsFetcher: self.codexResetCreditsFetcher(workspaceAccountID: context.codexWorkspaceID))
+                resetCreditsFetcher: self.codexResetCreditsFetcher(workspaceAccountID: context.codexWorkspaceID),
+                // Provider-specific by design: only Codex publishes authenticated daily account token buckets.
+                includeAccountUsageHistory: self.shouldFetchNativeCodexAccountUsageHistory(),
+                previousAccountUsageHistory: priorSnapshot?.accountUsageHistory)
         }
 
         return await withTaskGroup(
@@ -844,13 +879,25 @@ extension UsageStore {
                     } else {
                         admission = nil
                     }
+                    var publishedOutcome = admission?.outcome
+                    var accountUsageHistory = request.previousAccountUsageHistory
+                    if request.includeAccountUsageHistory,
+                       let outcome = publishedOutcome, case let .success(result) = outcome.result
+                    {
+                        accountUsageHistory = await Self.nativeCodexAccountUsageHistory(
+                            for: request.account, previous: accountUsageHistory, env: request.context.env)
+                        if let tokens = accountUsageHistory?.tokenSnapshot() {
+                            publishedOutcome = outcome.replacingUsage(result.usage.replacing(costUsage: .value(tokens)))
+                        }
+                    }
                     return CodexAccountFetchResult(
                         index: request.index,
                         account: request.account,
-                        outcome: admission?.outcome,
+                        outcome: publishedOutcome,
                         limitResetOwnerKey: request.limitResetOwnerKey,
                         pendingWeeklyResetCandidate: admission?.pendingCandidate,
-                        withheldSuccess: admission?.withheldSuccess)
+                        withheldSuccess: admission?.withheldSuccess,
+                        accountUsageHistory: accountUsageHistory)
                 }
             }
 
@@ -874,10 +921,15 @@ extension UsageStore {
             provider: provider,
             settings: self.settings,
             override: override)
-        let sourceMode = ProviderRegistry.resolvedSourceMode(
-            provider: provider,
-            settings: self.settings,
-            account: account)
+        // Provider-specific by design: Antigravity's passive CLI path reads the ambient login. Saved-account
+        // monitoring must use only the injected account's OAuth strategy, never ambient local fallbacks.
+        let sourceMode: ProviderSourceMode = if self.settings.nativeDesignEnabled,
+                                                provider == .antigravity, override?.provider == provider
+        {
+            .oauth
+        } else {
+            ProviderRegistry.resolvedSourceMode(provider: provider, settings: self.settings, account: account)
+        }
         let snapshot = ProviderRegistry.makeSettingsSnapshot(
             settings: self.settings,
             tokenOverride: override,
@@ -903,7 +955,8 @@ extension UsageStore {
                 provider: provider,
                 settings: self.settings,
                 override: override),
-            includeAccountIdentity: self.settings.accountWidgetsEnabled && account != nil,
+            includeAccountIdentity: (self.settings.nativeDesignEnabled || self.settings.accountWidgetsEnabled)
+                && account != nil,
             webTimeout: 60,
             webDebugDumpHTML: false,
             verbose: self.settings.isVerboseLoggingEnabled,
@@ -1000,12 +1053,6 @@ extension UsageStore {
         ProviderCatalog.implementation(for: provider)?
             .sourceMode(context: ProviderSourceModeContext(provider: provider, settings: self.settings))
             ?? .auto
-    }
-
-    private struct ResolvedAccountOutcome {
-        let snapshot: TokenAccountUsageSnapshot?
-        let usage: UsageSnapshot?
-        let freshUsage: UsageSnapshot?
     }
 
     private struct ResolvedCodexAccountOutcome {
@@ -1126,7 +1173,7 @@ extension UsageStore {
         return prior.id == account.id
     }
 
-    private nonisolated static func codexPriorAccountSnapshot(
+    nonisolated static func codexPriorAccountSnapshot(
         matching account: CodexVisibleAccount,
         in snapshots: [CodexAccountUsageSnapshot]) -> CodexAccountUsageSnapshot?
     {
@@ -1208,71 +1255,6 @@ extension UsageStore {
                 shouldUpdatePreferredAccountKey: false,
                 shouldAdoptUnscopedHistory: false)
         }
-    }
-
-    private func resolveAccountOutcome(
-        _ outcome: ProviderFetchOutcome,
-        provider: UsageProvider,
-        account: ProviderTokenAccount,
-        priorSnapshot: TokenAccountUsageSnapshot? = nil) -> ResolvedAccountOutcome
-    {
-        self.handleCredentialOutcome(
-            provider: provider,
-            account: Self.warningTokenAccountDiscriminator(account) ?? "default",
-            result: outcome.result)
-        switch outcome.result {
-        case let .success(result):
-            let scoped = result.usage.scoped(to: provider)
-            let current = self.resolvingCurrentCopilotAllowance(in: scoped, provider: provider, account: account)
-            let labeled = current.withAccountLabel(account.label, for: provider)
-            let snapshot = TokenAccountUsageSnapshot(
-                account: account,
-                snapshot: labeled,
-                error: nil,
-                sourceLabel: result.sourceLabel,
-                cacheKey: self.tokenAccountSnapshotCacheKey(provider: provider, account: account))
-            return ResolvedAccountOutcome(snapshot: snapshot, usage: labeled, freshUsage: labeled)
-        case let .failure(error):
-            let prior = self.matchingTokenAccountSnapshot(priorSnapshot, provider: provider, account: account)
-            if Self.shouldSuppressProviderCancellation(error, priorSnapshot: prior?.snapshot) {
-                return ResolvedAccountOutcome(snapshot: prior, usage: prior?.snapshot, freshUsage: nil)
-            }
-            let oauthLimited = Self.preservesClaudeOAuthSnapshot(error, provider: provider, snapshot: prior)
-            let retained = oauthLimited || Self.shouldPreservePriorSnapshot(
-                after: error,
-                hadPriorData: prior != nil,
-                priorSnapshot: prior?.snapshot)
-                ? prior : nil
-            let snapshot = TokenAccountUsageSnapshot(
-                account: account,
-                snapshot: retained?.snapshot,
-                error: oauthLimited ? nil : self.tokenAccountSnapshotErrorMessage(error),
-                sourceLabel: retained?.sourceLabel,
-                cacheKey: self.tokenAccountSnapshotCacheKey(provider: provider, account: account),
-                fetchError: error)
-            return ResolvedAccountOutcome(snapshot: snapshot, usage: retained?.snapshot, freshUsage: nil)
-        }
-    }
-
-    private func matchingTokenAccountSnapshot(
-        _ snapshot: TokenAccountUsageSnapshot?,
-        provider: UsageProvider,
-        account: ProviderTokenAccount) -> TokenAccountUsageSnapshot?
-    {
-        guard let snapshot, snapshot.account.id == account.id, snapshot.snapshot != nil,
-              let current = self.uniqueTokenAccount(provider: provider, accountID: account.id),
-              snapshot.cacheKey == self.tokenAccountSnapshotCacheKey(provider: provider, account: current)
-        else { return nil }
-        return self.resolvingCurrentCopilotAllowance(in: snapshot, provider: provider, account: current)
-    }
-
-    private static func preservesClaudeOAuthSnapshot(
-        _ error: Error,
-        provider: UsageProvider,
-        snapshot: TokenAccountUsageSnapshot?) -> Bool
-    {
-        // Provider-specific by design: a matching Claude OAuth cache survives OAuth usage throttling.
-        provider == .claude && snapshot?.sourceLabel == "oauth" && ClaudeUsageError.isClaudeOAuthUsageRateLimit(error)
     }
 
     private func publishSelectedAccountFailure(

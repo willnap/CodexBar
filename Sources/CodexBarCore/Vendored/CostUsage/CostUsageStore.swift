@@ -122,6 +122,10 @@ actor CostUsageStore {
         parserHash: CodexParserHash.value)
     static let cacheGeneration = "sqlite:\(CostUsageStore.schemaVersion)"
     static let compatiblePredecessorParserHashes: Set<String> = [
+        // Claude-only Hashable conformances (ClaudePathRole, ClaudeUsageRow) in CostUsageScanner.swift changed
+        // the hash twice; Codex row parsing, persisted rows, and scan checkpoints are unchanged by both.
+        "3df7e5f82b88697b", // Native-gauges build with Claude-only Hashable conformances; Codex rows unchanged.
+        "f406dae284de4a55", // Native-gauges base before Claude-only Hashable conformances; Codex rows unchanged.
         "379b799bb4b91683", // Current main before tool inspection; stored rows and checkpoints are unchanged.
         "7ce21041b7a36242", // Prior tool inspection stores survive upstream process cleanup.
         "0d8f9504f8e63d0f", // On-demand tool inspection leaves current-main rows and checkpoints unchanged.

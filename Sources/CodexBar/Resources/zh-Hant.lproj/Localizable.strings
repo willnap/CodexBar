@@ -2484,3 +2484,112 @@
 "Pace sign" = "使用節奏符號";
 "Ahead of pace is +" = "超出節奏為 +";
 "Reserve is +" = "餘量為 +";
+
+"Sign In…" = "Sign In…";
+
+"Connect…" = "Connect…";
+
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+
+// Native gauge settings and states.
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Custom gauges" = "Custom gauges";
+"Each enabled service has its own gauge. Manage services in the sidebar." = "Each enabled service has its own gauge. Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Legacy" = "Legacy";
+"Legacy icons" = "Legacy icons";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Style" = "Style";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+
+/* Settings search and provider ordering */
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+
+// Native orbit popup
+"Available" = "可用";
+"24h" = "24h";
+"No history yet" = "尚無歷史記錄";
+"Recorded available usage" = "已記錄的可用額度";
+
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+
+"Local usage totals" = "Local usage totals";
+
+"Time period" = "時間範圍";
+
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "所有帳戶的歷史紀錄、Token 與支出的時間範圍。配額儀表顯示目前可用量。";
+
+"Active %@ account" = "目前的 %@ 帳戶";
+
+"Use in %@" = "在 %@ 中使用";
+
+"Use this account in %@" = "在 %@ 中使用此帳戶";
+
+"Use %@ in %@" = "在 %2$@ 中使用 %1$@";
+
+"Last updated %@" = "上次更新 %@";
+
+"No observations" = "尚無紀錄";
+
+"History begins with recorded usage. Missing time is left empty." = "歷史紀錄從已記錄的使用資料開始。缺少資料的時間段維持空白。";
+
+"native_orbit_range_help" = "所有帳戶的歷史紀錄、Token 與支出的時間範圍。配額儀表顯示目前可用量。";
+
+"1d" = "1 天";
+"<1m ago" = "不到1分鐘前";
+"Auto switch" = "自動切換";
+"Now" = "現在";
+"Updating…" = "正在更新…";
+
+"Local Claude archive" = "Claude 本機歷史";
+
+"Account not recorded" = "未記錄帳號";
+
+"Anonymous observations from this provider. No account identity was recorded." = "此供應商的匿名觀測紀錄，未記錄帳號身分。";
+
+"History begins with recorded usage." = "歷史記錄始於首次記錄的用量。";
+
+"%d observations · %d/%d days" = "%d 次記錄 · %d/%d 天";
+
+"No observations in this period" = "此期間沒有記錄";
+
+"Last observed %@" = "最後記錄 %@";
+
+"First observed %@" = "首次記錄 %@";
+
+"Connecting lines hold the last recorded value." = "連接線維持最後記錄的數值。";
+
+"Local Codex archive" = "本機 Codex 封存";
+
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "工作階段日誌可能重複記錄快取的額度值，且未記錄帳戶身分。";
+
+"%ds ago" = "%d秒前";
+
+"Local Kimi archive" = "本機 Kimi 封存";
+"Lines connect nearby observations. Gaps have no recorded data." = "線條連接時間相近的測量值。空白區間沒有記錄的資料。";
+"native_refresh_timed_out" = "重新整理所需時間超出預期，將在背景繼續。";
+"native_orbit_range_day" = "日";
+"native_orbit_range_week" = "週";
+"native_orbit_range_month" = "月";
+"Last 7 days" = "最近 7 天";

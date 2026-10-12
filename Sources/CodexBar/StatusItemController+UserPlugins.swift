@@ -5,7 +5,8 @@ import SwiftUI
 
 extension StatusItemController {
     var shouldMergeIcons: Bool {
-        self.settings.mergeIcons && (
+        if self.settings.usesNativeGauges { return false }
+        return self.settings.mergeIcons && (
             self.store.enabledProvidersForDisplay().count > 1 ||
                 !self.topLevelUserProviderPlugins().isEmpty)
     }

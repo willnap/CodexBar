@@ -9,6 +9,7 @@ extension UsageStore {
         let limitResetOwnerKey: CodexLimitResetOwnerKey?
         let pendingWeeklyResetCandidate: CodexWeeklyResetPublicationCandidate?
         let withheldSuccess: ProviderFetchResult?
+        let accountUsageHistory: NativeCodexAccountUsageHistory?
     }
 
     struct CodexAccountFetchRequest {
@@ -22,6 +23,8 @@ extension UsageStore {
         let descriptor: ProviderDescriptor
         let context: ProviderFetchContext
         let resetCreditsFetcher: CodexResetCreditsFetcher
+        let includeAccountUsageHistory: Bool
+        let previousAccountUsageHistory: NativeCodexAccountUsageHistory?
     }
 
     static func codexSnapshotsRetainingCandidate(
@@ -35,7 +38,8 @@ extension UsageStore {
             error: prior.error,
             sourceLabel: prior.sourceLabel,
             credits: prior.credits,
-            weeklyResetCandidate: candidate)]
+            weeklyResetCandidate: candidate,
+            accountUsageHistory: prior.accountUsageHistory)]
     }
 
     static func codexAccountSnapshots(
@@ -57,7 +61,8 @@ extension UsageStore {
                 error: snapshot.error,
                 sourceLabel: snapshot.sourceLabel,
                 credits: snapshot.credits,
-                weeklyResetCandidate: snapshot.weeklyResetCandidate)
+                weeklyResetCandidate: snapshot.weeklyResetCandidate,
+                accountUsageHistory: snapshot.accountUsageHistory)
         }
     }
 }

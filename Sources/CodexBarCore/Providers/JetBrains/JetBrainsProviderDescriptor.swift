@@ -40,7 +40,10 @@ public enum JetBrainsProviderDescriptor {
             tokenCost: ProviderTokenCostConfig(
                 supportsTokenCost: false,
                 noDataMessage: { "JetBrains AI cost summary is not supported." }),
-            presentation: ProviderUsagePresentation(menuBarBalanceDetailLabels: ["Remaining"]),
+            // The Top-up credits row already shows the balance carried for the native extra-usage dial.
+            presentation: ProviderUsagePresentation(
+                menuBarBalanceDetailLabels: ["Remaining"],
+                menuCard: ProviderMenuCardPresentation(costVisibilityResolver: { _ in false })),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .cli],
                 pipeline: ProviderFetchPipeline(resolveStrategies: { _ in [JetBrainsStatusFetchStrategy()] })),

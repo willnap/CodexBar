@@ -150,6 +150,8 @@ public enum DeepSeekProviderDescriptor {
             configNormalizer: { config in
                 config.deepseekProfileID = config.sanitizedDeepSeekProfileID
                 config.deepseekProfileScope = config.sanitizedDeepSeekProfileScope
+                config.deepseekProfileBindings = config.sanitizedDeepSeekProfileBindings
+                config.deepseekPlatformTokenScopes = config.sanitizedDeepSeekPlatformTokenScopes
             })
     }
 

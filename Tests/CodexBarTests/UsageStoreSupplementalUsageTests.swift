@@ -8,7 +8,8 @@ import Testing
 struct UsageStoreSupplementalUsageTests {
     @Test
     func `deferred Grok reset credits publish after primary usage`() async {
-        let store = Self.makeStore(suite: "UsageStoreSupplementalUsageTests-publish")
+        let store = Self.makeStore(suite: "UsageStoreSupplementalUsageTests-publish", nativeDesignEnabled: true)
+        store._cancelPlanUtilizationHistoryLoadForTesting()
         let gate = SupplementalUsageGate()
         let now = Date(timeIntervalSince1970: 1_787_647_576)
         let resetCredits = GrokRateLimitResetCreditsSnapshot(
@@ -32,6 +33,15 @@ struct UsageStoreSupplementalUsageTests {
         await Self.waitForResetCredits(in: store)
 
         #expect(store.snapshot(for: .grok)?.grokResetCredits == resetCredits)
+        for _ in 0..<200 where store.planUtilizationHistory[.grok]?.unscoped
+            .contains(where: { $0.name.rawValue == "nativeMetric:resets" }) != true
+        {
+            await Task.yield()
+        }
+        let history = store.planUtilizationHistory[.grok]?.unscoped
+            .first { $0.name.rawValue == "nativeMetric:resets" }
+        #expect(history?.entries.first?.capturedAt == now)
+        #expect(history?.entries.first?.nativeMetrics?.resets?.availableExpirations.count == 1)
     }
 
     @Test
@@ -131,8 +141,8 @@ struct UsageStoreSupplementalUsageTests {
         #expect(store.snapshot(for: .grok)?.grokResetCredits == selectedCredits)
     }
 
-    private static func makeStore(suite: String) -> UsageStore {
-        let settings = testSettingsStore(suiteName: suite)
+    private static func makeStore(suite: String, nativeDesignEnabled: Bool = false) -> UsageStore {
+        let settings = testSettingsStore(suiteName: suite, nativeDesignEnabled: nativeDesignEnabled)
         settings.refreshFrequency = .manual
         settings.statusChecksEnabled = false
         return UsageStore(

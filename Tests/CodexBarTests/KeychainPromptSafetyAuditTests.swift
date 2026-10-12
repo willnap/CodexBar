@@ -7,7 +7,7 @@ struct KeychainPromptSafetyAuditTests {
         let source = try Self.readRepoFile("Sources/CodexBar/CodexbarApp.swift")
         let policy = try #require(source.range(of:
             "KeychainAccessGate.isDisabled = SettingsStore.loadDebugDisableKeychainAccess(userDefaults: .standard)"))
-        let settings = try #require(source.range(of: "let settings = SettingsStore()"))
+        let settings = try #require(source.range(of: "let settings = SettingsStore("))
         #expect(policy.upperBound < settings.lowerBound)
     }
 

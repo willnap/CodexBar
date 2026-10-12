@@ -27,120 +27,137 @@ struct MenuBarPane: View {
             ].joined(separator: ", ")
 
         Form {
-            Section {
-                SettingsMenuPicker(
-                    selection: self.$settings.menuBarIconStyle,
-                    options: MenuBarSettingsMenuOptions.iconStyles,
-                    label: {
+            if NativeGaugeConfiguration.isEnabled {
+                Section {
+                    SettingsMenuPicker(
+                        selection: self.$settings.nativeGaugeStyle,
+                        options: NativeGaugeStyle.allCases,
+                        label: { Text(L("Style")) },
+                        optionLabel: { Text($0.label) })
+                } footer: {
+                    if self.settings.usesNativeGauges {
+                        SettingsSectionFooter(
+                            L("Each enabled service has its own gauge. Manage services in the sidebar."))
+                    }
+                }
+            }
+
+            if !self.settings.usesNativeGauges {
+                Section {
+                    SettingsMenuPicker(
+                        selection: self.$settings.menuBarIconStyle,
+                        options: MenuBarSettingsMenuOptions.iconStyles,
+                        label: {
+                            SettingsRowLabel(
+                                L("menu_bar_style_title"),
+                                subtitle: L("menu_bar_style_subtitle"))
+                        },
+                        optionLabel: { style in
+                            Text(NativeGaugeConfiguration.isEnabled ? "\(L("Legacy")) · \(style.label)" : style.label)
+                        })
+
+                    Toggle(isOn: self.$settings.menuBarHighContrastOnInactiveDisplays) {
                         SettingsRowLabel(
-                            L("menu_bar_style_title"),
-                            subtitle: L("menu_bar_style_subtitle"))
-                    },
-                    optionLabel: { style in
-                        Text(style.label)
-                    })
+                            L("menu_bar_inactive_display_contrast_title"),
+                            subtitle: "\(MenuBarIconStyle.iconAndPercent.label): "
+                                + L("menu_bar_inactive_display_contrast_subtitle"))
+                    }
+                    .disabled(!Self.inactiveDisplayContrastAvailable(for: self.settings.menuBarIconStyle))
 
-                Toggle(isOn: self.$settings.menuBarHighContrastOnInactiveDisplays) {
-                    SettingsRowLabel(
-                        L("menu_bar_inactive_display_contrast_title"),
-                        subtitle: "\(MenuBarIconStyle.iconAndPercent.label): "
-                            + L("menu_bar_inactive_display_contrast_subtitle"))
-                }
-                .disabled(!Self.inactiveDisplayContrastAvailable(for: self.settings.menuBarIconStyle))
-
-                Toggle(isOn: self.$settings.menuBarColorPace) {
-                    SettingsRowLabel(
-                        L("Color Pace Indicator"),
-                        subtitle: paceColorSubtitle)
-                }
-                .disabled(self.settings.menuBarIconStyle != .iconAndPercent)
-
-                SettingsMenuPicker(
-                    selection: self.$settings.menuBarPaceReservePositive,
-                    options: [false, true],
-                    label: { Text(L("Pace sign")) },
-                    optionLabel: { reservePositive in
-                        Text(reservePositive ? L("Reserve is +") : L("Ahead of pace is +"))
-                    })
+                    Toggle(isOn: self.$settings.menuBarColorPace) {
+                        SettingsRowLabel(
+                            L("Color Pace Indicator"),
+                            subtitle: paceColorSubtitle)
+                    }
                     .disabled(self.settings.menuBarIconStyle != .iconAndPercent)
 
-                Toggle(isOn: self.$settings.menuBarColorByProvider) {
-                    Text(L("Color by provider"))
-                }
-            } header: {
-                Text(L("section_icon"))
-            }
+                    SettingsMenuPicker(
+                        selection: self.$settings.menuBarPaceReservePositive,
+                        options: [false, true],
+                        label: { Text(L("Pace sign")) },
+                        optionLabel: { reservePositive in
+                            Text(reservePositive ? L("Reserve is +") : L("Ahead of pace is +"))
+                        })
+                        .disabled(self.settings.menuBarIconStyle != .iconAndPercent)
 
-            Section {
-                MenuBarLayoutEditor(settings: self.settings, store: self.store)
-                    .disabled(self.settings.menuBarIconStyle != .iconAndPercent)
-            } header: {
-                Text(L("menu_bar_layout_title"))
-            } footer: {
-                SettingsSectionFooter(L("menu_bar_layout_footer"))
-            }
-
-            Section {
-                Toggle(isOn: self.$settings.mergeIcons) {
-                    SettingsRowLabel(L("merge_icons_title"), subtitle: L("merge_icons_subtitle"))
+                    Toggle(isOn: self.$settings.menuBarColorByProvider) {
+                        Text(L("Color by provider"))
+                    }
+                } header: {
+                    Text(L("section_icon"))
                 }
 
-                SettingsMenuPicker(
-                    selection: Binding(
-                        get: { self.mergedIconPresentation.effectiveStyle },
-                        set: { self.settings.mergedIconDisplayStyle = $0 }),
-                    options: MenuBarSettingsMenuOptions.mergedIconStyles,
-                    label: {
-                        SettingsRowLabel(L("merged_icon_style_title"), subtitle: L("merged_icon_style_subtitle"))
-                    },
-                    optionLabel: { style in
-                        Text(style.label)
-                    })
-                    .disabled(!self.mergedIconPresentation.canStack)
+                Section {
+                    MenuBarLayoutEditor(settings: self.settings, store: self.store)
+                        .disabled(self.settings.menuBarIconStyle != .iconAndPercent)
+                } header: {
+                    Text(L("menu_bar_layout_title"))
+                } footer: {
+                    SettingsSectionFooter(L("menu_bar_layout_footer"))
+                }
 
-                if let pair = self.mergedIconPresentation.stackedProviders {
-                    self.stackedRowProviderPicker(
-                        title: L("merge_icon_stacked_top_provider_title"),
+                Section {
+                    Toggle(isOn: self.$settings.mergeIcons) {
+                        SettingsRowLabel(L("merge_icons_title"), subtitle: L("merge_icons_subtitle"))
+                    }
+
+                    SettingsMenuPicker(
                         selection: Binding(
-                            get: { self.mergedIconPresentation.topSelection },
-                            set: { self.settings.mergeIconStackedTopProvider = $0 }),
-                        excluding: self.mergedIconPresentation.bottomSelection,
-                        automaticProvider: pair.top)
-                    self.stackedRowProviderPicker(
-                        title: L("merge_icon_stacked_bottom_provider_title"),
-                        selection: Binding(
-                            get: { self.mergedIconPresentation.bottomSelection },
-                            set: { self.settings.mergeIconStackedBottomProvider = $0 }),
-                        excluding: self.mergedIconPresentation.topSelection,
-                        automaticProvider: pair.bottom)
+                            get: { self.mergedIconPresentation.effectiveStyle },
+                            set: { self.settings.mergedIconDisplayStyle = $0 }),
+                        options: MenuBarSettingsMenuOptions.mergedIconStyles,
+                        label: {
+                            SettingsRowLabel(L("merged_icon_style_title"), subtitle: L("merged_icon_style_subtitle"))
+                        },
+                        optionLabel: { style in
+                            Text(style.label)
+                        })
+                        .disabled(!self.mergedIconPresentation.canStack)
+
+                    if let pair = self.mergedIconPresentation.stackedProviders {
+                        self.stackedRowProviderPicker(
+                            title: L("merge_icon_stacked_top_provider_title"),
+                            selection: Binding(
+                                get: { self.mergedIconPresentation.topSelection },
+                                set: { self.settings.mergeIconStackedTopProvider = $0 }),
+                            excluding: self.mergedIconPresentation.bottomSelection,
+                            automaticProvider: pair.top)
+                        self.stackedRowProviderPicker(
+                            title: L("merge_icon_stacked_bottom_provider_title"),
+                            selection: Binding(
+                                get: { self.mergedIconPresentation.bottomSelection },
+                                set: { self.settings.mergeIconStackedBottomProvider = $0 }),
+                            excluding: self.mergedIconPresentation.topSelection,
+                            automaticProvider: pair.bottom)
+                    }
+
+                    SettingsMenuPicker(
+                        selection: self.$settings.switcherRowsOption,
+                        options: MenuBarSettingsMenuOptions.switcherRows,
+                        label: { SettingsRowLabel(L("switcher_rows_title")) },
+                        optionLabel: { option in
+                            Text(option.label)
+                        })
+                        .disabled(!self.settings.mergeIcons)
+
+                    UnifiedIconSourcePicker(selection: self.$settings.unifiedIconSource)
+                        .disabled(!self.settings.mergeIcons || self.mergedIconPresentation.effectiveStyle == .stacked)
+
+                    self.overviewProviderRow
+                        .disabled(!self.settings.mergeIcons)
+                } header: {
+                    Text(L("section_combined_icon"))
                 }
 
-                SettingsMenuPicker(
-                    selection: self.$settings.switcherRowsOption,
-                    options: MenuBarSettingsMenuOptions.switcherRows,
-                    label: { SettingsRowLabel(L("switcher_rows_title")) },
-                    optionLabel: { option in
-                        Text(option.label)
-                    })
-                    .disabled(!self.settings.mergeIcons)
-
-                UnifiedIconSourcePicker(selection: self.$settings.unifiedIconSource)
-                    .disabled(!self.settings.mergeIcons || self.mergedIconPresentation.effectiveStyle == .stacked)
-
-                self.overviewProviderRow
-                    .disabled(!self.settings.mergeIcons)
-            } header: {
-                Text(L("section_combined_icon"))
-            }
-
-            Section {
-                Toggle(isOn: self.$settings.randomBlinkEnabled) {
-                    SettingsRowLabel(L("surprise_me_title"), subtitle: L("surprise_me_subtitle"))
+                Section {
+                    Toggle(isOn: self.$settings.randomBlinkEnabled) {
+                        SettingsRowLabel(L("surprise_me_title"), subtitle: L("surprise_me_subtitle"))
+                    }
+                    // Brand icons (including stacked rows, which require them) never draw blink frames.
+                    .disabled(self.settings.menuBarShowsBrandIconWithPercent)
+                } header: {
+                    Text(L("section_animation"))
                 }
-                // Brand icons (including stacked rows, which require them) never draw blink frames.
-                .disabled(self.settings.menuBarShowsBrandIconWithPercent)
-            } header: {
-                Text(L("section_animation"))
             }
         }
         .formStyle(.grouped)

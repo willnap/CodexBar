@@ -176,6 +176,10 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
     /// total derived from them is a lower bound, so no surface may present them as complete.
     public let historyScanIsPartial: Bool
     public var historyLabel: String?
+    /// Calendar of the source's daily buckets; nil for legacy reports without an established source zone.
+    public internal(set) var bucketTimeZoneIdentifier: String?
+    /// Inclusive terminal source bucket, independent of the time this report was observed.
+    public internal(set) var coverageThrough: Date?
     public var reportingPeriod: CostReportingPeriod?
     /// Provider-metered spend over the same window as `last30DaysCostUSD` — what the plan
     /// actually deducts, as opposed to the API-rate estimate. Only some providers (e.g. Cursor)
@@ -209,6 +213,8 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
         historyCoverageIsEstablished: Bool = true,
         historyScanIsPartial: Bool = false,
         historyLabel: String? = nil,
+        bucketTimeZoneIdentifier: String? = nil,
+        coverageThrough: Date? = nil,
         meteredCostUSD: Double? = nil,
         costProvenance: CostProvenance = .unknown,
         credentialScopeFingerprint: String? = nil,
@@ -231,6 +237,8 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
         self.historyCoverageIsEstablished = historyCoverageIsEstablished
         self.historyScanIsPartial = historyScanIsPartial
         self.historyLabel = historyLabel
+        self.bucketTimeZoneIdentifier = bucketTimeZoneIdentifier
+        self.coverageThrough = coverageThrough
         self.meteredCostUSD = meteredCostUSD
         self.costProvenance = costProvenance
         self.credentialScopeFingerprint = credentialScopeFingerprint
@@ -254,6 +262,10 @@ public struct CostUsageTokenSnapshot: Sendable, Equatable {
     }
 
     public func summary(forLastDays requestedDays: Int, calendar: Calendar = .current) -> CostUsageWindowSummary {
+        var calendar = calendar
+        if let identifier = self.bucketTimeZoneIdentifier, let zone = TimeZone(identifier: identifier) {
+            calendar.timeZone = zone
+        }
         let days = max(1, requestedDays)
         let entries = CostReportingPeriod.rolling(days: days).entries(
             self.daily,
@@ -545,6 +557,8 @@ public struct CostUsageDailyReport: Sendable, Codable {
         public let pricedRequestCount: Int?
         public let unmeteredRequestCount: Int?
         public let estimatedRequestCount: Int?
+        /// Known monetary subtotal has missing prices, independently of reported request counts.
+        public let costIsPartial: Bool?
 
         package var hasOnlyIncompleteRequests: Bool {
             self.incompleteRequestCount > 0 && self.totalTokens == nil && self.costUSD == nil
@@ -620,6 +634,7 @@ public struct CostUsageDailyReport: Sendable, Codable {
             case pricedRequestCount
             case unmeteredRequestCount
             case estimatedRequestCount
+            case costIsPartial
         }
 
         public init(from decoder: Decoder) throws {
@@ -649,6 +664,7 @@ public struct CostUsageDailyReport: Sendable, Codable {
             self.pricedRequestCount = try container.decodeIfPresent(Int.self, forKey: .pricedRequestCount)
             self.unmeteredRequestCount = try container.decodeIfPresent(Int.self, forKey: .unmeteredRequestCount)
             self.estimatedRequestCount = try container.decodeIfPresent(Int.self, forKey: .estimatedRequestCount)
+            self.costIsPartial = try container.decodeIfPresent(Bool.self, forKey: .costIsPartial)
         }
 
         public init(
@@ -666,7 +682,8 @@ public struct CostUsageDailyReport: Sendable, Codable {
             unpricedRequestCount: Int? = nil,
             unmeteredRequestCount: Int? = nil,
             estimatedRequestCount: Int? = nil,
-            pricedRequestCount: Int? = nil)
+            pricedRequestCount: Int? = nil,
+            costIsPartial: Bool? = nil)
         {
             self.date = date
             self.inputTokens = inputTokens
@@ -683,6 +700,7 @@ public struct CostUsageDailyReport: Sendable, Codable {
             self.unmeteredRequestCount = unmeteredRequestCount
             self.estimatedRequestCount = estimatedRequestCount
             self.pricedRequestCount = pricedRequestCount
+            self.costIsPartial = costIsPartial
         }
 
         public func encode(to encoder: Encoder) throws {
@@ -702,6 +720,7 @@ public struct CostUsageDailyReport: Sendable, Codable {
             try container.encodeIfPresent(self.pricedRequestCount, forKey: .pricedRequestCount)
             try container.encodeIfPresent(self.unmeteredRequestCount, forKey: .unmeteredRequestCount)
             try container.encodeIfPresent(self.estimatedRequestCount, forKey: .estimatedRequestCount)
+            try container.encodeIfPresent(self.costIsPartial, forKey: .costIsPartial)
         }
 
         private static func decodeModelsUsed(from container: KeyedDecodingContainer<CodingKeys>) -> [String]? {

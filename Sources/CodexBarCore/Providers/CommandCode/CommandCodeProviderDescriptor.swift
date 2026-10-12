@@ -45,7 +45,9 @@ public enum CommandCodeProviderDescriptor {
                 noDataMessage: { "Command Code cost summary is not yet supported." }),
             pace: .calendarMonthResetWindow,
             presentation: ProviderUsagePresentation(
-                primaryBindingQuotaLanes: [.secondary]),
+                primaryBindingQuotaLanes: [.secondary],
+                // The Monthly lane and account line already show the grant spend and wallet.
+                menuCard: ProviderMenuCardPresentation(costVisibilityResolver: { _ in false })),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .web],
                 pipeline: ProviderFetchPipeline(resolveStrategies: { _ in [CommandCodeWebFetchStrategy()] })),

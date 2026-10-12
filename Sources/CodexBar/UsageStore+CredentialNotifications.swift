@@ -59,8 +59,12 @@ extension UsageStore {
         case let .success(value):
             guard value.diagnostic == nil, value.strategyKind != .localProbe,
                   !value.sourceLabel.lowercased().contains("cache") else { return }
+            self.nativeAuthenticationFailures.remove(key)
             self.removeCredentialNotification(for: key)
         case let .failure(error):
+            if ProviderCredentialFailure.isAuthenticationFailure(error) {
+                self.nativeAuthenticationFailures.insert(key)
+            }
             guard self.settings.credentialExpiryNotificationsEnabled,
                   ProviderCredentialFailure.isAuthenticationFailure(error),
                   self.credentialNotificationEpisodes[key] == nil else { return }

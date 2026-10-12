@@ -2509,3 +2509,112 @@
 "Pace sign" = "Kullanım hızı işareti";
 "Ahead of pace is +" = "Hızın üzerinde kullanım +";
 "Reserve is +" = "Rezerv +";
+
+"Sign In…" = "Sign In…";
+
+"Connect…" = "Connect…";
+
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+
+// Native gauge settings and states.
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Custom gauges" = "Custom gauges";
+"Each enabled service has its own gauge. Manage services in the sidebar." = "Each enabled service has its own gauge. Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Legacy" = "Legacy";
+"Legacy icons" = "Legacy icons";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Style" = "Style";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+
+/* Settings search and provider ordering */
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+
+// Native orbit popup
+"Available" = "Kullanılabilir";
+"24h" = "24h";
+"No history yet" = "Henüz geçmiş yok";
+"Recorded available usage" = "Kaydedilen kullanılabilir kullanım";
+
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+
+"Local usage totals" = "Local usage totals";
+
+"Time period" = "Dönem";
+
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Tüm hesapların geçmişi, tokenları ve harcamaları için dönem. Kota göstergeleri mevcut kullanılabilirliği gösterir.";
+
+"Active %@ account" = "Etkin %@ hesabı";
+
+"Use in %@" = "%@ içinde kullan";
+
+"Use this account in %@" = "Bu hesabı %@ içinde kullan";
+
+"Use %@ in %@" = "%@ hesabını %@ içinde kullan";
+
+"Last updated %@" = "Son güncelleme %@";
+
+"No observations" = "Gözlem yok";
+
+"History begins with recorded usage. Missing time is left empty." = "Geçmiş, kaydedilen kullanım verileriyle başlar. Veri olmayan dönemler boş bırakılır.";
+
+"native_orbit_range_help" = "Tüm hesapların geçmişi, tokenları ve harcamaları için dönem. Kota göstergeleri mevcut kullanılabilirliği gösterir.";
+
+"1d" = "1 gün";
+"<1m ago" = "<1 dk önce";
+"Auto switch" = "Otomatik geçiş";
+"Now" = "Şimdi";
+"Updating…" = "Güncelleniyor…";
+
+"Local Claude archive" = "Yerel Claude arşivi";
+
+"Account not recorded" = "Hesap kaydedilmemiş";
+
+"Anonymous observations from this provider. No account identity was recorded." = "Bu sağlayıcıdan anonim ölçümler. Hesap kimliği kaydedilmemiş.";
+
+"History begins with recorded usage." = "Geçmiş, kaydedilen kullanımla başlar.";
+
+"%d observations · %d/%d days" = "%d gözlem · %d/%d gün";
+
+"No observations in this period" = "Bu dönemde gözlem yok";
+
+"Last observed %@" = "Son gözlem %@";
+
+"First observed %@" = "İlk gözlem %@";
+
+"Connecting lines hold the last recorded value." = "Bağlantı çizgileri son kaydedilen değeri korur.";
+
+"Local Codex archive" = "Yerel Codex arşivi";
+
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Oturum günlükleri önbellekteki kota değerlerini tekrarlayabilir. Hesap kimliği kaydedilmez.";
+
+"%ds ago" = "%dsn önce";
+
+"Local Kimi archive" = "Yerel Kimi arşivi";
+"Lines connect nearby observations. Gaps have no recorded data." = "Çizgiler, zaman olarak yakın ölçümleri birleştirir. Boşluklarda kaydedilmiş veri yoktur.";
+"native_refresh_timed_out" = "Yenileme beklenenden uzun sürüyor. Arka planda devam ediyor.";
+"native_orbit_range_day" = "G";
+"native_orbit_range_week" = "H";
+"native_orbit_range_month" = "A";
+"Last 7 days" = "Son 7 gün";

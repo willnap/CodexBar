@@ -53,16 +53,21 @@ interface CodexBarCostSnapshot {
   resetsAt?: Date | string | null;
   nextRegenAmount?: number | null;
   balance?: number | null;
+  balanceUpdatedAt?: Date | string | null;
+  /** True when the measured wallet does not establish a spending total. */
+  usageIsUnavailable?: boolean | null;
 }
 
 interface CodexBarCostUsageEntry {
   date: string;
-  inputTokens: number;
-  outputTokens: number;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  /** Independently measured aggregate tokens, including any additional token classes. */
+  totalTokens?: number | null;
   /** Independent reported count; may exceed outputTokens and is not added to input + output totals. */
   reasoningTokens?: number | null;
-  requests: number;
-  cost: number;
+  requests?: number | null;
+  cost?: number | null;
   /** Portion of cost that is estimated rather than deducted by the provider. */
   estimatedCost?: number | null;
   model?: string | null;
@@ -72,6 +77,16 @@ interface CodexBarCostUsageSnapshot {
   currency: string;
   historyDays: number;
   historyLabel?: string | null;
+  /** False for source-period aggregates that do not establish daily coverage. */
+  historyCoverageIsEstablished?: boolean;
+  /** Source daily-bucket calendar, defaulting to UTC. */
+  bucketTimeZoneIdentifier?: string;
+  /** Original provider observation time, when returned by the source. */
+  updatedAt?: Date | string | null;
+  /** Independently measured source-period totals; does not manufacture daily entries. */
+  totals?: Omit<CodexBarCostUsageEntry, "date" | "model">;
+  /** Supported metrics establish zero for an empty, complete daily report. */
+  metrics?: { totalTokens?: boolean; requests?: boolean; cost?: boolean };
   /** Inclusive YYYY-MM-DD end of the reported window. */
   windowEnd: string;
   entries: CodexBarCostUsageEntry[];

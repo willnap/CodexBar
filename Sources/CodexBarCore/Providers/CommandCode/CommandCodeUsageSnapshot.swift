@@ -83,12 +83,38 @@ public struct CommandCodeUsageSnapshot: Sendable {
             primary: self.fiveHourWindow,
             secondary: self.weeklyWindow,
             tertiary: monthly,
-            providerCost: nil,
+            providerCost: self.makeProviderCost(),
             commandCodeSubscriptionEnrichmentUnavailable: self.subscriptionEnrichmentUnavailable,
             commandCodeHasSubscriptionPlan: self.plan != nil,
             commandCodeMonthlyGrantDepleted: self.monthlyCreditsRemaining <= 0,
             updatedAt: self.updatedAt,
             identity: identity)
+    }
+
+    /// Monthly grant spend against its allocation plus the spendable wallet (grant remainder and top-ups).
+    /// Without a known allocation the wallet is still an observation, but it cannot establish spend.
+    private func makeProviderCost() -> ProviderCostSnapshot? {
+        guard self.monthlyCreditsRemaining.isFinite, self.purchasedCredits.isFinite else { return nil }
+        let balance = self.monthlyCreditsRemaining + self.purchasedCredits
+        guard let total = self.monthlyCreditsTotal, let used = self.monthlyCreditsUsed else {
+            return ProviderCostSnapshot(
+                used: 0,
+                limit: 0,
+                currencyCode: "USD",
+                balance: balance,
+                balanceUpdatedAt: self.updatedAt,
+                usageIsUnavailable: true,
+                updatedAt: self.updatedAt)
+        }
+        return ProviderCostSnapshot(
+            used: used,
+            limit: total,
+            currencyCode: "USD",
+            period: "Monthly",
+            resetsAt: self.billingPeriodEnd,
+            balance: balance,
+            balanceUpdatedAt: self.updatedAt,
+            updatedAt: self.updatedAt)
     }
 
     private func makeMonthlyWindow() -> RateWindow? {

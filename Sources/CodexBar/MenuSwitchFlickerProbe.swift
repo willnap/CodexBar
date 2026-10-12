@@ -2,6 +2,7 @@ import AppKit
 import CoreGraphics
 import Foundation
 import ImageIO
+import ScreenCaptureKit
 import UniformTypeIdentifiers
 
 /// Self-driving diagnostic for provider tab-switch rendering artifacts. Inert
@@ -15,7 +16,7 @@ import UniformTypeIdentifiers
 ///   Swift Concurrency main-actor jobs do not run; all main-thread driving uses
 ///   a common-modes `Timer`.
 /// - The interesting frames appear while the main thread is busy rebuilding the
-///   menu, so captures run on a background thread: `CGWindowListCreateImage`
+///   menu, so captures run on a background thread: ScreenCaptureKit
 ///   reads the WindowServer's current composite without touching AppKit.
 @MainActor
 enum MenuSwitchFlickerProbe {
@@ -141,11 +142,7 @@ enum MenuSwitchFlickerProbe {
                 let elapsed = Double(DispatchTime.now().uptimeNanoseconds - self.start.uptimeNanoseconds)
                     / 1_000_000
                 // Include framing so the window shadow / material edge is captured too.
-                let image = CGWindowListCreateImage(
-                    .null,
-                    .optionIncludingWindow,
-                    self.windowID,
-                    [.bestResolution])
+                let image = self.captureWindowImage()
                 let bounds = self.currentBounds() ?? .null
                 var wroteFrame = false
                 if let image {
@@ -159,6 +156,34 @@ enum MenuSwitchFlickerProbe {
                 self.lock.unlock()
                 usleep(3000)
             }
+        }
+
+        private final class CaptureResult: @unchecked Sendable {
+            var image: CGImage?
+            let completion = DispatchSemaphore(value: 0)
+        }
+
+        private func captureWindowImage() -> CGImage? {
+            let result = CaptureResult()
+            SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, _ in
+                guard let window = content?.windows.first(where: { $0.windowID == self.windowID }) else {
+                    result.completion.signal()
+                    return
+                }
+                let configuration = SCStreamConfiguration()
+                configuration.width = max(1, Int(window.frame.width * 2))
+                configuration.height = max(1, Int(window.frame.height * 2))
+                configuration.showsCursor = false
+                SCScreenshotManager.captureImage(
+                    contentFilter: SCContentFilter(desktopIndependentWindow: window),
+                    configuration: configuration)
+                { image, _ in
+                    result.image = image
+                    result.completion.signal()
+                }
+            }
+            result.completion.wait()
+            return result.image
         }
 
         private func currentBounds() -> CGRect? {

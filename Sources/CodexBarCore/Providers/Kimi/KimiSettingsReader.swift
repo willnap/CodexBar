@@ -86,13 +86,17 @@ public enum KimiSettingsReader {
         region: KimiRegion,
         environment: [String: String]) -> KimiCodeOAuthCredential?
     {
-        // The CLI file has no issuing-host metadata; keep its historical China-only scope.
-        guard region == .china, !self.hasCodeEndpointOverride(environment: environment) else { return nil }
-        let url = self.kimiCodeHomeURL(environment: environment)
-            .appendingPathComponent("credentials", isDirectory: true)
-            .appendingPathComponent("kimi-code.json")
+        guard let url = self.kimiCodeCredentialURL(region: region, environment: environment) else { return nil }
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(KimiCodeOAuthCredential.self, from: data)
+    }
+
+    static func kimiCodeCredentialURL(region: KimiRegion, environment: [String: String]) -> URL? {
+        // This shared CLI file has no issuing-host metadata. Never send it to an override or another region.
+        guard region == .china, !self.hasCodeEndpointOverride(environment: environment) else { return nil }
+        return self.kimiCodeHomeURL(environment: environment)
+            .appendingPathComponent("credentials", isDirectory: true)
+            .appendingPathComponent("kimi-code.json")
     }
 
     private static func isKimiCodeCredentialFresh(_ credential: KimiCodeOAuthCredential, now: Date) -> Bool {

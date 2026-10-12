@@ -33,6 +33,7 @@ extension UsageStore {
             self.planUtilizationHistoryLoaded = true
             self.planUtilizationHistoryRevision &+= 1
             _ = self.restoreClaudeHistorySnapshotIfNeeded()
+            self.scheduleNativeClaudeDesktopHistoryRecovery()
         }
     }
 }

@@ -4,15 +4,19 @@ struct KimiUsageResponse: Codable {
     let usages: [KimiUsage]
 }
 
-struct KimiCodeAPIUsageResponse: Codable {
+struct KimiCodeAPIUsageResponse: Decodable {
     let usage: KimiUsageDetail?
     let usages: KimiCodeUsagePools?
     let limits: [KimiRateLimit]?
     let user: User?
     let version: String?
+    let boosterWallet: KimiBoosterWallet?
     private let versionIsMalformed: Bool
 
-    private enum CodingKeys: String, CodingKey { case usage, usages, limits, user, version }
+    private enum CodingKeys: String, CodingKey {
+        case usage, usages, limits, user, version, boosterWallet
+        case boosterWalletSnake = "booster_wallet"
+    }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -21,6 +25,8 @@ struct KimiCodeAPIUsageResponse: Codable {
         self.limits = try container.decodeIfPresent([KimiRateLimit].self, forKey: .limits)
         // Optional membership schema drift must not reject otherwise valid Code usage.
         self.user = try? container.decode(User.self, forKey: .user)
+        self.boosterWallet = (try? container.decode(KimiBoosterWallet.self, forKey: .boosterWallet))
+            ?? (try? container.decode(KimiBoosterWallet.self, forKey: .boosterWalletSnake))
         do {
             self.version = try container.decodeIfPresent(String.self, forKey: .version)
             self.versionIsMalformed = false

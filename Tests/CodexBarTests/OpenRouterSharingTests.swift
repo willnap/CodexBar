@@ -16,6 +16,11 @@ struct OpenRouterSharingTests {
         #expect(group.totalTokens == 900)
         #expect(group.tokenMix.reasoningTokens == 140)
         #expect(group.totalCost == 0.9375)
+        let today = CostUsageBucketTimeZone.calendar(identifier: "UTC")
+            .startOfDay(for: OpenRouterReasoningTestSupport.now)
+        let currentDay = try #require(dashboard.tokenActivity.first { $0.day == today })
+        #expect(currentDay.totalTokens == nil)
+        #expect(!currentDay.isScanned)
         #expect(Set(group.models.map(\.modelName)) == [
             "openai/gpt-4o", "acme-namespace/gpt-private-fixture",
             "anthropic/claude-sonnet-4", "private-vendor/unknown-fixture",
@@ -52,6 +57,37 @@ struct OpenRouterSharingTests {
         #expect(text.contains("OpenRouter"))
         for raw in group.models.map(\.modelName) + ["acme-namespace", "private-vendor", "endpoint-"] {
             #expect(!text.contains(raw))
+        }
+    }
+
+    @Test(arguments: BundledPluginTestSupport.engines)
+    func `completed activity window survives receipt without inventing current day usage`(
+        engine: ProviderPluginEngineKind) async throws
+    {
+        for body in [OpenRouterReasoningTestSupport.activityBody, #"{"data":[]}"#] {
+            let usage = try #require(try await OpenRouterReasoningTestSupport.snapshot(
+                engine: engine, activityBody: body).costUsage)
+            #expect(usage.historyCoverageIsEstablished)
+            #expect(usage.updatedAt == OpenRouterReasoningTestSupport.now)
+            let calendar = CostUsageBucketTimeZone.calendar(identifier: "UTC")
+            let expectedEnd = try #require(calendar.date(
+                byAdding: .day,
+                value: -1,
+                to: calendar.startOfDay(for: usage.updatedAt)))
+            #expect(usage.coverageThrough.map { calendar.startOfDay(for: $0) } == expectedEnd)
+            let receipt = try #require(NativeOrbitUsageObservation(usage))
+            let decoded = try JSONDecoder().decode(
+                NativeOrbitUsageObservation.self, from: JSONEncoder().encode(receipt))
+            let restored = try #require(decoded.snapshot(at: usage.updatedAt))
+            #expect(restored.coverageThrough == usage.coverageThrough)
+            for report in [usage, restored] {
+                let summary = NativeOrbitAccountMetrics(usage: report)
+                    .summary(days: 1, now: usage.updatedAt, calendar: calendar)
+                #expect(summary.tokens == nil)
+                #expect(summary.requests == nil)
+                #expect(summary.cost == nil)
+                #expect(summary.isPartial)
+            }
         }
     }
 }

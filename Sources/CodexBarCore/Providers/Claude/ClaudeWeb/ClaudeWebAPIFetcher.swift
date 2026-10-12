@@ -742,7 +742,8 @@ extension ClaudeWebAPIFetcher {
         if let sourceKey = extraRateParse.sourceKeys["claude-routines"] {
             logger?("Usage API extra window key matched: routines=\(sourceKey)")
         }
-        let extraUsageCost = ClaudeWebExtraUsageCost.parse(from: json["extra_usage"])
+        let extraUsageCost = ClaudeMonthlySpend.parse(json["spend"], updatedAt: Date())
+            ?? ClaudeWebExtraUsageCost.parse(from: json["extra_usage"])
         let resetCredits = Self.parseResetCredits(from: json["cedar_ember"])
 
         return WebUsageData(

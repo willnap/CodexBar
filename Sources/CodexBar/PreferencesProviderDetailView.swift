@@ -117,7 +117,8 @@ struct ProviderDetailView<SupplementaryContent: View>: View {
     }
 
     private var menuBarSettingsPickers: [ProviderSettingsPickerDescriptor] {
-        self.settingsPickers.filter { $0.placement == .menuBar }
+        if NativeGaugeConfiguration.isEnabled, self.store.settings.nativeGaugeStyle != .legacy { return [] }
+        return self.settingsPickers.filter { $0.placement == .menuBar }
     }
 
     private var connectionSettingsPickers: [ProviderSettingsPickerDescriptor] {
@@ -247,7 +248,9 @@ struct ProviderDetailView<SupplementaryContent: View>: View {
                 self.supplementarySettingsContent
             }
 
-            ProviderAccentColorSettingsView(provider: self.provider, settings: self.store.settings)
+            if !NativeGaugeConfiguration.isEnabled || self.store.settings.nativeGaugeStyle == .legacy {
+                ProviderAccentColorSettingsView(provider: self.provider, settings: self.store.settings)
+            }
 
             ProviderQuotaWarningSettingsView(provider: self.provider, settings: self.store.settings)
 
@@ -359,7 +362,10 @@ private struct ProviderDetailBrandIcon: View {
     let provider: UsageProvider
 
     var body: some View {
-        if let brand = ProviderBrandIcon.image(for: self.provider) {
+        if NativeGaugeConfiguration.isEnabled {
+            NativeProviderSymbolView(provider: self.provider, size: 28)
+                .foregroundStyle(.secondary)
+        } else if let brand = ProviderBrandIcon.image(for: self.provider) {
             Image(nsImage: brand)
                 .resizable()
                 .scaledToFit()
@@ -386,7 +392,7 @@ struct ProviderDetailInfoRows: View {
 
     var body: some View {
         if self.showsAccountInfo {
-            ProviderDetailInfoRow(label: L("Source"), value: self.store.sourceLabel(for: self.provider))
+            ProviderDetailInfoRow(label: L("Source"), value: self.sourceText)
         }
         if let versionText {
             ProviderDetailInfoRow(label: L("Version"), value: versionText)
@@ -419,7 +425,17 @@ struct ProviderDetailInfoRows: View {
         }
     }
 
-    private var updatedText: String {
+    var sourceText: String {
+        if let account = self.store.claudeSwapSettingsAccount(for: self.provider) {
+            return account.sourceLabel ?? L("Unavailable")
+        }
+        return self.store.sourceLabel(for: self.provider)
+    }
+
+    var updatedText: String {
+        if let account = self.store.claudeSwapSettingsAccount(for: self.provider) {
+            return account.snapshot.map { UsageFormatter.updatedString(from: $0.updatedAt) } ?? L("Not fetched yet")
+        }
         if let updated = self.store.snapshot(for: self.provider.instanceID)?.updatedAt {
             return UsageFormatter.updatedString(from: updated)
         }
@@ -517,6 +533,13 @@ struct ProviderMetricsInlineView: View {
     var body: some View {
         let infoRows = Self.infoRows(for: self.model, openAIWebDiagnostic: self.openAIWebDiagnostic)
         let contentState = ContentState(model: self.model, infoRows: infoRows)
+
+        if let lastKnownUsageText = self.model.lastKnownUsageText {
+            Text(lastKnownUsageText)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
 
         if contentState.showsPlaceholder {
             Text(self.placeholderText)

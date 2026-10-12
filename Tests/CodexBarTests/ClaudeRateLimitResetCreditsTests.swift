@@ -62,6 +62,18 @@ struct ClaudeRateLimitResetCreditsTests {
     }
 
     @Test
+    func `used reset icons retain provider confirmed totals without treating expiry as redemption`() throws {
+        let now = Self.wholeSecondNow()
+        let resets = try #require(Self.parse(Self.eligibleBlock([
+            Self.grant(id: "remaining", resetsLeft: 1, endsIn: 86400, now: now)
+                .replacingOccurrences(of: "\"resets_total\": 1", with: "\"resets_total\": 3"),
+            Self.grant(id: "expired", resetsLeft: 1, endsIn: -60, now: now),
+        ])))
+        #expect(resets.availableExpirations(at: now).count == 1)
+        #expect(resets.usedExpirations.count == 2)
+    }
+
+    @Test
     func `rejected reset opt-in retries once without it and keeps usage windows`() async throws {
         let now = Self.wholeSecondNow()
         let block = Self.eligibleBlock([Self.grant(id: "grant_a", resetsLeft: 1, endsIn: 86400, now: now)])
@@ -227,21 +239,46 @@ struct ClaudeRateLimitResetCreditsTests {
     }
 
     @Test
-    func `ineligible absent or unreadable block shows nothing`() throws {
+    func `absent or unreadable block shows nothing`() throws {
         let now = Self.wholeSecondNow()
         let grant = Self.grant(id: "grant_a", resetsLeft: 1, endsIn: 86400, now: now)
         for block in [
-            #"{"eligible": false, "ineligible_reason": "surface", "grants": [\#(grant)]}"#,
             #"{"grants": [\#(grant)]}"#,
             #"{"eligible": null, "grants": [\#(grant)]}"#,
             #"{"eligible": "yes", "grants": [\#(grant)]}"#,
-            Self.eligibleBlock([]),
             "null",
             "[]",
             nil,
         ] {
             let usage = try Self.parseUsage(block)
             #expect(usage.resetCredits == nil)
+            #expect(usage.sessionPercentUsed == 12)
+        }
+    }
+
+    @Test
+    func `only a received grant list establishes a zero inventory`() throws {
+        let now = Self.wholeSecondNow()
+        let grant = Self.grant(id: "grant_a", resetsLeft: 1, endsIn: 86400, now: now)
+        let expired = Self.grant(id: "expired", resetsLeft: 1, endsIn: -60, now: now)
+        // Ineligible accounts have no inventory and a missing grant list was never received: both stay unknown.
+        for block in [
+            #"{"eligible": false, "ineligible_reason": "surface", "grants": [\#(grant)]}"#,
+            #"{"eligible": false}"#,
+            #"{"eligible": true}"#,
+        ] {
+            let usage = try Self.parseUsage(block)
+            #expect(usage.resetCredits == nil)
+            #expect(usage.sessionPercentUsed == 12)
+        }
+        for block in [
+            Self.eligibleBlock([]),
+            Self.eligibleBlock([expired]),
+        ] {
+            let usage = try Self.parseUsage(block)
+            let resets = try #require(usage.resetCredits)
+            #expect(resets.availableExpirations(at: now).isEmpty)
+            #expect(resets.usedExpirations.isEmpty)
             #expect(usage.sessionPercentUsed == 12)
         }
     }

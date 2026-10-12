@@ -74,6 +74,9 @@ public enum AugmentProviderDescriptor {
             tokenCost: ProviderTokenCostConfig(
                 supportsTokenCost: false,
                 noDataMessage: { "Augment cost summary is not supported." }),
+            // The native extra-usage dial reads this credit balance; the legacy card keeps its quota rows only.
+            presentation: ProviderUsagePresentation(
+                menuCard: ProviderMenuCardPresentation(costVisibilityResolver: { _ in false })),
             fetchPlan: ProviderFetchPlan(
                 sourceModes: [.auto, .cli],
                 pipeline: ProviderFetchPipeline(resolveStrategies: { _ in

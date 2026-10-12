@@ -9,6 +9,7 @@ struct CodexAccountUsageSnapshot: Identifiable {
     let sourceLabel: String?
     let credits: CreditsSnapshot?
     let weeklyResetCandidate: CodexWeeklyResetPublicationCandidate?
+    let accountUsageHistory: NativeCodexAccountUsageHistory?
 
     init(
         account: CodexVisibleAccount,
@@ -16,7 +17,8 @@ struct CodexAccountUsageSnapshot: Identifiable {
         error: String?,
         sourceLabel: String?,
         credits: CreditsSnapshot? = nil,
-        weeklyResetCandidate: CodexWeeklyResetPublicationCandidate? = nil)
+        weeklyResetCandidate: CodexWeeklyResetPublicationCandidate? = nil,
+        accountUsageHistory: NativeCodexAccountUsageHistory? = nil)
     {
         self.id = account.id
         self.account = account
@@ -25,6 +27,7 @@ struct CodexAccountUsageSnapshot: Identifiable {
         self.sourceLabel = sourceLabel
         self.credits = credits
         self.weeklyResetCandidate = weeklyResetCandidate
+        self.accountUsageHistory = accountUsageHistory
     }
 }
 
@@ -120,6 +123,7 @@ struct FileCodexAccountUsageSnapshotStore: CodexAccountUsageSnapshotStoring, @un
         let sourceLabel: String?
         let credits: CreditsSnapshot?
         let weeklyResetCandidate: CodexWeeklyResetPublicationCandidate?
+        let accountUsageHistory: NativeCodexAccountUsageHistory?
     }
 
     private struct AccountIdentity: Codable, Equatable {
@@ -176,29 +180,58 @@ struct FileCodexAccountUsageSnapshotStore: CodexAccountUsageSnapshotStoring, @un
             guard record.accountIdentity?.matches(account) == true else { return nil }
             return CodexAccountUsageSnapshot(
                 account: account,
-                snapshot: Self.relabelSnapshot(record.snapshot, for: account),
+                snapshot: Self.relabelSnapshot(record.snapshot, for: account).map { snapshot in
+                    record.accountUsageHistory?.tokenSnapshot().map {
+                        snapshot.replacing(costUsage: .value($0))
+                    } ?? snapshot
+                },
                 error: record.error,
                 sourceLabel: record.sourceLabel,
                 credits: record.credits,
-                weeklyResetCandidate: Self.relabelCandidate(record.weeklyResetCandidate, for: account))
+                weeklyResetCandidate: Self.relabelCandidate(record.weeklyResetCandidate, for: account),
+                accountUsageHistory: record.accountUsageHistory?.tokenSnapshot() == nil
+                    ? nil : record.accountUsageHistory)
         }
     }
 
     func store(_ snapshots: [CodexAccountUsageSnapshot]) {
-        let payload = Payload(
-            version: Self.currentVersion,
-            records: snapshots.compactMap { snapshot in
-                let identity = AccountIdentity(account: snapshot.account)
-                guard identity.normalizedEmail != nil, identity.workspaceAccountID != nil else { return nil }
-                return Record(
-                    id: snapshot.id,
-                    accountIdentity: identity,
-                    snapshot: snapshot.snapshot,
-                    error: snapshot.error,
-                    sourceLabel: snapshot.sourceLabel,
-                    credits: snapshot.credits,
-                    weeklyResetCandidate: snapshot.weeklyResetCandidate)
-            })
+        // Dated account history cannot be reconstructed from every later partial response. Preserve an existing
+        // cache we cannot decode or validate, rather than replacing its unknown contents with a smaller snapshot.
+        var existingRecords: [Record] = []
+        if self.fileManager.fileExists(atPath: self.fileURL.path) {
+            guard let data = try? Data(contentsOf: self.fileURL),
+                  let existing = try? JSONDecoder().decode(Payload.self, from: data),
+                  existing.version == Self.currentVersion,
+                  existing.records.allSatisfy({
+                      $0.accountUsageHistory == nil || $0.accountUsageHistory?.tokenSnapshot() != nil
+                  }) else { return }
+            existingRecords = existing.records
+        }
+        let records: [Record] = snapshots.compactMap { snapshot in
+            let identity = AccountIdentity(account: snapshot.account)
+            guard identity.normalizedEmail != nil, identity.workspaceAccountID != nil else { return nil }
+            let previous = existingRecords.first {
+                $0.id == snapshot.id && $0.accountIdentity?.matches(snapshot.account) == true
+            }
+            return Record(
+                id: snapshot.id,
+                accountIdentity: identity,
+                snapshot: snapshot.snapshot,
+                error: snapshot.error,
+                sourceLabel: snapshot.sourceLabel,
+                credits: snapshot.credits,
+                weeklyResetCandidate: snapshot.weeklyResetCandidate,
+                accountUsageHistory: NativeCodexAccountUsageHistory.retainingStoredObservations(
+                    snapshot.accountUsageHistory, previous: previous?.accountUsageHistory))
+        }
+        // A missing inventory row is not an account deletion. Retain dated evidence under its original owner;
+        // a reused slot may contain another owner, but load still requires the exact email/workspace principal.
+        let archivedRecords = existingRecords.filter { existing in
+            existing.accountUsageHistory != nil && !snapshots.contains {
+                $0.id == existing.id && existing.accountIdentity?.matches($0.account) == true
+            }
+        }
+        let payload = Payload(version: Self.currentVersion, records: records + archivedRecords)
         let directory = self.fileURL.deletingLastPathComponent()
         do {
             if !self.fileManager.fileExists(atPath: directory.path) {

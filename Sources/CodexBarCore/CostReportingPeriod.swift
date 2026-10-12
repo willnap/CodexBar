@@ -104,9 +104,13 @@ extension CostUsageTokenSnapshot {
     /// Daily-backed provider reports can cover a billing cycle wider than the selected calendar window.
     public func selecting(_ period: CostReportingPeriod, now: Date, calendar: Calendar) -> Self {
         guard period == .monthToDate else { return self.reporting(period) }
+        var calendar = calendar
+        if let identifier = self.bucketTimeZoneIdentifier, let zone = TimeZone(identifier: identifier) {
+            calendar.timeZone = zone
+        }
         let bounds = period.bounds(now: now, calendar: calendar)
         let coverage = CostReportingPeriod.rolling(days: self.historyDays).bounds(
-            now: self.updatedAt,
+            now: self.coverageThrough ?? self.updatedAt,
             calendar: calendar)
         var result = CostUsageFetcher.tokenSnapshot(
             from: .init(data: period.entries(self.daily, now: now, calendar: calendar), summary: nil),
@@ -125,6 +129,8 @@ extension CostUsageTokenSnapshot {
             result.sessionRequests = 0
             result.last30DaysRequests = 0
         }
+        result.bucketTimeZoneIdentifier = self.bucketTimeZoneIdentifier
+        result.coverageThrough = self.coverageThrough
         return result
     }
 }

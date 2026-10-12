@@ -1741,6 +1741,57 @@ struct ProviderArchitectureGatekeeperTests {
     /// Anchors match trimmed source lines exactly; repeated text requires a 1-based occurrence.
     private static let allowedProviderConstructs: [AllowedProviderConstruct] = [
         AllowedProviderConstruct(
+            path: "Sources/CodexBar/NativeGauge/Generated/ComputeGauge.swift",
+            anchor: "private var nominalLogoFont:CGFloat{state.productID==\"openai\" ? optical(9.5,11.2,12.0,18.0):optical(11.6,13.0,14.2,17.0)}",
+            expectedProviderIDs: ["openai", "codex", "kimi"],
+            expectedReferenceCount: 6,
+            expectedReferenceFingerprint: ["openai@0", "codex@9", "kimi@9", "codex@14", "kimi@14", "openai@19"],
+            reason: "The imported gauge applies measured optical corrections to these original provider logos."),
+        AllowedProviderConstruct(
+            path: "Sources/CodexBar/NativeGauge/Generated/ComputeGauge.swift",
+            anchor: "if ServiceIdentity.find(state.productID)?.existing == false || [\"codex\",\"kimi\"].contains(state.productID){return weight}",
+            expectedProviderIDs: ["codex", "gemini", "kimi"],
+            expectedReferenceCount: 3,
+            expectedReferenceFingerprint: ["codex@0", "kimi@0", "gemini@3"],
+            reason: "Original provider glyphs require their calibrated native weight stops."),
+        AllowedProviderConstruct(
+            path: "Sources/CodexBar/NativeGauge/Generated/LaurelGauge.swift",
+            anchor: "let pw=service?.existing == false || [\"codex\",\"kimi\"].contains(product) ? wi:[2,2,3,3,3,4,4,5,5][wi]",
+            expectedProviderIDs: ["codex", "kimi"],
+            expectedReferenceCount: 2,
+            expectedReferenceFingerprint: ["codex@0", "kimi@0"],
+            reason: "The imported laurel uses the original custom glyph weights for Codex and Kimi."),
+        AllowedProviderConstruct(
+            path: "Sources/CodexBar/NativeGauge/Generated/ServiceIdentity.swift",
+            anchor: "public func symbol(_ size:Double)->String {\"provider.\\(product).compact\"+((!existing || [\"codex\",\"kimi\"].contains(product)) ? \".p\\(Self.opticalSize(size))\":\"\")}",
+            expectedProviderIDs: ["codex", "elevenlabs", "kimi", "opencode", "opencodego"],
+            expectedReferenceCount: 8,
+            expectedReferenceFingerprint: [
+                "codex@0",
+                "kimi@0",
+                "codex@1",
+                "elevenlabs@1",
+                "kimi@1",
+                "opencode@1",
+                "opencodego@1",
+                "kimi@2",
+            ],
+            reason: "This unchanged identity catalog selects the explicitly authored micro grids and optical offset."),
+        AllowedProviderConstruct(
+            path: "Sources/CodexBar/NativeGauge/Generated/UsageModel.swift",
+            anchor: "case .weekly:state.provider=\"codex\";state.windows=[week]",
+            expectedProviderIDs: ["codex", "kimi"],
+            expectedReferenceCount: 2,
+            expectedReferenceFingerprint: ["codex@0", "kimi@2"],
+            reason: "The original component contains deterministic specimens for one and three quota windows."),
+        AllowedProviderConstruct(
+            path: "Sources/CodexBar/NativeGauge/Generated/UsageModel.swift",
+            anchor: "case \"chatgpt\":return \"openai\"",
+            expectedProviderIDs: ["claude", "gemini", "openai"],
+            expectedReferenceCount: 3,
+            expectedReferenceFingerprint: ["openai@0", "claude@1", "gemini@2"],
+            reason: "The original component canonicalizes product aliases to their catalog identities."),
+        AllowedProviderConstruct(
             path: "Sources/CodexBar/CodexOwnershipContext.swift",
             anchor: "snapshot?.accountEmail(for: .codex) ??",
             expectedProviderIDs: ["codex"],
@@ -2555,10 +2606,10 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact app-runtime bridge coordinates provider-owned state through the shared controller."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/StatusItemController+MenuTypes.swift",
-            anchor: "self.store.enabledProviders().isEmpty ? .codex : nil",
+            anchor: "return self.store.enabledProviders().isEmpty ? .codex : nil",
             expectedProviderIDs: ["codex"],
-            expectedReferenceCount: 1,
-            expectedReferenceFingerprint: ["codex@0"],
+            expectedReferenceCount: 2,
+            expectedReferenceFingerprint: ["codex@0", "codex@4"],
             reason: "This exact app-runtime bridge coordinates provider-owned state through the shared controller."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/StatusItemController+MenuViewportRestore.swift",
@@ -2710,10 +2761,10 @@ struct ProviderArchitectureGatekeeperTests {
             reason: "This exact app-runtime bridge coordinates provider-owned state through the shared controller."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/UsageStore+PlanUtilization.swift",
-            anchor: "let samples = provider == .antigravity",
+            anchor: "let baseSamples = provider == .antigravity",
             expectedProviderIDs: ["antigravity", "claude"],
             expectedReferenceCount: 2,
-            expectedReferenceFingerprint: ["antigravity@0", "claude@9"],
+            expectedReferenceFingerprint: ["antigravity@0", "claude@11"],
             reason: "This exact app-runtime bridge coordinates provider-owned state through the shared controller."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/UsageStore+PlanUtilization.swift",

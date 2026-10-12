@@ -2100,14 +2100,18 @@ enum CostUsageScanner {
     struct ClaudeParseResult {
         let rows: [ClaudeUsageRow]
         let parsedBytes: Int64
+        /// Session ownership at `parsedBytes`; an append resumed there needs the earlier attachments.
+        var organizationsBySession: [String: String] = [:]
+        var firstOrganizationAttachmentUnixMs: Int64?
+        var excludedRowsAfterScanWindow = false
     }
 
-    enum ClaudePathRole: String, Codable, Equatable {
+    enum ClaudePathRole: String, Codable, Equatable, Hashable {
         case parent
         case subagent
     }
 
-    struct ClaudeUsageRow: Codable, Equatable {
+    struct ClaudeUsageRow: Codable, Equatable, Hashable {
         let dayKey: String
         let model: String
         let sessionId: String?
@@ -2124,6 +2128,8 @@ enum CostUsageScanner {
         let costNanos: Int
         let costPriced: Bool?
         var isIncomplete: Bool?
+        /// Organization proven by a preceding transcript `credential_org` event for this session.
+        var organizationID: String?
     }
 
     static func loadDailyReport(

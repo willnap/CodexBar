@@ -39,7 +39,14 @@ struct ZenMuxPluginTests {
         #expect(snapshot.identity?.loginMethod == "Ultra plan")
         #expect(snapshot.subscriptionExpiresAt == ISO8601DateFormatter().date(from: "2026-04-12T08:26:56Z"))
         #expect(snapshot.providerCost == ProviderCostSnapshot(
-            used: -12.34, limit: 0, currencyCode: "USD", period: "ZenMux PAYG balance", updatedAt: now))
+            used: -12.34,
+            limit: 0,
+            currencyCode: "USD",
+            period: "ZenMux PAYG balance",
+            balance: -12.34,
+            balanceUpdatedAt: now,
+            usageIsUnavailable: true,
+            updatedAt: now))
         #expect(snapshot.dataConfidence == .exact)
     }
 

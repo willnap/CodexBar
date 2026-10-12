@@ -45,7 +45,8 @@ extension UsageStore {
                 error: existing.error,
                 sourceLabel: existing.sourceLabel,
                 credits: existing.credits,
-                weeklyResetCandidate: candidate)
+                weeklyResetCandidate: candidate,
+                accountUsageHistory: existing.accountUsageHistory)
         } else {
             guard let candidate, let previousSnapshot else {
                 return Self.recordCodexWeeklyResetPersistenceDecision(.missingCandidateOrBaseline)

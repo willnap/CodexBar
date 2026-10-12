@@ -1,5 +1,6 @@
 import AppKit
 import CodexBarCore
+import ServiceManagement
 import SwiftUI
 
 enum AppLanguage: String, CaseIterable, Identifiable {
@@ -86,6 +87,7 @@ enum PreferredCurrencyOption {
 @MainActor
 struct GeneralPane: View {
     @Bindable var settings: SettingsStore
+    @State private var loginItemStatus = LaunchAtLoginManager.status
 
     var body: some View {
         Form {
@@ -133,6 +135,14 @@ struct GeneralPane: View {
                     })
 
                 Toggle(L("start_at_login_title"), isOn: self.$settings.launchAtLogin)
+                    .onChange(of: self.settings.launchAtLogin) { _, _ in
+                        self.loginItemStatus = LaunchAtLoginManager.status
+                    }
+                if self.settings.launchAtLogin, self.loginItemStatus == .requiresApproval {
+                    Button(L("Approve in Login Items…")) {
+                        SMAppService.openSystemSettingsLoginItems()
+                    }
+                }
             } header: {
                 Text(L("section_system"))
             }
@@ -193,6 +203,9 @@ struct GeneralPane: View {
             }
         }
         .formStyle(.grouped)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            self.loginItemStatus = LaunchAtLoginManager.status
+        }
         .toggleStyle(.switch)
         .scrollContentBackground(.hidden)
         .background(FocusResigningBackground())

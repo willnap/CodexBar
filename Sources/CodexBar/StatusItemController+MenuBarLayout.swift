@@ -458,3 +458,10 @@ extension StatusItemController {
         }
     }
 }
+
+extension StatusItemController {
+    func isVisible(_ provider: UsageProvider) -> Bool {
+        self.store.debugForceAnimation || self.isEnabled(provider)
+            || self.fallbackProvider == provider
+    }
+}

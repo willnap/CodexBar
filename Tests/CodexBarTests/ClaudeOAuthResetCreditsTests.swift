@@ -17,7 +17,7 @@ struct ClaudeOAuthResetCreditsTests {
             ])
             #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer synthetic-reset-token")
             #expect(request.value(forHTTPHeaderField: "anthropic-beta") == "oauth-2025-04-20")
-            #expect(request.value(forHTTPHeaderField: "User-Agent") == "claude-cli/2.1.0 (external, cli)")
+            #expect(request.value(forHTTPHeaderField: "User-Agent") == "claude-cli/2.1.296 (external, cli)")
             #expect(request.cachePolicy == .reloadIgnoringLocalCacheData)
             return try (Data(Self.payload(block: Self.eligibleBlock).utf8), #require(HTTPURLResponse(
                 url: url, statusCode: 200, httpVersion: nil, headerFields: nil)))
@@ -36,7 +36,7 @@ struct ClaudeOAuthResetCreditsTests {
             let url = try #require(request.url)
             let inventory = url.query != nil
             if !inventory {
-                #expect(request.value(forHTTPHeaderField: "User-Agent") == "claude-code/2.1.0")
+                #expect(request.value(forHTTPHeaderField: "User-Agent") == "claude-code/2.1.296")
             }
             return try (
                 Data(inventory ? "{}".utf8 : Self.payload(block: "null").utf8),
@@ -140,14 +140,83 @@ struct ClaudeOAuthResetCreditsTests {
     @Test(arguments: [
         "null",
         "{}",
-        "{\"eligible\":false,\"grants\":[]}",
         "{\"eligible\":true,\"grants\":\"invalid\"}",
+        "{\"eligible\":true}",
+        "{\"eligible\":false,\"grants\":[]}",
+        "{\"eligible\":false}",
+        // What the endpoint answers a non-Claude-Code client and an outdated Claude Code version.
+        "{\"eligible\":false,\"ineligible_reason\":\"surface\",\"grants\":[]}",
+        "{\"eligible\":false,\"ineligible_reason\":\"cli_version\",\"grants\":[]}",
     ])
-    func `absent ineligible or malformed inventory preserves quota and spend`(block: String) throws {
+    func `absent, ineligible or malformed inventory stays unknown beside quota and spend`(block: String) throws {
         let usage = try ClaudeUsageFetcher._mapOAuthUsageForTesting(Data(Self.payload(block: block).utf8))
         #expect(usage.primary.usedPercent == 12)
         #expect(usage.providerCost != nil)
         #expect(usage.resetCredits == nil)
+    }
+
+    @Test(arguments: [
+        "{\"eligible\":true,\"grants\":[]}",
+    ])
+    func `a received empty grant list is a measured zero beside quota and spend`(block: String) throws {
+        let usage = try ClaudeUsageFetcher._mapOAuthUsageForTesting(Data(Self.payload(block: block).utf8))
+        #expect(usage.primary.usedPercent == 12)
+        #expect(usage.providerCost != nil)
+        #expect(usage.resetCredits?.expirations.isEmpty == true)
+        #expect(usage.resetCredits?.usedExpirations.isEmpty == true)
+    }
+
+    @Test
+    func `live inventory shape counts a used grant as used with none available`() throws {
+        let usage = try ClaudeUsageFetcher._mapOAuthUsageForTesting(
+            Data(Self.payload(block: Self.liveShapeUsedGrantBlock).utf8))
+        let credits = try #require(usage.resetCredits)
+        #expect(credits.expirations.isEmpty)
+        #expect(credits.usedExpirations == [ISO8601DateParser.parse("2099-01-01T00:00:00+00:00")])
+        #expect(usage.primary.usedPercent == 12)
+    }
+
+    @Test
+    func `installed Claude Code version comes from the install layout without running the CLI`() throws {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appendingPathComponent("codexbar-claude-install-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: root) }
+        let bin = root.appendingPathComponent("bin", isDirectory: true)
+        let versions = root.appendingPathComponent("share/claude/versions", isDirectory: true)
+        let npmPackage = root.appendingPathComponent("lib/node_modules/@anthropic-ai/claude-code", isDirectory: true)
+        let unrelated = root.appendingPathComponent("unrelated", isDirectory: true)
+        for directory in [bin, versions, npmPackage, unrelated] {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+
+        // Native installer: the launcher links to versions/<version>.
+        let native = versions.appendingPathComponent("9.8.7")
+        try Data().write(to: native)
+        try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: native.path)
+        let nativeLink = bin.appendingPathComponent("claude")
+        try fileManager.createSymbolicLink(at: nativeLink, withDestinationURL: native)
+        #expect(ClaudeOAuthUsageFetcher.installedClaudeCodeVersion(binaryPath: nativeLink.path) == "9.8.7")
+        #expect(ClaudeOAuthUsageFetcher.installedClaudeCodeVersion(
+            environment: ["CLAUDE_CLI_PATH": nativeLink.path, "PATH": ""]) == "9.8.7")
+
+        // npm installer: the launcher resolves into the package, whose manifest names the version.
+        try Data(#"{"name":"@anthropic-ai/claude-code","version":"9.8.6"}"#.utf8)
+            .write(to: npmPackage.appendingPathComponent("package.json"))
+        let entry = npmPackage.appendingPathComponent("cli.js")
+        try Data().write(to: entry)
+        let npmLink = bin.appendingPathComponent("claude-npm")
+        try fileManager.createSymbolicLink(at: npmLink, withDestinationURL: entry)
+        #expect(ClaudeOAuthUsageFetcher.installedClaudeCodeVersion(binaryPath: npmLink.path) == "9.8.6")
+
+        // Another package's manifest, or no install at all, leaves the version to the verified fallback.
+        try Data(#"{"name":"unrelated","version":"1.0.0"}"#.utf8)
+            .write(to: unrelated.appendingPathComponent("package.json"))
+        try Data().write(to: unrelated.appendingPathComponent("claude"))
+        #expect(ClaudeOAuthUsageFetcher.installedClaudeCodeVersion(
+            binaryPath: unrelated.appendingPathComponent("claude").path) == nil)
+        #expect(ClaudeOAuthUsageFetcher.installedClaudeCodeVersion(
+            binaryPath: root.appendingPathComponent("missing").path) == nil)
     }
 
     @Test(arguments: [200, 201])
@@ -231,6 +300,19 @@ struct ClaudeOAuthResetCreditsTests {
       {"resets_left":1,"paused":true},
       {"resets_left":1,"paused":false,"ends_at":"2020-01-01T00:00:00Z"},
       {"resets_left":1,"paused":false,"starts_at":"2099-01-01T00:00:00Z"}
+    ]}
+    """
+
+    /// Synthetic block carrying every field the live `cedar_ember` response has (observed 2026-10), with the live
+    /// `+00:00` offset form: one grant whose only reset was used.
+    private static let liveShapeUsedGrantBlock = """
+    {"eligible":true,"ineligible_reason":null,"at_limit":false,"exhausted":[],"next_grant_id":null,
+     "weekly_resets_at":null,"cooldown_until":null,"event_props":{"surface":"claude_code_cli"},
+     "grants":[
+      {"id":"synthetic_grant","label":"Synthetic","arm":"synthetic","blocking":[],"clears":["five_hour"],
+       "percent_used":{},"paused":false,"usable_now":false,"use_requires_limit":false,
+       "resets_left":0,"resets_total":1,
+       "starts_at":"2020-01-01T00:00:00+00:00","ends_at":"2099-01-01T00:00:00+00:00"}
     ]}
     """
 

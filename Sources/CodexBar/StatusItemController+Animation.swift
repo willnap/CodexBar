@@ -11,6 +11,7 @@ extension StatusItemController {
         2.7 / StatusItemController.loadingAnimationFPS
     private nonisolated static let loadingAnimationMaxContinuousDuration: TimeInterval = 30.0
     func needsMenuBarIconAnimation() -> Bool {
+        if self.settings.usesNativeGauges { return false }
         // Stacked rows always render through the layout-token path (`applyStoredStackedMenuBarLayoutIfNeeded`
         // requires `menuBarShowsBrandIconWithPercent`), which has no phase-driven blink/wiggle/tilt/morph
         // rendering — scheduling the 30 FPS driver here would only burn CPU for frames that never change.
@@ -56,6 +57,7 @@ extension StatusItemController {
     }
 
     private func blinkingProviders() -> [UsageProvider] {
+        if self.settings.usesNativeGauges { return [] }
         guard self.stackedMergeIconProvidersIfActive() == nil else { return [] }
         let merged = self.shouldMergeIcons
         let providers = merged ? [self.primaryProviderForUnifiedIcon()] : UsageProvider.allCases.filter(self.isVisible)
@@ -485,6 +487,15 @@ extension StatusItemController {
 
     @discardableResult
     func applyIcon(for provider: UsageProvider, phase: Double?) -> Bool {
+        if self.settings.usesNativeGauges {
+            self.applyNativeGauge(for: provider)
+            return false
+        }
+        self.nativeGaugeHosts.removeValue(forKey: provider.instanceID)?.removeFromSuperview()
+        return self.applyLegacyIcon(for: provider, phase: phase)
+    }
+
+    private func applyLegacyIcon(for provider: UsageProvider, phase: Double?) -> Bool {
         guard let button = self.statusItems[provider.instanceID]?.button else { return false }
         let providerTint = self.providerTintColor(for: provider, button: button)
         let snapshot = self.store.menuBarSnapshot(for: provider.instanceID)
@@ -1000,6 +1011,7 @@ extension StatusItemController {
 
     nonisolated static func extraUsageSpendDisplayText(snapshot: UsageSnapshot?) -> String? {
         guard let cost = snapshot?.providerCost,
+              cost.usageIsUnavailable != true,
               cost.limit > 0,
               cost.used >= 0,
               // Codex extra usage is denominated in credits, not money: currency formatting would emit

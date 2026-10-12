@@ -27,6 +27,7 @@ enum ProviderTokenAccountSelection {
     {
         guard provider == .deepseek else { return settings.showOptionalCreditsAndExtraUsage }
         guard settings.costUsageEnabled, settings.showOptionalCreditsAndExtraUsage else { return false }
+        if settings.nativeDesignEnabled { return true }
         guard let override, override.provider == provider else { return true }
         return settings.selectedTokenAccount(for: provider)?.id == override.account.id
     }

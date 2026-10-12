@@ -12,10 +12,13 @@ public struct ClaudeRateLimitResetCreditsSnapshot: Sendable, Equatable {
     /// Expiry of each reset available at `updatedAt`; a grant with `resets_left: 2` contributes two entries.
     /// Nil means the reset has no expiry.
     public let expirations: [Date?]
+    /// Provider-confirmed used resets in grants that are still current; no redemption identifiers.
+    public let usedExpirations: [Date?]
     public let updatedAt: Date
 
-    public init(expirations: [Date?], updatedAt: Date) {
+    public init(expirations: [Date?], updatedAt: Date, usedExpirations: [Date?] = []) {
         self.expirations = expirations
+        self.usedExpirations = usedExpirations
         self.updatedAt = updatedAt
     }
 
@@ -52,7 +55,8 @@ public struct ClaudeRateLimitResetCreditsSnapshot: Sendable, Equatable {
     }
 }
 
-/// Raw `cedar_ember` block. Only `eligible: true` yields an inventory. A malformed grant is dropped
+/// Raw `cedar_ember` block. Only an eligible account's received grants list is a measured inventory, so an empty
+/// list holds zero resets. Ineligible accounts and missing grants stay unknown. A malformed grant is dropped
 /// without hiding the rest; an implausibly large inventory yields nothing.
 struct ClaudeLimitResetStatusResponse: Decodable {
     /// Observed grants hold one reset each. Each reset renders as its own row, so a larger total is
@@ -63,6 +67,7 @@ struct ClaudeLimitResetStatusResponse: Decodable {
 
     let eligible: Bool
     let grants: [ClaudeLimitResetGrantResponse]
+    let grantsReceived: Bool
 
     private enum CodingKeys: String, CodingKey {
         case eligible
@@ -72,8 +77,14 @@ struct ClaudeLimitResetStatusResponse: Decodable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.eligible = try container.decode(Bool.self, forKey: .eligible)
-        var records = try container.nestedUnkeyedContainer(forKey: .grants)
         var grants: [ClaudeLimitResetGrantResponse] = []
+        guard container.contains(.grants), try !container.decodeNil(forKey: .grants) else {
+            self.grants = grants
+            self.grantsReceived = false
+            return
+        }
+        self.grantsReceived = true
+        var records = try container.nestedUnkeyedContainer(forKey: .grants)
         while !records.isAtEnd {
             guard records.currentIndex < Self.maximumGrantRecords else {
                 throw DecodingError.dataCorruptedError(
@@ -91,14 +102,21 @@ struct ClaudeLimitResetStatusResponse: Decodable {
     /// `usable_now` is not consulted: a saved reset counts even while Claude gates redemption. A grant that has
     /// not started yet is left out until a refresh after its start.
     func snapshot(updatedAt: Date) -> ClaudeRateLimitResetCreditsSnapshot? {
-        guard self.eligible else { return nil }
+        guard self.eligible, self.grantsReceived else { return nil }
         var expirations: [Date?] = []
-        for grant in self.grants where grant.isAvailable(at: updatedAt) {
-            guard grant.resetsLeft <= Self.maximumResets - expirations.count else { return nil }
+        var used: [Date?] = []
+        for grant in self.grants {
+            guard !grant.paused, grant.startsAt.map({ $0 <= updatedAt }) ?? true,
+                  grant.endsAt.map({ $0 > updatedAt }) ?? true else { continue }
+            let consumed = (grant.resetsTotal ?? grant.resetsLeft) - grant.resetsLeft
+            guard grant.resetsLeft <= Self.maximumResets - expirations.count - used.count,
+                  consumed <= Self.maximumResets - expirations.count - used.count - grant.resetsLeft
+            else { return nil }
             expirations.append(contentsOf: repeatElement(grant.endsAt, count: grant.resetsLeft))
+            used.append(contentsOf: repeatElement(grant.endsAt, count: consumed))
         }
-        guard !expirations.isEmpty else { return nil }
-        return ClaudeRateLimitResetCreditsSnapshot(expirations: expirations, updatedAt: updatedAt)
+        return ClaudeRateLimitResetCreditsSnapshot(
+            expirations: expirations, updatedAt: updatedAt, usedExpirations: used)
     }
 
     private struct LossyGrant: Decodable {

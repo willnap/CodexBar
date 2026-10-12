@@ -101,7 +101,23 @@ defineProvider({
       })
       .sort((a, b) => b.cost - a.cost || b.requests - a.requests || a.provider.localeCompare(b.provider));
 
+    const measured = (value) => (Number.isFinite(value) && value >= 0 ? value : undefined);
     const result = {
+      costUsage: {
+        currency: "USD",
+        historyDays: 1,
+        historyCoverageIsEstablished: false,
+        historyLabel: "Reported usage ledger",
+        windowEnd: ctx.date.now().toISOString().slice(0, 10),
+        entries: [],
+        totals: {
+          inputTokens: measured(inputTokens),
+          outputTokens: measured(outputTokens),
+          totalTokens: measured(totalTokens),
+          requests: measured(requestCount),
+          cost: measured(actualCost),
+        },
+      },
       dataConfidence: "exact",
       identity: {
         organization: `${providers.length} routed providers`,

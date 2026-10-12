@@ -56,7 +56,9 @@ public enum WarpProviderDescriptor {
                     let windows = [context.snapshot.primary, context.snapshot.secondary].compactMap(\.self)
                     return .resolved(windows.first { $0.remainingPercent > 0 } ?? windows.first)
                 },
+                // The Add-on credits lane already shows the balance carried for the native extra-usage dial.
                 menuCard: ProviderMenuCardPresentation(
+                    costVisibilityResolver: { _ in false },
                     showsPrimaryBalanceDescription: true,
                     hidesPrimaryResetWithoutDate: true),
                 menu: ProviderMenuDescriptorPresentation(

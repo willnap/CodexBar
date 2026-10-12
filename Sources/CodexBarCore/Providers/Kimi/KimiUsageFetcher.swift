@@ -1,3 +1,8 @@
+#if canImport(CryptoKit)
+import CryptoKit
+#else
+import Crypto
+#endif
 import Foundation
 
 #if canImport(FoundationNetworking)
@@ -44,14 +49,20 @@ public struct KimiUsageFetcher: Sendable {
             throw self.codeAPIError(statusCode: response.statusCode)
         }
 
-        let snapshot = try self.parseCodeAPIUsage(from: data, now: now)
-        guard let webAuthToken else { return snapshot }
-        return try await self.enrichCodeAPIUsage(
-            snapshot,
-            webAuthToken: webAuthToken,
-            region: region,
-            now: now,
-            transport: transport)
+        var snapshot = try self.parseCodeAPIUsage(from: data, now: now)
+        if let webAuthToken {
+            snapshot = try await self.enrichCodeAPIUsage(
+                snapshot,
+                webAuthToken: webAuthToken,
+                region: region,
+                now: now,
+                transport: transport)
+        }
+        snapshot.historyOwnerID = self.historyOwnerID(
+            endpoint: endpoint, credential: apiKey, enrichmentCredential: webAuthToken)
+        snapshot.historyOwnerAliases = self.legacyHistoryOwnerID(
+            endpoint: endpoint, credential: apiKey, enrichmentCredential: webAuthToken).map { [$0] }
+        return snapshot
     }
 
     public static func fetchUsage(
@@ -90,7 +101,7 @@ public struct KimiUsageFetcher: Sendable {
         let subscription = try await enrichment.value()
 
         let rateLimit = codingUsage.limits?.first
-        return KimiUsageSnapshot(
+        var snapshot = KimiUsageSnapshot(
             weekly: codingUsage.detail,
             rateLimit: rateLimit?.detail,
             rateLimitWindow: rateLimit?.window,
@@ -98,6 +109,51 @@ public struct KimiUsageFetcher: Sendable {
             subscriptionCodeWeeklyLimit: subscription.stats?.ratelimitCode7d,
             planName: subscription.planName,
             updatedAt: now)
+        snapshot.historyOwnerID = self.historyOwnerID(endpoint: region.webBaseURL, credential: authToken)
+        snapshot.historyOwnerAliases = self.legacyHistoryOwnerID(endpoint: region.webBaseURL, credential: authToken)
+            .map { [$0] }
+        return snapshot
+    }
+
+    static func historyOwnerID(
+        endpoint: URL,
+        credential: String,
+        enrichmentCredential: String? = nil) -> String?
+    {
+        guard !credential.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let material = try? JSONEncoder().encode([
+                  "kimi-account-scope-v2", endpoint.absoluteString, self.historyCredentialScope(credential),
+                  enrichmentCredential.map(self.historyCredentialScope) ?? "",
+              ]) else { return nil }
+        return "kimi-credential-v1:" + self.historyDigest(material)
+    }
+
+    /// Used only after the service accepted the credential. Token rotation changes expiry and signature,
+    /// while the verified issuer/subject stays the same. Opaque credentials remain separate until a refresh
+    /// exchange establishes continuity, as handled by the CLI credential store.
+    static func historyCredentialScope(_ credential: String) -> String {
+        if credential.split(separator: ".").count == 3,
+           let claims = UsageFetcher.parseJWT(credential),
+           let subject = SettingsValue.cleaned(claims["sub"] as? String),
+           let identity = try? JSONEncoder().encode([SettingsValue.cleaned(claims["iss"] as? String) ?? "", subject])
+        { return "jwt:" + self.historyDigest(identity) }
+        return "opaque:" + self.historyDigest(Data(credential.trimmingCharacters(in: .whitespacesAndNewlines).utf8))
+    }
+
+    private static func historyDigest(_ material: Data) -> String {
+        SHA256.hash(data: material).map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func legacyHistoryOwnerID(
+        endpoint: URL,
+        credential: String,
+        enrichmentCredential: String? = nil) -> String?
+    {
+        guard !credential.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let material = try? JSONEncoder().encode([
+                  "kimi-credential-v1", endpoint.absoluteString, credential, enrichmentCredential ?? "",
+              ]) else { return nil }
+        return "kimi-credential-v1:" + SHA256.hash(data: material).map { String(format: "%02x", $0) }.joined()
     }
 
     private static func fetchRequiredUsage(
@@ -159,6 +215,7 @@ public struct KimiUsageFetcher: Sendable {
             subscriptionBalance: subscription.stats?.subscriptionBalance,
             subscriptionCodeWeeklyLimit: subscription.stats?.ratelimitCode7d,
             codeUsagePools: snapshot.codeUsagePools,
+            boosterCost: snapshot.boosterCost,
             planName: snapshot.planName ?? subscription.planName,
             updatedAt: now)
     }
@@ -172,6 +229,7 @@ public struct KimiUsageFetcher: Sendable {
             rateLimitWindow: rateLimit?.window,
             subscriptionBalance: nil,
             codeUsagePools: response.usages,
+            boosterCost: response.boosterWallet?.costSnapshot(at: now),
             planName: response.planName,
             updatedAt: now)
         let usage = snapshot.toUsageSnapshot()

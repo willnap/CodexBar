@@ -2,7 +2,20 @@ extension UsageSnapshot {
     public func withoutDeepSeekDetailedUsage(
         state: DeepSeekDetailedUsageState = .unavailable) -> UsageSnapshot
     {
-        self.replacing(
+        let balanceOnly = self.providerCost.flatMap { cost -> ProviderCostSnapshot? in
+            guard let balance = cost.balance else { return nil }
+            return ProviderCostSnapshot(
+                used: 0,
+                limit: 0,
+                currencyCode: cost.currencyCode,
+                balance: balance,
+                balanceUpdatedAt: cost.balanceUpdatedAt,
+                usageIsUnavailable: true,
+                updatedAt: cost.balanceUpdatedAt ?? cost.updatedAt)
+        }
+        return self.replacing(
+            providerCost: .value(balanceOnly),
+            costUsage: .value(nil),
             details: .value([]),
             deepseekDetailedUsageState: .value(state))
     }

@@ -70,7 +70,7 @@ public enum MiMoLocalUsageFallback {
         }
         let planCode = parts.joined(separator: " · ")
 
-        return MiMoUsageSnapshot(
+        var snapshot = MiMoUsageSnapshot(
             balance: 0,
             currency: "",
             planCode: planCode,
@@ -80,6 +80,59 @@ public enum MiMoLocalUsageFallback {
             tokenLimit: 0,
             tokenPercent: 0,
             updatedAt: updatedAt)
+        snapshot.localTokenReport = Self.tokenReport(today: today, updatedAt: updatedAt)
+        return snapshot
+    }
+
+    /// The tracker's `today` window is the UTC calendar day ending at its scan; week and all-time windows do not
+    /// match any rolling period, so only the day becomes a typed report. Missing cache counters from older tracker
+    /// versions make the day a lower bound, while unreadable or overflowing counters are not measurements.
+    static func tokenReport(today: [String: Any], updatedAt: Date) -> CostUsageTokenSnapshot? {
+        let keys = ["input", "output", "cache_read", "cache_create"]
+        var counts: [String: Int] = [:]
+        for key in keys {
+            guard let raw = today[key] else { continue }
+            guard let count = Self.measuredCount(raw) else { return nil }
+            counts[key] = count
+        }
+        guard let input = counts["input"], let output = counts["output"],
+              let total = CheckedSum.integers(keys.compactMap { counts[$0] })
+        else { return nil }
+        let timeZone = "UTC"
+        let calendar = CostUsageBucketTimeZone.calendar(identifier: timeZone)
+        let day = CostUsageDailyReport.Entry(
+            date: CostUsageLocalDay.key(from: updatedAt, calendar: calendar),
+            inputTokens: input,
+            outputTokens: output,
+            cacheReadTokens: counts["cache_read"],
+            cacheCreationTokens: counts["cache_create"],
+            totalTokens: total,
+            costUSD: nil,
+            modelsUsed: nil,
+            modelBreakdowns: nil)
+        return CostUsageTokenSnapshot(
+            sessionTokens: total,
+            sessionCostUSD: nil,
+            last30DaysTokens: total,
+            last30DaysCostUSD: nil,
+            historyDays: 1,
+            historyScanIsPartial: counts.count < keys.count,
+            historyLabel: "Today (UTC)",
+            bucketTimeZoneIdentifier: timeZone,
+            coverageThrough: updatedAt,
+            daily: [day],
+            updatedAt: updatedAt)
+    }
+
+    private static func measuredCount(_ raw: Any) -> Int? {
+        if let number = raw as? NSNumber {
+            if let integer = Int(number.stringValue) { return integer >= 0 ? integer : nil }
+            let numeric = number.doubleValue
+            guard numeric.isFinite, numeric >= 0 else { return nil }
+            return Int(exactly: numeric.rounded(.towardZero))
+        }
+        if let string = raw as? String, let integer = Int(string) { return integer >= 0 ? integer : nil }
+        return nil
     }
 
     private static func fmtTokens(_ n: Int) -> String {

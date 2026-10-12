@@ -7,6 +7,9 @@ public struct KiloUsageSnapshot: Sendable {
     public let creditsUsed: Double?
     public let creditsTotal: Double?
     public let creditsRemaining: Double?
+    public let creditsCurrencyCode: String
+    public let creditsUsageIsUnavailable: Bool
+    public let passCurrencyCode: String
     public let passUsed: Double?
     public let passTotal: Double?
     public let passRemaining: Double?
@@ -21,6 +24,9 @@ public struct KiloUsageSnapshot: Sendable {
         creditsUsed: Double?,
         creditsTotal: Double?,
         creditsRemaining: Double?,
+        creditsCurrencyCode: String = "Credits",
+        creditsUsageIsUnavailable: Bool = false,
+        passCurrencyCode: String = "Credits",
         passUsed: Double? = nil,
         passTotal: Double? = nil,
         passRemaining: Double? = nil,
@@ -34,6 +40,9 @@ public struct KiloUsageSnapshot: Sendable {
         self.creditsUsed = creditsUsed
         self.creditsTotal = creditsTotal
         self.creditsRemaining = creditsRemaining
+        self.creditsCurrencyCode = creditsCurrencyCode
+        self.creditsUsageIsUnavailable = creditsUsageIsUnavailable
+        self.passCurrencyCode = passCurrencyCode
         self.passUsed = passUsed
         self.passTotal = passTotal
         self.passRemaining = passRemaining
@@ -78,7 +87,7 @@ public struct KiloUsageSnapshot: Sendable {
             primary: primary,
             secondary: self.passWindow,
             tertiary: nil,
-            providerCost: nil,
+            providerCost: self.providerCostSnapshot,
             updatedAt: self.updatedAt,
             identity: ProviderIdentitySnapshot(
                 providerID: .kilo,
@@ -87,9 +96,42 @@ public struct KiloUsageSnapshot: Sendable {
                 loginMethod: loginMethod))
     }
 
+    private var providerCostSnapshot: ProviderCostSnapshot? {
+        let creditsUsed = self.creditsUsed.flatMap { $0.isFinite ? $0 : nil }
+        let creditsRemaining = self.creditsRemaining.flatMap { $0.isFinite ? $0 : nil }
+        if self.passCurrencyCode == "USD", let passUsed, passUsed.isFinite {
+            let passTotal = self.passTotal.flatMap { $0.isFinite ? $0 : nil }
+            let balance = self.creditsCurrencyCode == "USD" ? creditsRemaining : nil
+            return ProviderCostSnapshot(
+                used: passUsed,
+                limit: passTotal ?? 0,
+                currencyCode: "USD",
+                period: "Monthly",
+                resetsAt: self.passResetsAt,
+                balance: balance,
+                balanceUpdatedAt: balance == nil ? nil : self.updatedAt,
+                updatedAt: self.updatedAt)
+        }
+        guard creditsUsed != nil || creditsRemaining != nil else { return nil }
+        let unavailable = self.creditsUsageIsUnavailable || creditsUsed == nil
+        // Derived totals can overflow even when both source amounts are finite.
+        let creditsTotal = self.creditsTotal.flatMap { $0.isFinite ? $0 : nil }
+        return ProviderCostSnapshot(
+            used: creditsUsed ?? 0,
+            limit: unavailable ? 0 : (creditsTotal ?? 0),
+            currencyCode: self.creditsCurrencyCode,
+            period: "Credits",
+            balance: creditsRemaining,
+            balanceUpdatedAt: creditsRemaining == nil ? nil : self.updatedAt,
+            usageIsUnavailable: unavailable,
+            updatedAt: self.updatedAt)
+    }
+
     private var passWindow: RateWindow? {
         let credits = CreditUsage(used: self.passUsed, total: self.passTotal, remaining: self.passRemaining)
-        guard let total = credits.total else {
+        guard let total = credits.total, total.isFinite, credits.used.isFinite,
+              self.passBonus?.isFinite != false
+        else {
             return nil
         }
 
@@ -102,9 +144,11 @@ public struct KiloUsageSnapshot: Sendable {
             100
         }
 
-        var detail = "$\(Self.currencyNumber(used)) / $\(Self.currencyNumber(baseCredits))"
+        let prefix = self.passCurrencyCode == "USD" ? "$" : ""
+        let unit = self.passCurrencyCode == "USD" ? "" : " \(self.passCurrencyCode)"
+        var detail = "\(prefix)\(Self.currencyNumber(used)) / \(prefix)\(Self.currencyNumber(baseCredits))\(unit)"
         if bonus > 0 {
-            detail += " (+ $\(Self.currencyNumber(bonus)) bonus)"
+            detail += " (+ \(prefix)\(Self.currencyNumber(bonus))\(unit) bonus)"
         }
 
         return RateWindow(
@@ -198,12 +242,21 @@ public enum KiloUsageError: LocalizedError, Sendable, Equatable {
 
 // swiftlint:disable:next type_body_length
 public struct KiloUsageFetcher: Sendable {
+    private struct KiloCreditFields {
+        let used: Double?
+        let total: Double?
+        let remaining: Double?
+        let currencyCode: String
+        let unavailable: Bool
+    }
+
     private struct KiloPassFields {
         let used: Double?
         let total: Double?
         let remaining: Double?
         let bonus: Double?
         let resetsAt: Date?
+        var currencyCode: String = "Credits"
     }
 
     static let procedures = [
@@ -489,6 +542,9 @@ public struct KiloUsageFetcher: Sendable {
             creditsUsed: creditFields.used,
             creditsTotal: creditFields.total,
             creditsRemaining: creditFields.remaining,
+            creditsCurrencyCode: creditFields.currencyCode,
+            creditsUsageIsUnavailable: creditFields.unavailable,
+            passCurrencyCode: passFields.currencyCode,
             passUsed: passFields.used,
             passTotal: passFields.total,
             passRemaining: passFields.remaining,
@@ -576,8 +632,14 @@ public struct KiloUsageFetcher: Sendable {
         return nil
     }
 
-    private static func creditFields(from payload: Any?) -> (used: Double?, total: Double?, remaining: Double?) {
-        guard let payload else { return (nil, nil, nil) }
+    private static func creditFields(from payload: Any?)
+    -> KiloCreditFields {
+        guard let payload else { return KiloCreditFields(
+            used: nil,
+            total: nil,
+            remaining: nil,
+            currencyCode: "Credits",
+            unavailable: true) }
 
         let contexts = self.dictionaryContexts(from: payload)
         let blocks = self.firstArray(forKeys: ["creditBlocks"], in: contexts)
@@ -607,7 +669,12 @@ public struct KiloUsageFetcher: Sendable {
                 } else {
                     nil
                 }
-                return (used, total, remaining)
+                return KiloCreditFields(
+                    used: used,
+                    total: total,
+                    remaining: remaining,
+                    currencyCode: "USD",
+                    unavailable: used == nil)
             }
         }
 
@@ -649,7 +716,7 @@ public struct KiloUsageFetcher: Sendable {
         {
             // Kilo may return an empty creditBlocks list for zero-balance accounts.
             // Keep this visible as an explicit exhausted edge state instead of "no data".
-            return (0, 0, 0)
+            return KiloCreditFields(used: 0, total: 0, remaining: 0, currencyCode: "USD", unavailable: true)
         }
 
         if used == nil,
@@ -658,10 +725,15 @@ public struct KiloUsageFetcher: Sendable {
            let balanceMilliUSD = self.firstDouble(forKeys: ["totalBalance_mUsd"], in: contexts)
         {
             let balance = max(0, balanceMilliUSD / 1_000_000)
-            return (max(0, 0), balance, balance)
+            return KiloCreditFields(used: 0, total: balance, remaining: balance, currencyCode: "USD", unavailable: true)
         }
 
-        return (used, total, remaining)
+        return KiloCreditFields(
+            used: used,
+            total: total,
+            remaining: remaining,
+            currencyCode: "Credits",
+            unavailable: used == nil)
     }
 
     private static func passFields(from payload: Any?) -> KiloPassFields {
@@ -685,7 +757,8 @@ public struct KiloUsageFetcher: Sendable {
                 total: total,
                 remaining: remaining,
                 bonus: bonusCredits > 0 ? bonusCredits : nil,
-                resetsAt: resetsAt)
+                resetsAt: resetsAt,
+                currencyCode: "USD")
         }
 
         return self.fallbackPassFields(from: payload)
@@ -826,12 +899,19 @@ public struct KiloUsageFetcher: Sendable {
             remaining = max(0, total - used)
         }
 
+        let dollarFields = [
+            "amount_mUsd", "total_mUsd", "planAmount_mUsd", "limit_mUsd", "included_mUsd", "value_mUsd",
+            "used_mUsd", "spent_mUsd", "consumed_mUsd", "usedAmount_mUsd",
+            "remaining_mUsd", "available_mUsd", "left_mUsd", "balance_mUsd", "bonus_mUsd", "bonusAmount_mUsd",
+        ]
+        let hasDollarDenomination = self.firstDouble(forKeys: dollarFields, in: contexts) != nil
         return KiloPassFields(
             used: used,
             total: total,
             remaining: remaining,
             bonus: bonus,
-            resetsAt: resetsAt)
+            resetsAt: resetsAt,
+            currencyCode: hasDollarDenomination ? "USD" : "Credits")
     }
 
     private static func planName(from payload: Any?) -> String? {

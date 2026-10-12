@@ -39,6 +39,7 @@ defineProvider({
     const balance = Number(value);
     if (!Number.isFinite(balance)) return fail();
     return {
+      cost: { used: balance, balance, limit: 0, currency: "USD", usageIsUnavailable: true },
       details: [{ title: "Account balance", rows: [{ label: "Available balance", value: ctx.format.usd(balance) }] }],
       identity: { loginMethod: "API" },
       dataConfidence: "exact",

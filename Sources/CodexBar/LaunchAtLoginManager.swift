@@ -7,6 +7,10 @@ enum LaunchAtLoginManager {
 
     private static let isRunningTests = TestProcessSafety.isRunning
 
+    static var status: SMAppService.Status {
+        self.isRunningTests ? .notRegistered : SMAppService.mainApp.status
+    }
+
     static func setEnabled(_ enabled: Bool) {
         if self.isRunningTests { return }
         let service = SMAppService.mainApp

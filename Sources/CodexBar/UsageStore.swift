@@ -48,6 +48,8 @@ extension UsageStore {
         _ = self.claudeSwapAccountSnapshots
         _ = self.claudeSwapRevision
         _ = self.errors
+        _ = self.nativeAuthenticationFailures
+        _ = self.nativeClaudeCredentialPresentationScope
         _ = self.diagnostics
         _ = self.knownLimitsAvailabilityByProvider
         _ = self.credits
@@ -150,12 +152,17 @@ final class UsageStore {
 
     var snapshots: [ProviderInstanceID: UsageSnapshot] = [:]
     var errors: [ProviderInstanceID: String] = [:]
+    var nativeAuthenticationFailures: Set<CredentialNotificationKey> = []
+    var nativeClaudeCredentialPresentationScope: NativeClaudeCredentialPresentationScope?
     var diagnostics: [ProviderInstanceID: String] = [:]
     var geminiMigrationObservation: GeminiMigrationObservation = .none
     var knownLimitsAvailabilityByProvider: [ProviderInstanceID: UsageLimitsAvailability] = [:]
     var lastSourceLabels: [ProviderInstanceID: String] = [:]
     var lastFetchAttempts: [ProviderInstanceID: [ProviderFetchAttempt]] = [:]
     var accountSnapshots: [ProviderInstanceID: [TokenAccountUsageSnapshot]] = [:]
+    @ObservationIgnored var nativeTokenAccountRefreshAttempts:
+        [ProviderInstanceID: [UUID: NativeTokenAccountRefreshAttempt]] = [:]
+    @ObservationIgnored var nativeCodexAccountRefreshAttempts: [String: NativeCodexAccountRefreshAttempt] = [:]
     @ObservationIgnored var widgetVerifiedTokenSnapshots: WidgetVerifiedTokenSnapshots = [:]
     @ObservationIgnored let widgetAccountSnapshotStore: (any WidgetAccountSnapshotStoring)?
     var tokenAccountLiveStateProviders: Set<ProviderInstanceID> = []
@@ -163,6 +170,9 @@ final class UsageStore {
     var codexSettingsRefreshingAccountIDs: Set<String> = []
     var kiloScopeSnapshots: [KiloScopeSnapshot] = []
     var claudeSwapAccountSnapshots: [ProviderAccountUsageSnapshot] = []
+    var claudeOrganizationUsagePublication: ClaudeOrganizationUsagePublication?
+    var nativeClaudeAmbientUsagePublication: NativeClaudeAmbientUsagePublication?
+    var nativeKimiLocalUsageReport: NativeKimiLocalUsagePublication?
     var claudeSwapLastRefreshAt: Date?
     var claudeSwapLastError: String?
     var claudeSwapDetectedVersion: String?
@@ -261,6 +271,7 @@ final class UsageStore {
     @ObservationIgnored var _test_codexResetCreditsFetcherOverride: CodexResetCreditsFetcher?
     @ObservationIgnored var _test_widgetSnapshotSaveOverride: (@MainActor (WidgetSnapshot) async -> Void)?
     @ObservationIgnored var _test_providerRefreshOverride: (@MainActor (UsageProvider) async -> Void)?
+    @ObservationIgnored var _test_nativeLocalUsageRefreshScheduledOverride: (@MainActor (UsageProvider) -> Void)?
     @ObservationIgnored var _test_providerFetchOutcomeOverride: (@MainActor (
         UsageProvider) async -> ProviderFetchOutcome)?
     #if DEBUG
@@ -417,6 +428,19 @@ final class UsageStore {
     @ObservationIgnored var attemptedResetBoundaryRefreshes: Set<Date> = []
     @ObservationIgnored var codexPlanHistoryBackfillTask: Task<Void, Never>?
     @ObservationIgnored var codexPlanHistoryBackfillTaskToken: UUID?
+    @ObservationIgnored var nativeCodexSessionHistoryBackfillTask: Task<Void, Never>?
+    @ObservationIgnored var nativeCodexSessionHistoryBackfillToken: UUID?
+    @ObservationIgnored var nativeCodexServerHistoryBackfillTask: Task<Void, Never>?
+    @ObservationIgnored var nativeCodexServerHistoryBackfillToken: UUID?
+    @ObservationIgnored var nativeCodexServerHistoryNextFetchAt: [String: Date] = [:]
+    @ObservationIgnored var nativeClaudeDesktopHistoryLoadTask: Task<Void, Never>?
+    @ObservationIgnored let claudeOrganizationUsageReader = ClaudeOrganizationUsageReader()
+    @ObservationIgnored let nativeClaudeAmbientUsageReader = ClaudeOrganizationUsageReader()
+    @ObservationIgnored var nativeClaudeAmbientUsageTask: Task<Void, Never>?
+    @ObservationIgnored var nativeClaudeAmbientUsageTaskToken: UUID?
+    @ObservationIgnored let nativeKimiLocalUsageScanner = NativeKimiLocalUsageScanner()
+    @ObservationIgnored var nativeKimiLocalUsageTask: Task<Void, Never>?
+    @ObservationIgnored var nativeKimiLocalUsageTaskToken: UUID?
     @ObservationIgnored let historicalUsageHistoryStore: HistoricalUsageHistoryStore
     @ObservationIgnored let planUtilizationHistoryStore: PlanUtilizationHistoryStore
     @ObservationIgnored let codexAccountUsageSnapshotStore: (any CodexAccountUsageSnapshotStoring)?
@@ -463,6 +487,8 @@ final class UsageStore {
     @ObservationIgnored var lastSpendDashboardTokenFetchScope: [ProviderInstanceID: String] = [:]
     var spendDashboardTokenRefreshInFlight: Set<ProviderInstanceID> = []
     @ObservationIgnored var planUtilizationHistory: [ProviderInstanceID: PlanUtilizationHistoryBuckets] = [:]
+    /// Owns the session-history scanner; observable itself, so a landed window attribution redraws the dials.
+    let nativeCodexSessionAttribution = NativeCodexSessionAttributionStore()
     @ObservationIgnored var sessionEquivalentBurnCache: [ProviderInstanceID: SessionEquivalentBurnCacheEntry] = [:]
     @ObservationIgnored var sessionEquivalentHistoryScanCount: Int = 0
 
@@ -720,6 +746,7 @@ final class UsageStore {
 
     func isProviderAvailable(_ provider: UsageProvider, now: Date = Date()) -> Bool {
         guard provider != .codex else { return true }
+        if self.isNativeSavedAccountAvailable(provider) { return true }
 
         let configRevision = self.settings.configRevision
         if let cached = self.providerAvailabilityCache[provider.instanceID],
@@ -882,20 +909,6 @@ final class UsageStore {
         return true
     }
 
-    /// For demo/testing: drop the snapshot so the loading animation plays, then restore the last snapshot.
-    func replayLoadingAnimation(duration: TimeInterval = 3) {
-        let current = self.preferredSnapshot
-        self.snapshots.removeAll()
-        self.debugForceAnimation = true
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(duration))
-            if let current, let provider = self.enabledProviders().first {
-                self.snapshots[provider] = current
-            }
-            self.debugForceAnimation = false
-        }
-    }
-
     // MARK: - Private
 
     #if DEBUG
@@ -984,6 +997,11 @@ final class UsageStore {
         self.startupConnectivityRetryTask?.cancel()
         self.storageRefreshTask?.cancel()
         self.codexPlanHistoryBackfillTask?.cancel()
+        self.nativeCodexSessionHistoryBackfillTask?.cancel()
+        self.nativeCodexServerHistoryBackfillTask?.cancel()
+        self.nativeClaudeDesktopHistoryLoadTask?.cancel()
+        self.nativeKimiLocalUsageTask?.cancel()
+        self.nativeClaudeAmbientUsageTask?.cancel()
         self.resetBoundaryRefreshTask?.cancel()
         self.planUtilizationHistoryLoadTask?.cancel()
     }
@@ -1603,5 +1621,21 @@ extension UsageStore {
     func noteMenuOpened(at date: Date = Date()) {
         self.lastMenuOpenAt = date
         self.advanceAdaptiveTimerIfEarlier(at: date)
+    }
+}
+
+extension UsageStore {
+    /// For demo/testing: drop the snapshot so the loading animation plays, then restore the last snapshot.
+    func replayLoadingAnimation(duration: TimeInterval = 3) {
+        let current = self.preferredSnapshot
+        self.snapshots.removeAll()
+        self.debugForceAnimation = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(duration))
+            if let current, let provider = self.enabledProviders().first {
+                self.snapshots[provider] = current
+            }
+            self.debugForceAnimation = false
+        }
     }
 }

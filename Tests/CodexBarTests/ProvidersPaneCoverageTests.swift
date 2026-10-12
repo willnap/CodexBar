@@ -129,6 +129,21 @@ struct ProvidersPaneCoverageTests {
     }
 
     @Test
+    func `provider search finds only the supplied active account identity`() {
+        let providers: [UsageProvider] = [.codex, .claude]
+        #expect(ProvidersPane.filteredProviders(
+            providers,
+            query: "work@example.test",
+            displayName: { $0.rawValue },
+            supplementarySearchText: { $0 == .codex ? "work@example.test" : "personal@example.test" }) == [.codex])
+        #expect(ProvidersPane.filteredProviders(
+            providers,
+            query: "work@example.test",
+            displayName: { $0.rawValue },
+            supplementarySearchText: { _ in "" }).isEmpty)
+    }
+
+    @Test
     func `provider reordering is inert while alphabetical sorting is enabled`() {
         let settings = Self.makeSettingsStore(suite: "ProvidersPaneCoverageTests-sorted-reorder")
         let store = Self.makeUsageStore(settings: settings)

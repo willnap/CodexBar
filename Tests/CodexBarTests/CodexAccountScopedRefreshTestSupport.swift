@@ -4,10 +4,14 @@ import Testing
 @testable import CodexBar
 
 extension CodexAccountScopedRefreshTests {
-    func makeSettingsStore(suite: String) -> SettingsStore {
-        let settings = testSettingsStore(suiteName: suite, userDefaults: InMemoryUserDefaults(), prepareDefaults: {
-            $0.set(true, forKey: "providerDetectionCompleted")
-        })
+    func makeSettingsStore(suite: String, nativeDesignEnabled: Bool = false) -> SettingsStore {
+        let settings = testSettingsStore(
+            suiteName: suite,
+            userDefaults: InMemoryUserDefaults(),
+            prepareDefaults: {
+                $0.set(true, forKey: "providerDetectionCompleted")
+            },
+            nativeDesignEnabled: nativeDesignEnabled)
         settings._test_activeManagedCodexAccount = nil
         settings._test_activeManagedCodexRemoteHomePath = nil
         settings._test_unreadableManagedCodexAccountStore = false

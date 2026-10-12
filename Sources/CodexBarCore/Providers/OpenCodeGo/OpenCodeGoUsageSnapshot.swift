@@ -128,6 +128,9 @@ public struct OpenCodeGoUsageSnapshot: Sendable {
                 limit: 0,
                 currencyCode: "USD",
                 period: "Zen balance",
+                balance: $0,
+                balanceUpdatedAt: self.updatedAt,
+                usageIsUnavailable: true,
                 updatedAt: self.updatedAt)
         }
     }

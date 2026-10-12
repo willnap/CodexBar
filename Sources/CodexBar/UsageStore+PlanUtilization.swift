@@ -1,4 +1,4 @@
-import CodexBarCore
+import CodexBarCore // swiftlint:disable file_length
 import Foundation
 
 extension UsageStore {
@@ -18,13 +18,16 @@ extension UsageStore {
 
     func supportsPlanUtilizationHistory(for provider: UsageProvider) -> Bool {
         let capability = ProviderDescriptorRegistry.descriptor(for: provider).history
-        guard capability.supportsPlanUtilization else { return false }
+        guard self.allowsPlanUtilizationHistory(for: provider) else { return false }
         if capability.alwaysTracksPlanUtilization {
             return true
         }
         if self.planUtilizationHistory[provider.instanceID]?.isEmpty == false {
             return true
         }
+        if self.settings.nativeDesignEnabled, let snapshot = self.snapshots[provider.instanceID],
+           !Self.nativeOrbitHistorySamples(provider: provider, snapshot: snapshot).isEmpty
+        { return true }
         guard self.settings.historicalTrackingEnabled, let snapshot = self.snapshots[provider.instanceID] else {
             return false
         }
@@ -37,6 +40,31 @@ extension UsageStore {
     private nonisolated static let planUtilizationMinSampleIntervalSeconds: TimeInterval = 60 * 60
     private nonisolated static let planUtilizationResetEquivalenceToleranceSeconds: TimeInterval = 2 * 60
     private nonisolated static let planUtilizationMaxSamples: Int = 24 * 730
+
+    private func allowsPlanUtilizationHistory(for provider: UsageProvider) -> Bool {
+        self.settings.nativeDesignEnabled
+            || ProviderDescriptorRegistry.descriptor(for: provider).history.supportsPlanUtilization
+    }
+
+    nonisolated static func nativeOrbitAllowsAnonymousQuotaHistory(for provider: UsageProvider) -> Bool {
+        // Provider-specific by design: these providers require their verified credential/account owner.
+        ![UsageProvider.codex, .claude, .kimi].contains(provider)
+    }
+
+    private func resolveNativeAnonymousQuotaHistory(
+        for provider: UsageProvider,
+        shouldUpdatePreferredAccountKey: Bool,
+        readOnly: Bool,
+        providerBuckets: inout PlanUtilizationHistoryBuckets) -> Bool
+    {
+        guard self.settings.nativeDesignEnabled, Self.nativeOrbitAllowsAnonymousQuotaHistory(for: provider)
+        else { return false }
+        // An identityless native observation belongs to this anonymous source, never the last known account.
+        if shouldUpdatePreferredAccountKey, !readOnly {
+            providerBuckets.preferredAccountKey = Self.planUtilizationUnscopedPreferredKey
+        }
+        return true
+    }
 
     private struct PlanUtilizationSeriesKey: Hashable {
         let name: PlanUtilizationSeriesName
@@ -57,7 +85,7 @@ extension UsageStore {
     func planUtilizationHistorySelection(for provider: UsageProvider, readOnly: Bool = false)
         -> PlanUtilizationHistorySelection
     {
-        guard ProviderDescriptorRegistry.descriptor(for: provider).history.supportsPlanUtilization else {
+        guard self.allowsPlanUtilizationHistory(for: provider) else {
             return .unavailable
         }
         // The persisted history has not been read yet. Return the in-memory
@@ -110,7 +138,7 @@ extension UsageStore {
         for provider: UsageProvider,
         account: ProviderTokenAccount) -> PlanUtilizationHistorySelection
     {
-        guard ProviderDescriptorRegistry.descriptor(for: provider).history.supportsPlanUtilization,
+        guard self.allowsPlanUtilizationHistory(for: provider),
               self.planUtilizationHistoryLoaded,
               let accountKey = Self.planUtilizationAccountKey(provider: provider, account: account)
         else {
@@ -130,7 +158,7 @@ extension UsageStore {
         for provider: UsageProvider,
         snapshotOverride snapshot: UsageSnapshot) -> PlanUtilizationHistorySelection
     {
-        guard ProviderDescriptorRegistry.descriptor(for: provider).history.supportsPlanUtilization,
+        guard self.allowsPlanUtilizationHistory(for: provider),
               self.planUtilizationHistoryLoaded,
               let accountKey = Self.planUtilizationIdentityAccountKey(provider: provider, snapshot: snapshot)
         else {
@@ -224,12 +252,12 @@ extension UsageStore {
         now: Date = Date())
         async
     {
-        guard ProviderDescriptorRegistry.descriptor(for: provider).history.supportsPlanUtilization else { return }
+        guard self.allowsPlanUtilizationHistory(for: provider) else { return }
         let detectorSamples = self.planUtilizationSeriesSamples(
             provider: provider,
             snapshot: snapshot,
             capturedAt: now)
-        let samples = provider == .antigravity
+        let baseSamples = provider == .antigravity
             ? self.planUtilizationSeriesSamples(
                 provider: provider,
                 snapshot: snapshot,
@@ -237,6 +265,8 @@ extension UsageStore {
                 forSessionEquivalents: true)
             + Self.antigravityQuotaObservationSamples(snapshot: snapshot, capturedAt: now)
             : detectorSamples
+        let samples = baseSamples + (self.settings.nativeDesignEnabled
+            ? Self.nativeOrbitHistorySamples(provider: provider, snapshot: snapshot) : [])
         var effectiveOwner = claudeOAuthHistoryOwnerIdentifier
         if provider == .claude, isClaudeOAuthSample, let owner = claudeOAuthHistoryOwnerIdentifier {
             effectiveOwner = self.resolvedClaudeOAuthHistoryOwner(evidence: ClaudeOAuthHistoryEvidence(
@@ -332,10 +362,18 @@ extension UsageStore {
             }
 
             let updatedHistories = Self.updatedPlanUtilizationHistories(
-                existingHistories: histories,
+                existingHistories: Self.nativeOrbitCanonicalQuotaHistories(provider: provider, histories: histories),
                 samples: samplesToPersist) ?? histories
             if updatedHistories != originalHistories {
                 providerBuckets.setHistories(updatedHistories, for: accountKey)
+            }
+
+            // Provider-specific by design: accepted Claude OAuth observations bridge only to a verified ClaudeSwap
+            // owner.
+            if provider == .claude, accountKey != nil {
+                // The owner was resolved by this accepted refresh; a matching adapter can retain its history.
+                self.bridgeNativeClaudeHistory(
+                    snapshot: snapshot, histories: updatedHistories, buckets: &providerBuckets)
             }
 
             guard providerBuckets != originalProviderBuckets else { return }
@@ -350,19 +388,20 @@ extension UsageStore {
 
     private func shouldRecordPlanUtilizationHistory(for provider: UsageProvider) -> Bool {
         let capability = ProviderDescriptorRegistry.descriptor(for: provider).history
-        return capability.supportsPlanUtilization &&
-            (capability.alwaysTracksPlanUtilization || self.settings.historicalTrackingEnabled)
+        return self.settings.nativeDesignEnabled || (capability.supportsPlanUtilization &&
+            (capability.alwaysTracksPlanUtilization || self.settings.historicalTrackingEnabled))
     }
 
-    private nonisolated static func updatedPlanUtilizationHistories(
+    nonisolated static func updatedPlanUtilizationHistories(
         existingHistories: [PlanUtilizationSeriesHistory],
         samples: [PlanUtilizationSeriesSample]) -> [PlanUtilizationSeriesHistory]?
     {
         guard !samples.isEmpty else { return nil }
 
+        let coalesced = self.nativeOrbitCoalescedQuotaHistories(existingHistories)
         var historiesByKey: [PlanUtilizationSeriesKey: PlanUtilizationSeriesHistory] = [:]
-        var didChange = false
-        for history in existingHistories {
+        var didChange = coalesced != existingHistories
+        for history in coalesced {
             let canonicalWindowMinutes = history.name.canonicalWindowMinutes(history.windowMinutes)
             let key = PlanUtilizationSeriesKey(name: history.name, windowMinutes: canonicalWindowMinutes)
             let canonicalHistory = PlanUtilizationSeriesHistory(
@@ -384,6 +423,17 @@ extension UsageStore {
         for sample in samples {
             let canonicalWindowMinutes = sample.name.canonicalWindowMinutes(sample.windowMinutes)
             let key = PlanUtilizationSeriesKey(name: sample.name, windowMinutes: canonicalWindowMinutes)
+            if sample.name.isNativeQuotaObservation || sample.name.isNativeMetricObservation,
+               let existingKey = historiesByKey.keys.first(where: { $0.name == sample.name }),
+               let existing = historiesByKey[existingKey]
+            {
+                let updated = self.updatedNativeOrbitQuotaHistory(existing, sample: sample)
+                guard updated != existing else { continue }
+                historiesByKey.removeValue(forKey: existingKey)
+                historiesByKey[.init(name: updated.name, windowMinutes: updated.windowMinutes)] = updated
+                didChange = true
+                continue
+            }
             if let existingHistory = historiesByKey[key] {
                 var updatedEntries = existingHistory.entries
                 self.assertPlanUtilizationEntriesSorted(updatedEntries)
@@ -409,6 +459,25 @@ extension UsageStore {
 
         guard didChange else { return nil }
         return historiesByKey.values.sorted(by: PlanUtilizationSeriesHistory.precedes)
+    }
+
+    private nonisolated static func updatedNativeOrbitQuotaHistory(
+        _ existing: PlanUtilizationSeriesHistory,
+        sample: PlanUtilizationSeriesSample) -> PlanUtilizationSeriesHistory
+    {
+        if sample.name.rawValue == "nativeMetric:usage",
+           let last = existing.entries.last,
+           last.nativeMetrics == sample.entry.nativeMetrics,
+           Calendar.current.isDate(last.capturedAt, inSameDayAs: sample.entry.capturedAt) { return existing }
+        let merged = self.nativeOrbitMergedRawEntries(existing.entries, [sample.entry])
+        let entries = sample.name.rawValue == "nativeMetric:usage" ? Array(merged.suffix(4096)) : merged
+        let cutoff = (entries.last?.capturedAt ?? sample.entry.capturedAt).addingTimeInterval(-32 * 86400)
+        let minutes = sample.windowMinutes > 0 && sample.entry.capturedAt >= (existing.latestCapturedAt ?? .distantPast)
+            ? sample.windowMinutes : existing.windowMinutes
+        return .init(
+            name: sample.name,
+            windowMinutes: minutes,
+            entries: entries.filter { $0.capturedAt >= cutoff })
     }
 
     private nonisolated static func mergedPlanUtilizationEntries(
@@ -850,6 +919,8 @@ extension UsageStore {
         snapshot: UsageSnapshot) -> String?
     {
         guard let identity = snapshot.identity(for: provider.instanceID) else { return nil }
+        // Provider-specific by design: Kimi supplies a credential scope instead of a principal identity.
+        if provider == .kimi, let key = self.nativeKimiHistoryAccountKey(snapshot) { return key }
 
         let normalizedEmail = identity.accountEmail?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1131,9 +1202,10 @@ extension UsageStore {
                 providerBuckets: &providerBuckets)
         }
 
+        // Provider-specific by design: Kimi cannot prove ownership of unscoped history; Claude permits one migration.
         // Claude's unscoped history is only safe to adopt during the first unambiguous migration.
         // The sentinel marks identityless OAuth, while any scoped bucket proves multiple owners may exist.
-        let canAdoptUnscopedHistory = !readOnly && shouldAdoptUnscopedHistory
+        let canAdoptUnscopedHistory = !readOnly && shouldAdoptUnscopedHistory && provider != .kimi
             && !(provider == .claude
                 && (providerBuckets.preferredAccountKey == Self.planUtilizationUnscopedPreferredKey
                     || !providerBuckets.accounts.isEmpty))
@@ -1185,6 +1257,17 @@ extension UsageStore {
             return tokenAccountKey
         }
 
+        // Provider-specific by design: Kimi's successful-request credential scope is authoritative.
+        // Never carry an old credential's preferred history into an unidentified or rotated source.
+        if provider == .kimi {
+            let key = snapshot.flatMap { Self.planUtilizationIdentityAccountKey(provider: provider, snapshot: $0) }
+            if let key, let snapshot {
+                Self.mergeVerifiedNativeKimiHistory(snapshot: snapshot, into: key, buckets: &providerBuckets)
+            }
+            if shouldUpdatePreferredAccountKey, !readOnly { providerBuckets.preferredAccountKey = key }
+            return key
+        }
+
         if let snapshot,
            let identityAccountKey = Self.planUtilizationIdentityAccountKey(provider: provider, snapshot: snapshot)
         {
@@ -1204,6 +1287,15 @@ extension UsageStore {
                     providerBuckets: &providerBuckets)
             }
             return resolvedIdentityAccountKey
+        }
+
+        if self.resolveNativeAnonymousQuotaHistory(
+            for: provider,
+            shouldUpdatePreferredAccountKey: shouldUpdatePreferredAccountKey,
+            readOnly: readOnly,
+            providerBuckets: &providerBuckets)
+        {
+            return nil
         }
 
         if let stickyAccountKey = self.stickyPlanUtilizationAccountKey(providerBuckets: providerBuckets) {
@@ -1241,7 +1333,7 @@ extension UsageStore {
         return nil
     }
 
-    private func materializeCodexPlanUtilizationHistoryIfNeeded(
+    func materializeCodexPlanUtilizationHistoryIfNeeded(
         into canonicalKey: String,
         ownership: CodexOwnershipContext,
         shouldAdoptUnscopedHistory: Bool,
@@ -1285,8 +1377,13 @@ extension UsageStore {
             hasForeignHistoryToMerge = true
         }
 
+        // Native session archives omit event owners, even when only one account is currently visible.
+        // Keep the entire marked bucket anonymous, including any adjacent legacy fragments.
         if shouldAdoptUnscopedHistory,
            !providerBuckets.unscoped.isEmpty,
+           !providerBuckets.unscoped.contains(where: {
+               $0.name.isNativeQuotaObservation || $0.name.isNativeMetricObservation
+           }),
            CodexHistoryOwnership.hasStrictSingleAccountContinuity(
                scopedRawKeys: Self.scopedRawKeysRelevantToCodexUnscopedPlanHistory(providerBuckets),
                targetCanonicalKey: canonicalKey,
@@ -1362,6 +1459,14 @@ extension UsageStore {
         providerBuckets: inout PlanUtilizationHistoryBuckets)
     {
         guard !providerBuckets.unscoped.isEmpty else { return }
+        // Native raw evidence marks an anonymous source. Keep its entire bucket isolated, including hourly
+        // fragments that would otherwise reintroduce these unknown-owner readings through legacy graph merging.
+        // Legacy-only buckets retain the existing first-account migration behavior.
+        if Self.nativeOrbitAllowsAnonymousQuotaHistory(for: provider),
+           providerBuckets.unscoped.contains(where: {
+               $0.name.isNativeQuotaObservation || $0.name.isNativeMetricObservation
+           })
+        { return }
 
         let existingHistory = providerBuckets.accounts[accountKey] ?? []
         let targetHasHistory = !existingHistory.isEmpty
@@ -1584,6 +1689,10 @@ extension UsageStore {
             for history in historyGroup {
                 let key = PlanUtilizationSeriesKey(name: history.name, windowMinutes: history.windowMinutes)
                 var mergedEntries = mergedEntriesByKey[key] ?? []
+                if history.name.isNativeQuotaObservation || history.name.isNativeMetricObservation {
+                    mergedEntriesByKey[key] = Self.nativeOrbitMergedRawEntries(mergedEntries, history.entries)
+                    continue
+                }
                 self.assertPlanUtilizationEntriesSorted(mergedEntries)
                 for entry in history.entries.sorted(by: { $0.capturedAt < $1.capturedAt }) {
                     _ = self.updatedPlanUtilizationEntries(
@@ -1595,13 +1704,12 @@ extension UsageStore {
             }
         }
 
-        return mergedEntriesByKey.map { key, entries in
+        return self.nativeOrbitCoalescedQuotaHistories(mergedEntriesByKey.map { key, entries in
             PlanUtilizationSeriesHistory(
                 name: key.name,
                 windowMinutes: key.windowMinutes,
                 entries: entries)
-        }
-        .sorted(by: PlanUtilizationSeriesHistory.precedes)
+        })
     }
 
     #if DEBUG
@@ -1640,19 +1748,53 @@ extension UsageStore {
 
 actor PlanUtilizationHistoryPersistenceCoordinator {
     private let store: PlanUtilizationHistoryStore
+    private let saveOperation: (@Sendable ([ProviderInstanceID: PlanUtilizationHistoryBuckets]) async -> Bool)?
     private var pendingSnapshot: [ProviderInstanceID: PlanUtilizationHistoryBuckets]?
-    private var isPersisting: Bool = false
+    private var failedSnapshot: [ProviderInstanceID: PlanUtilizationHistoryBuckets]?
+    private var persistenceTask: Task<Void, Never>?
+    private var isTerminating = false
 
-    init(store: PlanUtilizationHistoryStore) {
+    init(
+        store: PlanUtilizationHistoryStore,
+        saveOperation: (@Sendable ([ProviderInstanceID: PlanUtilizationHistoryBuckets]) async -> Bool)? = nil)
+    {
         self.store = store
+        self.saveOperation = saveOperation
+    }
+
+    /// Drain accepted writes and retry a rejected latest snapshot once. A permanent filesystem failure
+    /// remains available for the next enqueue/flush without blocking normal termination forever.
+    func flush() async -> Bool {
+        while let task = self.persistenceTask {
+            await task.value
+        }
+        if let failedSnapshot = self.failedSnapshot {
+            self.scheduleSnapshot(failedSnapshot)
+            while let task = self.persistenceTask {
+                await task.value
+            }
+        }
+        return self.failedSnapshot == nil
     }
 
     func enqueue(_ snapshot: [ProviderInstanceID: PlanUtilizationHistoryBuckets]) {
-        self.pendingSnapshot = snapshot
-        guard !self.isPersisting else { return }
-        self.isPersisting = true
+        guard !self.isTerminating else { return }
+        self.scheduleSnapshot(snapshot)
+    }
 
-        Task(priority: .utility) {
+    /// The main actor's loaded snapshot includes accepted mutations whose deferred enqueue has not run yet.
+    /// Seal ordinary admission so an older captured snapshot cannot overwrite that final state after an await.
+    func flushForTermination(latestSnapshot: [ProviderInstanceID: PlanUtilizationHistoryBuckets]?) async -> Bool {
+        self.isTerminating = true
+        if let latestSnapshot { self.scheduleSnapshot(latestSnapshot) }
+        return await self.flush()
+    }
+
+    private func scheduleSnapshot(_ snapshot: [ProviderInstanceID: PlanUtilizationHistoryBuckets]) {
+        self.pendingSnapshot = snapshot
+        guard self.persistenceTask == nil else { return }
+
+        self.persistenceTask = Task(priority: .utility) {
             await self.persistLoop()
         }
     }
@@ -1660,16 +1802,19 @@ actor PlanUtilizationHistoryPersistenceCoordinator {
     private func persistLoop() async {
         while let nextSnapshot = self.pendingSnapshot {
             self.pendingSnapshot = nil
-            await self.saveAsync(nextSnapshot)
+            self.failedSnapshot = await self.saveAsync(nextSnapshot) ? nil : nextSnapshot
         }
 
-        self.isPersisting = false
+        self.persistenceTask = nil
     }
 
-    private func saveAsync(_ snapshot: [ProviderInstanceID: PlanUtilizationHistoryBuckets]) async {
+    private func saveAsync(_ snapshot: [ProviderInstanceID: PlanUtilizationHistoryBuckets]) async -> Bool {
+        if let saveOperation {
+            return await saveOperation(snapshot)
+        }
         let store = self.store
-        await Task.detached(priority: .utility) {
-            store.save(snapshot)
+        return await Task.detached(priority: .utility) {
+            store.save(snapshot).isEmpty
         }.value
     }
 }

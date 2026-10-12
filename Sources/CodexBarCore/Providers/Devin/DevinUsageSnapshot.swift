@@ -98,6 +98,9 @@ public struct DevinUsageSnapshot: Sendable, Equatable {
                 limit: 0,
                 currencyCode: "USD",
                 period: "Extra usage balance",
+                balance: $0,
+                balanceUpdatedAt: self.updatedAt,
+                usageIsUnavailable: true,
                 updatedAt: self.updatedAt)
         }
         return UsageSnapshot(

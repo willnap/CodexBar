@@ -100,11 +100,25 @@ enum OllamaUsageParser {
             ("Next refill", #"<p[^>]*>\s*Refills\s+(to\s+\#(amount)\s+in\s+[^<]{1,160}?)\s*</p\s*>"#),
         ]
         let rows = fields.compactMap { label, pattern in
-            self.firstCapture(in: wallet, pattern: pattern, options: [.caseInsensitive])
-                .map { ProviderDetailSection.makeRow(label: label, value: $0) }
+            self.firstCapture(in: wallet, pattern: pattern, options: [.caseInsensitive]).map {
+                ProviderDetailSection.makeRow(
+                    label: label,
+                    value: $0,
+                    // The purchased wallet amount stays typed for the native extra-usage balance.
+                    usageValue: label == OllamaProviderDescriptor.creditBalanceLabel ? Self.dollars($0) : nil)
+            }
         }
         guard rows.contains(where: { $0.label != "Next refill" }) else { return [] }
         return [ProviderDetailSection.makeSection(title: "Credits", rows: rows)]
+    }
+
+    /// `$1,234.50` as captured by the wallet amount pattern; anything else stays untyped.
+    static func dollars(_ text: String) -> Double? {
+        guard text.hasPrefix("$") else { return nil }
+        let digits = text.dropFirst().replacingOccurrences(of: ",", with: "")
+        guard digits.range(of: #"^[0-9]+(\.[0-9]+)?$"#, options: .regularExpression) != nil,
+              let value = Double(digits), value.isFinite else { return nil }
+        return value
     }
 
     private static func parseAccountEmail(_ html: String) -> String? {

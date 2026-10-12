@@ -149,6 +149,7 @@ extension UsageStore {
                 statuses: statuses, context: context, phase: phase, pauseReason: reason)
         }
         guard self.spendDashboardCodexCostCatchUpContextIsCurrent(context) else { return }
+        self.accelerateColdSpendDashboardCodexCostCatchUpIfNeeded(statuses: Array(statuses.values))
         publish(statuses.values.contains(where: \.pending) ? .indexing : .complete)
 
         var didChangeCache = false

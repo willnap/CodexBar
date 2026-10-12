@@ -12,6 +12,22 @@ public struct MiMoUsageSnapshot: Codable, Sendable {
     public let tokenLimit: Int
     public let tokenPercent: Double
     public let updatedAt: Date
+    /// Live-only machine-local token report from the opt-in tracker cache; never persisted.
+    public var localTokenReport: CostUsageTokenSnapshot?
+
+    private enum CodingKeys: String, CodingKey {
+        case balance
+        case currency
+        case cashBalance
+        case giftBalance
+        case planCode
+        case planPeriodEnd
+        case planExpired
+        case tokenUsed
+        case tokenLimit
+        case tokenPercent
+        case updatedAt
+    }
 
     public init(
         balance: Double,
@@ -89,6 +105,16 @@ extension MiMoUsageSnapshot {
             primary: tokenWindow,
             secondary: nil,
             tertiary: nil,
+            providerCost: includeBalance && self.balance.isFinite ? ProviderCostSnapshot(
+                used: self.balance,
+                limit: 0,
+                currencyCode: self.currency,
+                period: "Credits balance",
+                balance: self.balance,
+                balanceUpdatedAt: self.updatedAt,
+                usageIsUnavailable: true,
+                updatedAt: self.updatedAt) : nil,
+            costUsage: self.localTokenReport,
             details: includeBalance ? [.makeSection(title: "Credits", rows: [
                 .makeRow(label: "Balance", value: self.balanceDetail),
             ])] : [],

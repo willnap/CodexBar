@@ -42,7 +42,7 @@ struct CreditUsageTests {
         #expect(codebuff.toUsageSnapshot().primary?.resetDescription == nil)
         #expect(codebuff.toUsageSnapshot().identity?.loginMethod == "75 remaining")
         #expect(kilo.toUsageSnapshot().primary?.resetDescription == "25/100 credits")
-        #expect(kilo.toUsageSnapshot().secondary?.resetDescription == "$25.00 / $90.00 (+ $10.00 bonus)")
+        #expect(kilo.toUsageSnapshot().secondary?.resetDescription == "25.00 / 90.00 Credits (+ 10.00 Credits bonus)")
     }
 
     private static func kilo(used: Double?, total: Double?, remaining: Double?) -> KiloUsageSnapshot {

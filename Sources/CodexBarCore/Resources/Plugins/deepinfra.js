@@ -73,10 +73,13 @@ defineProvider({
         usedPercent: checklist.suspended || balance >= 0 ? 100 : 0,
         resetDescription: `${suspension}${balanceText} · ${usd(monthCost)} spent this month`,
       },
-      cost:
-        checklist.limit > 0
-          ? { used: recent, limit: checklist.limit, currency: "USD", period: "Billing cycle" }
-          : undefined,
+      cost: {
+        used: monthCost,
+        limit: checklist.limit > 0 ? checklist.limit : undefined,
+        balance: -balance,
+        currency: "USD",
+        period: usage.months.length ? "Monthly" : "Billing cycle",
+      },
       identity: {},
       dataConfidence: "exact",
     };

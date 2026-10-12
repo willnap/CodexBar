@@ -23,7 +23,7 @@ struct ProviderInstanceIdentityCharacterizationTests {
     }
 
     @Test
-    func `history uses the provider raw value for its filename and leaves payload shape unchanged`() throws {
+    func `history retains its provider filename and adds exact timestamps to the compatible payload`() throws {
         let directoryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("ProviderInstanceIdentityCharacterizationTests-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directoryURL) }
@@ -45,7 +45,8 @@ struct ProviderInstanceIdentityCharacterizationTests {
         let data = try Data(contentsOf: directoryURL.appendingPathComponent("claude.json"))
         let encodedJSON = try #require(String(data: data, encoding: .utf8))
         let expectedJSON = #"{"accounts":{},"sessionEquivalentWindowPairIdentities":{},"unscoped":["# +
-            #"{"entries":[{"capturedAt":"1970-01-01T00:00:00Z","usedPercent":12}],"# +
+            #"{"entries":[{"capturedAt":"1970-01-01T00:00:00Z","# +
+            #""capturedAtReferenceTime":-978307200,"usedPercent":12}],"# +
             #""name":"session","windowMinutes":300}],"version":1}"#
         #expect(encodedJSON == expectedJSON)
         #expect(store.load().keys.sorted(by: { $0.rawValue < $1.rawValue }) == [.claude])

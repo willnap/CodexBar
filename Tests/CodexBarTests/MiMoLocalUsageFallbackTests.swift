@@ -178,6 +178,81 @@ struct MiMoLocalUsageFallbackTests {
         }
     }
 
+    @Test
+    func `today counters become a UTC day report with the tracker timestamp`() throws {
+        let updatedAt = "2026-06-03T05:04:03.123456+00:00"
+        let snap = try self.makeTrackerSnapshot(
+            today: ["input": 1500, "output": 500, "cache_read": 40, "cache_create": 250, "messages": 3],
+            updatedAt: updatedAt)
+        let report = try #require(snap.localTokenReport)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let observed = try #require(formatter.date(from: updatedAt))
+        #expect(report.updatedAt == observed)
+        #expect(report.coverageThrough == observed)
+        #expect(report.bucketTimeZoneIdentifier == "UTC")
+        #expect(report.historyDays == 1)
+        #expect(report.historyCoverageIsEstablished)
+        #expect(!report.historyScanIsPartial)
+        #expect(report.last30DaysTokens == 2290)
+        #expect(report.last30DaysCostUSD == nil)
+        #expect(report.last30DaysRequests == nil)
+        let day = try #require(report.daily.first)
+        #expect(report.daily.count == 1)
+        #expect(day.date == "2026-06-03")
+        #expect(day.inputTokens == 1500)
+        #expect(day.outputTokens == 500)
+        #expect(day.cacheReadTokens == 40)
+        #expect(day.cacheCreationTokens == 250)
+        #expect(day.totalTokens == 2290)
+        #expect(day.costUSD == nil)
+        let usage = snap.toUsageSnapshot(includeBalance: false)
+        #expect(usage.costUsage == report)
+        #expect(usage.providerCost == nil)
+    }
+
+    @Test
+    func `tracker days without cache creation counters remain lower bounds`() throws {
+        let snap = try self.makeTrackerSnapshot(today: ["input": 0, "output": 0, "cache_read": 0])
+        let report = try #require(snap.localTokenReport)
+        #expect(report.last30DaysTokens == 0)
+        #expect(report.historyScanIsPartial)
+        #expect(report.daily.first?.cacheCreationTokens == nil)
+    }
+
+    @Test(arguments: [
+        #"{"input": 10, "output": -1}"#,
+        #"{"input": "many", "output": 2}"#,
+        #"{"input": 9.3e18, "output": 2}"#,
+        #"{"output": 2}"#,
+        #"{"input": 9223372036854775807, "output": 2}"#,
+    ])
+    func `unreadable or overflowing tracker counters are not measurements`(todayJSON: String) throws {
+        let today = try #require(try JSONSerialization.jsonObject(with: Data(todayJSON.utf8)) as? [String: Any])
+        let snap = try self.makeTrackerSnapshot(today: today)
+        #expect(snap.localTokenReport == nil)
+        #expect(snap.toUsageSnapshot(includeBalance: false).costUsage == nil)
+    }
+
+    private func makeTrackerSnapshot(
+        today: [String: Any],
+        updatedAt: String = "2026-06-03T05:04:03.123456+00:00") throws -> MiMoUsageSnapshot
+    {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mimo-fallback-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("usage.json")
+        let empty = ["input": 0, "output": 0, "cache_read": 0, "cache_create": 0]
+        let payload: [String: Any] = [
+            "updated_at": updatedAt,
+            "sessions_scanned": 1,
+            "windows": ["today": today, "week": empty, "all_time": empty],
+        ]
+        try JSONSerialization.data(withJSONObject: payload).write(to: file)
+        return try #require(MiMoLocalUsageFallback.snapshot(cachePath: file.path))
+    }
+
     private func makeSnapshot(
         updatedAt: String?,
         fileModificationDate: Date? = nil,

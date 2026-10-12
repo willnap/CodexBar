@@ -19,7 +19,7 @@ extension UsageStore {
     func scheduleSupplementalUsageUpdates(
         provider: UsageProvider,
         results: [TokenAccountFetchResult],
-        selectedAccountID: UUID,
+        selectedAccountID: UUID?,
         generation: UInt64?)
     {
         for result in results where result.account.id != selectedAccountID {
@@ -46,7 +46,7 @@ extension UsageStore {
             guard let self else { return }
             guard self.isCurrentProviderRefreshGeneration(provider, generation: generation)
             else { return }
-            self.applySupplementalUsageUpdate(
+            await self.applySupplementalUsageUpdate(
                 update,
                 provider: provider,
                 expectedUpdatedAt: expectedUpdatedAt,
@@ -58,7 +58,7 @@ extension UsageStore {
         _ update: ProviderSupplementalUsageUpdate,
         provider: UsageProvider,
         expectedUpdatedAt: Date,
-        accountID: UUID?)
+        accountID: UUID?) async
     {
         // Provider-specific by design: only Grok publishes remaining reset credits as a supplemental update.
         guard provider == .grok else { return }
@@ -66,6 +66,8 @@ extension UsageStore {
         let resetCredits: GrokRateLimitResetCreditsSnapshot? = switch update {
         case let .grokResetCredits(snapshot): snapshot
         }
+        var historySnapshot: UsageSnapshot?
+        var historyAccount: ProviderTokenAccount?
         if let accountID,
            let account = self.uniqueTokenAccount(provider: provider, accountID: accountID),
            let accountSnapshot = self.accountSnapshots[provider.instanceID]?.first(where: {
@@ -73,10 +75,13 @@ extension UsageStore {
            }),
            let currentAccountUsage = accountSnapshot.snapshot
         {
+            let updated = currentAccountUsage.withGrokResetCredits(resetCredits)
+            historySnapshot = updated
+            historyAccount = account
             self.cacheTokenAccountSnapshot(
                 provider: provider,
                 account: account,
-                snapshot: currentAccountUsage.withGrokResetCredits(resetCredits),
+                snapshot: updated,
                 sourceLabel: accountSnapshot.sourceLabel)
         }
 
@@ -89,9 +94,17 @@ extension UsageStore {
         {
             let updated = current.withGrokResetCredits(resetCredits)
             self.snapshots[provider.instanceID] = updated
+            if accountID == nil { historySnapshot = updated }
             if self.lastKnownResetSnapshots[provider.instanceID]?.updatedAt == expectedUpdatedAt {
                 self.lastKnownResetSnapshots[provider.instanceID] = updated
             }
+        }
+        if self.settings.nativeDesignEnabled, let historySnapshot {
+            await self.recordPlanUtilizationHistorySample(
+                provider: provider,
+                snapshot: historySnapshot,
+                account: historyAccount,
+                now: historySnapshot.updatedAt)
         }
     }
 }

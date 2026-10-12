@@ -1956,8 +1956,10 @@
 "Settings unavailable." = "Settings unavailable.";
 "Show account card when only one account is available" = "Show account card when only one account is available";
 "Show model-specific weekly usage in widgets" = "Show model-specific weekly usage in widgets";
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
 "Show workspace spend" = "Show workspace spend";
 "Shows model-specific Claude quotas, such as Fable, in desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in desktop widgets.";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
 "Shows the hidden accounts" = "Shows the hidden accounts";
 "Shows usage and lets you switch accounts through `cswap`. Credentials stay managed by claude-swap; CodexBar never reads them." = "Shows usage and lets you switch accounts through `cswap`. Credentials stay managed by claude-swap; CodexBar never reads them.";
 "Stay Awake" = "Stay Awake";
@@ -2510,3 +2512,113 @@
 "Pace sign" = "Pace sign";
 "Ahead of pace is +" = "Ahead of pace is +";
 "Reserve is +" = "Reserve is +";
+
+"Sign In…" = "Sign In…";
+
+"Connect…" = "Connect…";
+
+// Native gauge settings and states.
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Custom gauges" = "Custom gauges";
+"Each enabled service has its own gauge. Manage services in the sidebar." = "Each enabled service has its own gauge. Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Legacy" = "Legacy";
+"Legacy icons" = "Legacy icons";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Style" = "Style";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+
+/* Settings search and provider ordering */
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+
+// Native orbit popup
+"Available" = "Available";
+"24h" = "24h";
+"No history yet" = "No history yet";
+"Recorded available usage" = "Recorded available usage";
+
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+
+"Local usage totals" = "Local usage totals";
+
+"Time period" = "Time period";
+
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Time period for every account’s history, tokens and spend. Quota dials show current availability.";
+
+"Active %@ account" = "Active %@ account";
+
+"Use in %@" = "Use in %@";
+
+"Use this account in %@" = "Use this account in %@";
+
+"Use %@ in %@" = "Use %@ in %@";
+
+"Last updated %@" = "Last updated %@";
+
+"No observations" = "No observations";
+
+"History begins with recorded usage. Missing time is left empty." = "History begins with recorded usage. Missing time is left empty.";
+
+"native_orbit_range_help" = "Time period for every account’s history, tokens and spend. Quota dials show current availability.";
+
+"1d" = "1d";
+
+"Auto switch" = "Auto Switch";
+
+"Updating…" = "Updating…";
+
+"<1m ago" = "<1m ago";
+
+"Now" = "Now";
+
+"Local Claude archive" = "Local Claude archive";
+
+"Account not recorded" = "Account not recorded";
+
+"Anonymous observations from this provider. No account identity was recorded." = "Anonymous observations from this provider. No account identity was recorded.";
+
+"History begins with recorded usage." = "History begins with recorded usage.";
+
+"%d observations · %d/%d days" = "%d observations · %d/%d days";
+
+"No observations in this period" = "No observations in this period";
+
+"Last observed %@" = "Last observed %@";
+
+"First observed %@" = "First observed %@";
+
+"Connecting lines hold the last recorded value." = "Connecting lines hold the last recorded value.";
+
+"Local Codex archive" = "Local Codex archive";
+
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Session logs can repeat cached quota readings. Their account identity is not recorded.";
+
+"%ds ago" = "%ds ago";
+
+"Local Kimi archive" = "Local Kimi archive";
+"Lines connect nearby observations. Gaps have no recorded data." = "Lines connect nearby observations. Gaps have no recorded data.";
+"native_refresh_timed_out" = "Refresh is taking longer than expected. It continues in the background.";
+"native_orbit_range_day" = "D";
+"native_orbit_range_week" = "W";
+"native_orbit_range_month" = "M";
+"Last 7 days" = "Last 7 days";

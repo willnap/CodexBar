@@ -832,12 +832,15 @@ struct LocalizationLanguageCatalogTests {
             "~/.local/bin/cswap",
             "~/Library/Application Support/JetBrains/IntelliJIdea2024.3",
             // Measurement units and numeric formats are shared with English.
+            "24h",
             "spend_performance_percent",
             "spend_performance_rate",
             "spend_performance_rate_range",
             "spend_performance_seconds",
             "spend_tools_coverage",
             "spend_tools_milliseconds",
+            // The range control's Month initial is the same letter in Italian (Mese).
+            "native_orbit_range_month",
         ]
         let unchanged = Set(english.keys.filter { italian[$0] == english[$0] })
         #expect(unchanged == intentionallyUnchanged)

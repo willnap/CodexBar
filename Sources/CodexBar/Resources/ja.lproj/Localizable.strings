@@ -2506,3 +2506,112 @@
 "Pace sign" = "ペースの符号";
 "Ahead of pace is +" = "ペース超過を + で表示";
 "Reserve is +" = "余裕を + で表示";
+
+"Sign In…" = "Sign In…";
+
+"Connect…" = "Connect…";
+
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+
+// Native gauge settings and states.
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Custom gauges" = "Custom gauges";
+"Each enabled service has its own gauge. Manage services in the sidebar." = "Each enabled service has its own gauge. Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Legacy" = "Legacy";
+"Legacy icons" = "Legacy icons";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Style" = "Style";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+
+/* Settings search and provider ordering */
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+
+// Native orbit popup
+"Available" = "利用可能";
+"24h" = "24h";
+"No history yet" = "履歴はまだありません";
+"Recorded available usage" = "記録された利用可能量";
+
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+
+"Local usage totals" = "Local usage totals";
+
+"Time period" = "期間";
+
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "すべてのアカウントの履歴、トークン、支出の期間です。クォータのゲージは現在の利用可能量を示します。";
+
+"Active %@ account" = "使用中の%@アカウント";
+
+"Use in %@" = "%@で使用";
+
+"Use this account in %@" = "このアカウントを%@で使用";
+
+"Use %@ in %@" = "%@を%@で使用";
+
+"Last updated %@" = "最終更新 %@";
+
+"No observations" = "記録がありません";
+
+"History begins with recorded usage. Missing time is left empty." = "履歴は記録された使用データから始まります。データのない期間は空白のままです。";
+
+"native_orbit_range_help" = "すべてのアカウントの履歴、トークン、支出の期間です。クォータのゲージは現在の利用可能量を示します。";
+
+"1d" = "1日";
+"<1m ago" = "<1分前";
+"Auto switch" = "自動切り替え";
+"Now" = "現在";
+"Updating…" = "更新中…";
+
+"Local Claude archive" = "Claudeのローカル履歴";
+
+"Account not recorded" = "アカウント未記録";
+
+"Anonymous observations from this provider. No account identity was recorded." = "このプロバイダーの匿名の測定値です。アカウントの識別情報は記録されていません。";
+
+"History begins with recorded usage." = "履歴は使用量の記録開始時から表示されます。";
+
+"%d observations · %d/%d days" = "%d 件の記録 · %d/%d 日";
+
+"No observations in this period" = "この期間の記録はありません";
+
+"Last observed %@" = "最終記録 %@";
+
+"First observed %@" = "最初の記録 %@";
+
+"Connecting lines hold the last recorded value." = "接続線は最後に記録された値を維持します。";
+
+"Local Codex archive" = "ローカル Codex アーカイブ";
+
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "セッションログにはキャッシュされた使用枠の値が繰り返し記録されることがあります。アカウントの識別情報は記録されていません。";
+
+"%ds ago" = "%d秒前";
+
+"Local Kimi archive" = "ローカル Kimi アーカイブ";
+"Lines connect nearby observations. Gaps have no recorded data." = "線は時間が近い測定値をつなぎます。空白には記録されたデータがありません。";
+"native_refresh_timed_out" = "更新に予想以上の時間がかかっています。バックグラウンドで続行します。";
+"native_orbit_range_day" = "日";
+"native_orbit_range_week" = "週";
+"native_orbit_range_month" = "月";
+"Last 7 days" = "過去7日間";

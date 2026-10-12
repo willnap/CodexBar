@@ -112,12 +112,25 @@ public struct JetBrainsStatusSnapshot: Sendable {
             ])]
         } ?? []
 
+        let updatedAt = Date()
         return UsageSnapshot(
             primary: primary,
             secondary: nil,
             tertiary: nil,
+            providerCost: self.quotaInfo.topUp.map { topUp in
+                // Purchased top-up credits are the extra-usage balance, in JetBrains AI credits rather than money.
+                ProviderCostSnapshot(
+                    used: 0,
+                    limit: 0,
+                    currencyCode: "Credits",
+                    period: "Top-up credits",
+                    balance: topUp.availableCredits,
+                    balanceUpdatedAt: updatedAt,
+                    usageIsUnavailable: true,
+                    updatedAt: updatedAt)
+            },
             details: details,
-            updatedAt: Date(),
+            updatedAt: updatedAt,
             identity: identity)
     }
 }

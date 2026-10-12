@@ -150,6 +150,7 @@ public struct GroqConsoleUsageSnapshot: Codable, Equatable, Sendable {
                 currencyCode: "USD",
                 period: self.historyWindowPeriodLabel,
                 updatedAt: self.updatedAt),
+            costUsage: tokenSnapshot,
             details: details,
             updatedAt: self.updatedAt,
             identity: ProviderIdentitySnapshot(

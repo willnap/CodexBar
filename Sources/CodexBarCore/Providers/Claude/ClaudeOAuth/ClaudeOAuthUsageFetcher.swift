@@ -64,7 +64,9 @@ enum ClaudeOAuthUsageFetcher {
     private static let usagePath = "/api/oauth/usage"
     private static let profilePath = "/api/oauth/profile"
     private static let betaHeader = "oauth-2025-04-20"
-    private static let fallbackClaudeCodeVersion = "2.1.0"
+    /// Newest Claude Code release verified to receive the reset inventory. The usage endpoint answers outdated
+    /// versions with `cedar_ember.eligible: false` (`ineligible_reason: "cli_version"`; 2.1.0 is refused).
+    private static let fallbackClaudeCodeVersion = "2.1.296"
 
     static func fetchUsage(
         accessToken: String,
@@ -92,7 +94,11 @@ enum ClaudeOAuthUsageFetcher {
         request.setValue(Self.betaHeader, forHTTPHeaderField: "anthropic-beta")
         let userAgent = Self.claudeCodeUserAgent(
             detectClaudeVersion: detectClaudeVersion,
-            versionDetector: { ProviderVersionDetector.claudeVersion(environment: environment) })
+            versionDetector: {
+                // Background refreshes may not run `claude --version`; the install layout still names the version.
+                ProviderVersionDetector.claudeVersion(environment: environment)
+                    ?? Self.installedClaudeCodeVersion(environment: environment)
+            })
         request.setValue(
             userAgent.replacingOccurrences(of: "claude-code/", with: "claude-cli/") + " (external, cli)",
             forHTTPHeaderField: "User-Agent")
@@ -206,6 +212,46 @@ enum ClaudeOAuthUsageFetcher {
         self.claudeCodeUserAgent(versionString: detectClaudeVersion ? versionDetector() : nil)
     }
 
+    /// Claude Code's version read from its install layout without executing the CLI. Skips the interactive shell
+    /// lookup, which the version detector has already performed for this refresh.
+    static func installedClaudeCodeVersion(environment: [String: String]) -> String? {
+        guard let binary = BinaryLocator.resolveClaudeBinary(
+            env: environment,
+            commandV: { _, _, _, _ in nil },
+            aliasResolver: { _, _, _, _, _ in nil })
+        else { return nil }
+        return self.installedClaudeCodeVersion(binaryPath: binary)
+    }
+
+    /// The native installer links `claude` to `…/claude/versions/<version>`; npm installs resolve into the
+    /// `@anthropic-ai/claude-code` package, whose manifest carries the version.
+    static func installedClaudeCodeVersion(binaryPath: String) -> String? {
+        let resolved = URL(fileURLWithPath: binaryPath).resolvingSymlinksInPath()
+        guard FileManager.default.fileExists(atPath: resolved.path) else { return nil }
+        var directory = resolved.deletingLastPathComponent()
+        if directory.lastPathComponent == "versions", Self.isReleaseVersion(resolved.lastPathComponent) {
+            return resolved.lastPathComponent
+        }
+        for _ in 0..<4 {
+            let manifest = directory.appendingPathComponent("package.json")
+            if FileManager.default.fileExists(atPath: manifest.path) {
+                guard let data = try? Data(contentsOf: manifest),
+                      let contents = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      contents["name"] as? String == "@anthropic-ai/claude-code",
+                      let version = contents["version"] as? String,
+                      Self.isReleaseVersion(version)
+                else { return nil }
+                return version
+            }
+            directory = directory.deletingLastPathComponent()
+        }
+        return nil
+    }
+
+    private static func isReleaseVersion(_ text: String) -> Bool {
+        text.range(of: #"^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$"#, options: .regularExpression) != nil
+    }
+
     private static func claudeCodeUserAgent(versionString: String?) -> String {
         let version = self.normalizedClaudeCodeVersion(versionString) ?? self.fallbackClaudeCodeVersion
         return "claude-code/\(version)"
@@ -288,6 +334,7 @@ struct OAuthUsageResponse: Decodable {
     let sevenDayRoutinesSourceKey: String?
     let cloudCredits: ClaudeCloudCreditsSnapshot?
     let extraUsage: OAuthExtraUsage?
+    let monthlySpend: ClaudeMonthlySpend?
     let resetStatus: ClaudeLimitResetStatusResponse?
     /// Newer shape (superseding the flat `seven_day_*` fields above for scoped weekly
     /// windows): a flat list of limit entries, each optionally naming the model it scopes
@@ -314,6 +361,7 @@ struct OAuthUsageResponse: Decodable {
         self.sevenDayRoutinesSourceKey = routines.sourceKey
         self.cloudCredits = Self.decodeValue(in: container, keys: ["iguana_necktie"])
         self.extraUsage = Self.decodeValue(in: container, keys: ["extra_usage"])
+        self.monthlySpend = Self.decodeValue(in: container, keys: ["spend"])
         self.limits = Self.decodeValue(in: container, keys: ["limits"])
         self.resetStatus = Self.decodeValue(in: container, keys: ["cedar_ember"])
     }

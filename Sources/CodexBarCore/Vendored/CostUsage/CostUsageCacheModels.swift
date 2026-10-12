@@ -363,6 +363,12 @@ struct CostUsageFileUsage: Codable, Equatable {
     var codexTokenTimestampsMonotonic: Bool?
     var codexTokenIndexAnchor: CostUsageCodexTokenIndexAnchor?
     var claudeRows: [CostUsageScanner.ClaudeUsageRow]?
+    /// Claude session ownership at `parsedBytes`, so an incremental append keeps transcript attribution.
+    var claudeOrganizationsBySession: [String: String]?
+    /// Earliest `credential_org` event in this Claude transcript; bounds attributable history coverage.
+    var claudeFirstOrganizationAttachmentUnixMs: Int64?
+    /// A row dated after the scan window was skipped, so extending that window must reparse this file.
+    var claudeExcludedRowsAfterScanWindow: Bool?
     var codexScanFileId: String?
     var codexScanTargetSize: Int64?
     var codexScanComplete: Bool?

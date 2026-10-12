@@ -9,6 +9,10 @@ public struct KimiUsageSnapshot: Sendable {
     let subscriptionBalance: KimiSubscriptionBalance?
     let subscriptionCodeWeeklyLimit: KimiSubscriptionRateLimit?
     let codeUsagePools: KimiCodeUsagePools?
+    let boosterCost: ProviderCostSnapshot?
+    /// Opaque successful-request credential scope; rotation starts a separate history owner.
+    var historyOwnerID: String?
+    var historyOwnerAliases: [String]?
 
     public init(weekly: KimiUsageDetail?, rateLimit: KimiUsageDetail?, updatedAt: Date) {
         self.init(weekly: weekly, rateLimit: rateLimit, subscriptionBalance: nil, updatedAt: updatedAt)
@@ -21,6 +25,7 @@ public struct KimiUsageSnapshot: Sendable {
         subscriptionBalance: KimiSubscriptionBalance?,
         subscriptionCodeWeeklyLimit: KimiSubscriptionRateLimit? = nil,
         codeUsagePools: KimiCodeUsagePools? = nil,
+        boosterCost: ProviderCostSnapshot? = nil,
         planName: String? = nil,
         updatedAt: Date)
     {
@@ -31,6 +36,7 @@ public struct KimiUsageSnapshot: Sendable {
         self.subscriptionCodeWeeklyLimit = subscriptionCodeWeeklyLimit
         self.planName = planName
         self.codeUsagePools = codeUsagePools
+        self.boosterCost = boosterCost
         self.updatedAt = updatedAt
     }
 
@@ -89,6 +95,24 @@ public struct KimiUsageSnapshot: Sendable {
             return "Rate: \(used)/\(limit) per \(hours) \(hours == 1 ? "hour" : "hours")"
         }
         return "Rate: \(used)/\(limit) per \(windowMinutes) \(windowMinutes == 1 ? "minute" : "minutes")"
+    }
+
+    private static func requestQuota(
+        id: String, title: String, detail: KimiUsageDetail?, window: RateWindow?) -> KimiRequestQuota?
+    {
+        guard let detail, let window, let counts = self.usageCounts(detail), counts.isReliable else { return nil }
+        // Ratio pools can supersede stale count endpoints. Only retain counters that describe this displayed lane.
+        let percent = self.clampedPercent(Double(counts.used) / Double(counts.limit) * 100)
+        guard abs(percent - window.usedPercent) <= 1 else { return nil }
+        let reset = ISO8601DateParser.parse(detail.resetTime)
+        if let reset, let laneReset = window.resetsAt, abs(reset.timeIntervalSince(laneReset)) > 2 { return nil }
+        return KimiRequestQuota(
+            id: id,
+            title: title,
+            used: counts.used,
+            limit: counts.limit,
+            windowMinutes: window.windowMinutes,
+            resetsAt: window.resetsAt)
     }
 }
 
@@ -175,16 +199,26 @@ extension KimiUsageSnapshot {
             showsDistinctCodeWeeklyWindow ? subscriptionCodeWeeklyWindow : nil,
         ].compactMap(\.self)
 
+        let requestQuotas = [
+            Self.requestQuota(id: "primary", title: "7-day", detail: self.weekly, window: weeklyWindow),
+            Self.requestQuota(id: "secondary", title: "Rate limit", detail: self.rateLimit, window: rateLimitWindow),
+        ].compactMap(\.self)
+
         return UsageSnapshot(
             primary: weeklyWindow,
             secondary: rateLimitWindow,
             extraRateWindows: extraRateWindows.isEmpty ? nil : extraRateWindows,
+            providerCost: self.boosterCost,
+            kimiRequestQuotas: requestQuotas.isEmpty ? nil : requestQuotas,
+            subscriptionExpiresAt: ISO8601DateParser.parse(self.subscriptionBalance?.expireTime),
             updatedAt: self.updatedAt,
             identity: ProviderIdentitySnapshot(
                 providerID: .kimi,
                 accountEmail: nil,
                 accountOrganization: nil,
-                loginMethod: self.planName))
+                loginMethod: self.planName,
+                accountID: self.historyOwnerID,
+                historyOwnerAliases: self.historyOwnerAliases))
     }
 
     private static func isEquivalentToWeeklyWindow(_ window: RateWindow, weeklyWindow: RateWindow?) -> Bool {

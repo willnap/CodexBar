@@ -27,6 +27,9 @@ enum ProviderBrandIcon {
     }()
 
     static func image(for provider: UsageProvider, style: Style = .monochrome) -> NSImage? {
+        if NativeGaugeConfiguration.isEnabled {
+            return NativeProviderSymbol.image(for: provider)
+        }
         if let cached = self.cache[style]?[provider] {
             return cached
         }

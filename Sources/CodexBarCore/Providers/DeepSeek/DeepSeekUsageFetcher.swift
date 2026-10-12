@@ -203,13 +203,59 @@ public struct DeepSeekUsageSnapshot: Sendable {
             primary: balanceWindow,
             secondary: nil,
             tertiary: nil,
-            providerCost: nil,
+            providerCost: self.providerCostSnapshot(),
+            costUsage: self.usageSummary.map(Self.costUsageSnapshot),
             details: details,
             deepseekDetailedUsageState: self.detailedUsageState,
             deepseekPlatformProfiles: self.platformProfiles,
             deepseekPlatformBalanceOwner: self.platformBalanceOwner,
             updatedAt: self.updatedAt,
             identity: identity)
+    }
+
+    private static func costUsageSnapshot(_ usage: DeepSeekUsageSummary) -> CostUsageTokenSnapshot {
+        let period: CostReportingPeriod = usage.period == .currentMonth ? .monthToDate : .rolling(days: 30)
+        return CostUsageTokenSnapshot(
+            sessionTokens: usage.todayTokens,
+            sessionCostUSD: usage.todayCost,
+            sessionRequests: usage.requestCount,
+            last30DaysTokens: usage.currentMonthTokens,
+            last30DaysCostUSD: usage.currentMonthCost,
+            last30DaysRequests: usage.currentMonthRequestCount,
+            currencyCode: usage.currency,
+            historyDays: period.days(now: usage.updatedAt),
+            historyCoverageIsEstablished: usage.period == .last30Days,
+            historyLabel: period.label,
+            costProvenance: .vendorMetered,
+            daily: usage.daily.map {
+                .init(
+                    date: $0.date,
+                    inputTokens: nil,
+                    outputTokens: nil,
+                    totalTokens: $0.totalTokens,
+                    requestCount: $0.requestCount,
+                    costUSD: $0.cost,
+                    modelsUsed: nil,
+                    modelBreakdowns: nil)
+            },
+            updatedAt: usage.updatedAt).reporting(period)
+    }
+
+    private func providerCostSnapshot() -> ProviderCostSnapshot? {
+        let currency = self.hasBalance ? self.currency : self.usageSummary?.currency
+        guard let currency else { return nil }
+        let usage = self.usageSummary.flatMap { $0.currency == currency ? $0 : nil }
+        let spend = usage?.currentMonthCost
+        guard self.hasBalance || spend != nil else { return nil }
+        return ProviderCostSnapshot(
+            used: spend ?? 0,
+            limit: 0,
+            currencyCode: currency,
+            period: usage.map { $0.period == .currentMonth ? "Month to date" : "Last 30 days" },
+            balance: self.hasBalance ? self.totalBalance : nil,
+            balanceUpdatedAt: self.hasBalance ? self.updatedAt : nil,
+            usageIsUnavailable: spend == nil,
+            updatedAt: spend != nil ? usage?.updatedAt ?? self.updatedAt : self.updatedAt)
     }
 
     func withPlatformBalanceOwner(_ owner: DeepSeekPlatformBalanceOwner?) -> DeepSeekUsageSnapshot {

@@ -432,6 +432,7 @@ struct KimiAPIFetchStrategyTests {
         _ = try writeKimiCodeCredential(
             home: home,
             accessToken: "expired",
+            refreshToken: "",
             expiresAt: Date().addingTimeInterval(-60).timeIntervalSince1970)
         let strategy = KimiCLICredentialFetchStrategy()
         let context = makeKimiFetchContext(

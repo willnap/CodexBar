@@ -15,6 +15,8 @@ public struct WarpUsageSnapshot: Sendable {
     // Earliest expiring bonus batch with remaining credits
     public let bonusNextExpiration: Date?
     public let bonusNextExpirationRemaining: Int
+    /// The response carried a grants list, so the add-on balance (including zero) was measured.
+    public let bonusCreditsReported: Bool
 
     public init(
         requestLimit: Int,
@@ -25,7 +27,8 @@ public struct WarpUsageSnapshot: Sendable {
         bonusCreditsRemaining: Int = 0,
         bonusCreditsTotal: Int = 0,
         bonusNextExpiration: Date? = nil,
-        bonusNextExpirationRemaining: Int = 0)
+        bonusNextExpirationRemaining: Int = 0,
+        bonusCreditsReported: Bool = false)
     {
         self.requestLimit = requestLimit
         self.requestsUsed = requestsUsed
@@ -36,6 +39,7 @@ public struct WarpUsageSnapshot: Sendable {
         self.bonusCreditsTotal = bonusCreditsTotal
         self.bonusNextExpiration = bonusNextExpiration
         self.bonusNextExpirationRemaining = bonusNextExpirationRemaining
+        self.bonusCreditsReported = bonusCreditsReported
     }
 
     public func toUsageSnapshot() -> UsageSnapshot {
@@ -101,9 +105,24 @@ public struct WarpUsageSnapshot: Sendable {
             primary: primary,
             secondary: secondary,
             tertiary: nil,
-            providerCost: nil,
+            providerCost: self.addOnCreditBalance,
             updatedAt: self.updatedAt,
             identity: identity)
+    }
+
+    /// Add-on credits are spent after the monthly allowance, so their remainder is the extra-usage balance.
+    /// The amount is in Warp request credits, never money, and says nothing about spending.
+    private var addOnCreditBalance: ProviderCostSnapshot? {
+        guard self.bonusCreditsReported, self.bonusCreditsRemaining >= 0 else { return nil }
+        return ProviderCostSnapshot(
+            used: 0,
+            limit: 0,
+            currencyCode: "Credits",
+            period: "Add-on credits",
+            balance: Double(self.bonusCreditsRemaining),
+            balanceUpdatedAt: self.updatedAt,
+            usageIsUnavailable: true,
+            updatedAt: self.updatedAt)
     }
 }
 
@@ -286,7 +305,15 @@ public struct WarpUsageFetcher: Sendable {
             bonusCreditsRemaining: bonus.remaining,
             bonusCreditsTotal: bonus.total,
             bonusNextExpiration: bonus.nextExpiration,
-            bonusNextExpirationRemaining: bonus.nextExpirationRemaining)
+            bonusNextExpirationRemaining: bonus.nextExpirationRemaining,
+            bonusCreditsReported: Self.reportsBonusGrants(innerUserObj))
+    }
+
+    private static func reportsBonusGrants(_ userObj: [String: Any]) -> Bool {
+        if userObj["bonusGrants"] is [Any] { return true }
+        return (userObj["workspaces"] as? [[String: Any]] ?? []).contains { workspace in
+            (workspace["bonusGrantsInfo"] as? [String: Any])?["grants"] is [Any]
+        }
     }
 
     private struct BonusGrant {

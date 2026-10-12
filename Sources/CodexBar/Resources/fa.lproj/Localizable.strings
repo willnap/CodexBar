@@ -2510,3 +2510,112 @@
 "Pace sign" = "علامت آهنگ مصرف";
 "Ahead of pace is +" = "جلوتر از آهنگ مصرف یعنی +";
 "Reserve is +" = "ذخیره یعنی +";
+
+"Sign In…" = "Sign In…";
+
+"Connect…" = "Connect…";
+
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+
+// Native gauge settings and states.
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Custom gauges" = "Custom gauges";
+"Each enabled service has its own gauge. Manage services in the sidebar." = "Each enabled service has its own gauge. Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Legacy" = "Legacy";
+"Legacy icons" = "Legacy icons";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Style" = "Style";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+
+/* Settings search and provider ordering */
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+
+// Native orbit popup
+"Available" = "در دسترس";
+"24h" = "24h";
+"No history yet" = "هنوز سابقه‌ای وجود ندارد";
+"Recorded available usage" = "مصرف در دسترس ثبت‌شده";
+
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+
+"Local usage totals" = "Local usage totals";
+
+"Time period" = "بازهٔ زمانی";
+
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "بازهٔ زمانی تاریخچه، توکن‌ها و هزینه‌های همهٔ حساب‌ها. نشانگرهای سهمیه مقدار در دسترس فعلی را نمایش می‌دهند.";
+
+"Active %@ account" = "حساب فعال %@";
+
+"Use in %@" = "استفاده در %@";
+
+"Use this account in %@" = "استفاده از این حساب در %@";
+
+"Use %@ in %@" = "استفاده از %@ در %@";
+
+"Last updated %@" = "آخرین به‌روزرسانی %@";
+
+"No observations" = "مشاهده‌ای ثبت نشده";
+
+"History begins with recorded usage. Missing time is left empty." = "تاریخچه از داده‌های مصرف ثبت‌شده آغاز می‌شود. بازه‌های بدون داده خالی می‌مانند.";
+
+"native_orbit_range_help" = "بازهٔ زمانی تاریخچه، توکن‌ها و هزینه‌های همهٔ حساب‌ها. نشانگرهای سهمیه مقدار در دسترس فعلی را نمایش می‌دهند.";
+
+"1d" = "1 روز";
+"<1m ago" = "کمتر از 1د پیش";
+"Auto switch" = "تعویض خودکار";
+"Now" = "اکنون";
+"Updating…" = "در حال به‌روزرسانی…";
+
+"Local Claude archive" = "بایگانی محلی Claude";
+
+"Account not recorded" = "حساب ثبت نشده";
+
+"Anonymous observations from this provider. No account identity was recorded." = "مشاهدات ناشناس از این ارائه‌دهنده. هویت حساب ثبت نشده است.";
+
+"History begins with recorded usage." = "تاریخچه با مصرف ثبت‌شده آغاز می‌شود.";
+
+"%d observations · %d/%d days" = "%d مشاهده · %d/%d روز";
+
+"No observations in this period" = "در این بازه مشاهده‌ای وجود ندارد";
+
+"Last observed %@" = "آخرین مشاهده %@";
+
+"First observed %@" = "اولین مشاهده %@";
+
+"Connecting lines hold the last recorded value." = "خطوط اتصال آخرین مقدار ثبت‌شده را حفظ می‌کنند.";
+
+"Local Codex archive" = "بایگانی محلی Codex";
+
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "گزارش‌های نشست ممکن است مقادیر سهمیهٔ ذخیره‌شده را تکرار کنند. هویت حساب ثبت نشده است.";
+
+"%ds ago" = "%d ثانیه پیش";
+
+"Local Kimi archive" = "بایگانی محلی Kimi";
+"Lines connect nearby observations. Gaps have no recorded data." = "خط‌ها اندازه‌گیری‌های نزدیک به هم در زمان را به هم وصل می‌کنند. فاصله‌های خالی دادهٔ ثبت‌شده‌ای ندارند.";
+"native_refresh_timed_out" = "به‌روزرسانی بیش از حد انتظار طول می‌کشد. در پس‌زمینه ادامه می‌یابد.";
+"native_orbit_range_day" = "ر";
+"native_orbit_range_week" = "ه";
+"native_orbit_range_month" = "م";
+"Last 7 days" = "۷ روز گذشته";

@@ -22,7 +22,7 @@ let package = Package(
     name: "CodexBar",
     defaultLocalization: "en",
     platforms: [
-        .macOS(.v14),
+        .macOS(.v26),
     ],
     products: {
         var products: [Product] = [
@@ -230,6 +230,7 @@ let package = Package(
             ],
             path: "Tests",
             exclude: [
+                "NativeServiceRouteProof.swift",
                 "AdaptiveReplayCLITests",
                 "AdaptiveReplayKitTests",
                 "CodexBarTests/ProviderPluginDetailsParityTests.swift",

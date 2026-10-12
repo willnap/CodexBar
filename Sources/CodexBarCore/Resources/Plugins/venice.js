@@ -71,9 +71,13 @@ defineProvider({
       resetDescription = "No Venice API balance available";
     }
 
-    return {
+    const usage = {
       primary: { usedPercent, resetDescription },
       identity: {},
     };
+    // The consumption currency's own balance is typed for the native extra-usage dial; DIEM is not money.
+    const balance = currency === "USD" ? usd : currency === "DIEM" ? diem : null;
+    if (balance === null || balance < 0) return usage;
+    return { usage, card: { balance, unit: currency } };
   },
 });

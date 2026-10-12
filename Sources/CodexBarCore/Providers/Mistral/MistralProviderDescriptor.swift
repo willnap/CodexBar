@@ -84,6 +84,8 @@ public enum MistralProviderDescriptor {
                 },
                 widgetRowResolver: self.widgetRows,
                 menuCard: ProviderMenuCardPresentation(
+                    // The wallet balance already renders as the dedicated Balance metric.
+                    costVisibilityResolver: { $0.snapshot?.mistralUsage?.credits == nil },
                     usesProviderCostHistoryAsPrimaryDashboard: true,
                     primaryCostHistoryResolver: { snapshot, tokenSnapshot in
                         if let projected = snapshot?.mistralUsage?.toCostUsageTokenSnapshot() {

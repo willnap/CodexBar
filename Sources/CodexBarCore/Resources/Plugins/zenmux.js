@@ -85,7 +85,14 @@ defineProvider({
           !Number.isFinite(balance.total_credits)
         )
           return usage;
-        usage.cost = { used: balance.total_credits, currency: "USD", period: "ZenMux PAYG balance" };
+        usage.cost = {
+          used: balance.total_credits,
+          balance: balance.total_credits,
+          balanceUpdatedAt: ctx.date.now().toISOString(),
+          usageIsUnavailable: true,
+          currency: "USD",
+          period: "ZenMux PAYG balance",
+        };
       } catch (error) {
         if (error.transportClass === "cancelled" || error === authenticationRejected) throw error;
       }

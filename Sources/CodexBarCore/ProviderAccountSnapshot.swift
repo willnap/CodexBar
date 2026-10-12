@@ -28,10 +28,16 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
     /// Display-only source email, kept separate from `displayLabel` so aliases and
     /// `email · org` disambiguation cannot leak into identity.
     public let accountEmail: String?
+    /// Display-only organization evidence for detecting a replaced slot. Never a stable identity or persisted.
+    public let accountOrganizationName: String?
+    /// Source-issued organization UUID used only to match local transcript evidence. Never persisted or logged.
+    public let sourceOrganizationID: String?
     public let isActive: Bool
     /// Whether the source can activate this slot or explicitly repair its selected credential state.
     /// Activation remains source-owned; CodexBar never handles credential material.
     public let canActivate: Bool
+    /// Explicit source permission for unattended rotation; repairable or disabled slots remain manual-only.
+    public let autoSwitchEligible: Bool
     /// Whether `snapshot` is a last-known measurement the source served because
     /// live usage was unavailable, rather than a current one. Such a snapshot is
     /// fine on a card that shows its age, but must not drive age-less surfaces.
@@ -45,8 +51,11 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
         provider: UsageProvider,
         displayLabel: String,
         accountEmail: String? = nil,
+        accountOrganizationName: String? = nil,
+        sourceOrganizationID: String? = nil,
         isActive: Bool,
         canActivate: Bool = false,
+        autoSwitchEligible: Bool = false,
         usesLastKnownUsage: Bool = false,
         snapshot: UsageSnapshot?,
         error: String?,
@@ -56,8 +65,11 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
         self.provider = provider
         self.displayLabel = displayLabel
         self.accountEmail = accountEmail
+        self.accountOrganizationName = accountOrganizationName
+        self.sourceOrganizationID = sourceOrganizationID
         self.isActive = isActive
         self.canActivate = canActivate
+        self.autoSwitchEligible = autoSwitchEligible
         self.usesLastKnownUsage = usesLastKnownUsage
         self.snapshot = snapshot
         self.error = error

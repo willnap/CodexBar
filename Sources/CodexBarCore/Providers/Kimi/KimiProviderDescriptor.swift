@@ -233,31 +233,57 @@ struct KimiCLICredentialFetchStrategy: ProviderFetchStrategy {
     }
 
     func fetch(_ context: ProviderFetchContext) async throws -> ProviderFetchResult {
-        guard let token = KimiSettingsReader.kimiCodeAccessToken(
-            region: context.settings?.kimi?.region ?? .china,
-            environment: context.env)
-        else {
-            throw KimiAPIError.expiredCodeCredential
-        }
-        let baseURL = try KimiSettingsReader.codeAPIBaseURL(
-            region: context.settings?.kimi?.region ?? .china,
-            environment: context.env)
+        let region = context.settings?.kimi?.region ?? .china
+        let baseURL = try KimiSettingsReader.codeAPIBaseURL(region: region, environment: context.env)
+        let webToken = self.enrichmentToken(context)
+        var credential = try await KimiCodeOAuthStore.shared.resolve(
+            region: region,
+            environment: context.env,
+            enrichmentToken: webToken,
+            transport: self.transport)
         let identityHeaders = KimiSettingsReader.kimiCodeIdentityHeaders(environment: context.env)
-        let snapshot: KimiUsageSnapshot
+        var snapshot: KimiUsageSnapshot
         do {
-            snapshot = try await KimiUsageFetcher.fetchCodeAPIUsage(
-                apiKey: token,
-                region: context.settings?.kimi?.region ?? .china,
+            snapshot = try await self.fetchUsage(
+                credential.accessToken,
+                region: region,
                 baseURL: baseURL,
                 identityHeaders: identityHeaders,
-                webAuthToken: self.enrichmentToken(context),
+                webToken: webToken)
+        } catch KimiAPIError.invalidAPIKey {
+            credential = try await KimiCodeOAuthStore.shared.resolve(
+                region: region,
+                environment: context.env,
+                rejectedAccessToken: credential.accessToken,
+                enrichmentToken: webToken,
                 transport: self.transport)
-        } catch {
-            throw Self.normalizedCodeAPIError(error)
+            do {
+                snapshot = try await self.fetchUsage(
+                    credential.accessToken,
+                    region: region,
+                    baseURL: baseURL,
+                    identityHeaders: identityHeaders,
+                    webToken: webToken)
+            } catch { throw Self.normalizedCodeAPIError(error) }
         }
+        snapshot.historyOwnerID = credential.historyOwnerID
+        snapshot.historyOwnerAliases = credential.historyOwnerAliases
         return self.makeResult(
             usage: snapshot.toUsageSnapshot(),
             sourceLabel: "Kimi Code CLI")
+    }
+
+    private func fetchUsage(
+        _ token: String, region: KimiRegion, baseURL: URL, identityHeaders: [String: String], webToken: String?)
+        async throws -> KimiUsageSnapshot
+    {
+        try await KimiUsageFetcher.fetchCodeAPIUsage(
+            apiKey: token,
+            region: region,
+            baseURL: baseURL,
+            identityHeaders: identityHeaders,
+            webAuthToken: webToken,
+            transport: self.transport)
     }
 
     func shouldFallback(on error: Error, context: ProviderFetchContext) -> Bool {

@@ -1,6 +1,31 @@
 import CodexBarCore
 import Foundation
 
+struct ClaudeOrganizationUsagePublication {
+    let owners: [ProviderAccountIdentity: String]
+    let bucketTimeZoneIdentifier: String
+    let reports: [String: CostUsageTokenSnapshot]
+
+    /// An organization shared by visible rows cannot prove which account owned a transcript request.
+    static func owners(for accounts: [ProviderAccountUsageSnapshot]) -> [ProviderAccountIdentity: String] {
+        let candidates = accounts.compactMap { account -> (ProviderAccountIdentity, String)? in
+            guard account.provider == .claude, account.id.source == ClaudeSwapAccountProjection.sourceName,
+                  let organization = account.sourceOrganizationID.flatMap({ UUID(uuidString: $0) })
+            else { return nil }
+            return (account.id, organization.uuidString.lowercased())
+        }
+        let counts = Dictionary(
+            grouping: candidates,
+            by: { $0.1 }).mapValues(\.count)
+        return Dictionary(
+            candidates.compactMap { id, organization in
+                guard counts[organization] == 1 else { return nil }
+                return (id, organization)
+            },
+            uniquingKeysWith: { first, _ in first })
+    }
+}
+
 enum ClaudeSwapSwitchPhase: Equatable, Sendable {
     case activating
     case reconciling
@@ -17,6 +42,8 @@ struct ClaudeSwapTransientState {
     var configurationGeneration: UInt64 = 0
     var versionProbedPath: String?
     var versionProbeGeneration: UInt64 = 0
+    /// A local transcript projection was requested while one was running; run once more when it finishes.
+    var localUsageRerunRequested = false
 }
 
 extension UsageStore {
@@ -53,6 +80,7 @@ extension UsageStore {
 
     func clearClaudeSwapAccountState() {
         let hadState = !self.claudeSwapAccountSnapshots.isEmpty ||
+            self.claudeOrganizationUsagePublication != nil ||
             self.claudeSwapLastRefreshAt != nil || self.claudeSwapLastError != nil ||
             self.claudeSwapTransientState.lastError != nil ||
             self.claudeSwapTransientState.lastErrorAccountID != nil ||
@@ -63,6 +91,7 @@ extension UsageStore {
         self.claudeSwapRefreshTask?.cancel()
         self.claudeSwapRefreshTask = nil
         self.claudeSwapAccountSnapshots = []
+        self.claudeOrganizationUsagePublication = nil
         self.claudeSwapLastRefreshAt = nil
         self.claudeSwapLastError = nil
         self.claudeSwapTransientState = ClaudeSwapTransientState(
@@ -92,6 +121,7 @@ extension UsageStore {
 
     func refreshClaudeSwapAccounts(generation: UInt64? = nil) async {
         let executablePath = self.settings.claudeSwapExecutablePath
+        let configurationGeneration = self.claudeSwapTransientState.configurationGeneration
         await self.probeClaudeSwapVersionIfNeeded(executablePath: executablePath)
 
         do {
@@ -100,7 +130,13 @@ extension UsageStore {
                 from: list,
                 previousAccounts: ClaudeSwapRetainedUsageStore.previousAccounts(
                     inMemory: self.claudeSwapAccountSnapshots))
-            guard self.isCurrentClaudeSwapRefresh(executablePath: executablePath, generation: generation) else {
+            guard self.isCurrentClaudeSwapRefresh(
+                executablePath: executablePath,
+                generation: generation),
+                self.isCurrentClaudeSwapConfiguration(
+                    executablePath: executablePath,
+                    configurationGeneration: configurationGeneration)
+            else {
                 return
             }
             ClaudeSwapRetainedUsageStore.save(snapshots)
@@ -109,10 +145,19 @@ extension UsageStore {
             self.claudeSwapLastError = nil
             self.claudeSwapRevision &+= 1
             self.persistWidgetSnapshot(reason: "claude-swap-accounts")
+            await self.recordNativeClaudeSwapHistory(snapshots)
+            // Transcript attribution runs in its own coalesced projection; adapter refreshes cannot cancel it.
+            let owners = self.nativeClaudeLocalUsageOwners()
+            if !owners.isEmpty, owners != self.claudeOrganizationUsagePublication?.owners {
+                self.scheduleNativeClaudeLocalUsageRefresh()
+            }
         } catch is CancellationError {
             return
         } catch {
-            guard self.isCurrentClaudeSwapRefresh(executablePath: executablePath, generation: generation) else {
+            guard self.isCurrentClaudeSwapRefresh(
+                executablePath: executablePath,
+                generation: generation)
+            else {
                 return
             }
             // Retain the last successful snapshots as stale data; the settings
@@ -219,15 +264,22 @@ extension UsageStore {
         let generation = self.claudeSwapTransientState.versionProbeGeneration
         guard let version = await ClaudeSwapAccountReader.readVersion(executablePath: executablePath),
               self.claudeSwapTransientState.versionProbeGeneration == generation,
-              self.isCurrentClaudeSwapRefresh(executablePath: executablePath, generation: nil)
+              self.isCurrentClaudeSwapRefresh(
+                  executablePath: executablePath,
+                  generation: nil)
         else { return }
         self.claudeSwapTransientState.versionProbedPath = executablePath
         self.claudeSwapDetectedVersion = version
     }
 
-    func isCurrentClaudeSwapRefresh(executablePath: String, generation: UInt64?) -> Bool {
+    func isCurrentClaudeSwapRefresh(
+        executablePath: String,
+        generation: UInt64?) -> Bool
+    {
         !Task.isCancelled &&
-            self.isCurrentProviderRefreshGeneration(.claude, generation: generation) &&
+            self.isCurrentProviderRefreshGeneration(
+                .claude,
+                generation: generation) &&
             self.isCurrentClaudeSwapConfiguration(executablePath: executablePath)
     }
 

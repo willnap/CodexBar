@@ -11,7 +11,7 @@ struct CostUsageClaudeRowCapacityTests {
         reserved.reserveCapacity(rows.count)
         // Array exposes allocator rounding even when requesting exactly count elements.
         #expect(rows.capacity == reserved.capacity)
-        #expect(MemoryLayout<Row>.stride == 160)
+        #expect(MemoryLayout<Row>.stride == 176)
     }
 
     @Test(arguments: [0, 1, 8, 100, 5000, 10000])

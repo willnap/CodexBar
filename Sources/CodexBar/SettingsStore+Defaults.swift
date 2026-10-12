@@ -1069,6 +1069,12 @@ extension SettingsStore {
         set { self.setDefault(\.providersSortedAlphabetically, newValue, key: "providersSortedAlphabetically") }
     }
 
+    /// Prioritize enabled and configured services in Settings without rewriting the saved provider order.
+    var settingsProvidersUsedFirst: Bool {
+        get { self.defaultsState.settingsProvidersUsedFirst }
+        set { self.setDefault(\.settingsProvidersUsedFirst, newValue, key: "settingsProvidersUsedFirst") }
+    }
+
     var appLanguage: String {
         get { self.defaultsState.appLanguageRaw ?? "" }
         set {

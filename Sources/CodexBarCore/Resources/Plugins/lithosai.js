@@ -72,7 +72,7 @@ defineProvider({
           rows.push({ label, value: billing[field] ? yes : no });
         }
         const snapshot = {
-          cost: { used: balance, currency: "USD", period: "Prepaid credits" },
+          cost: { used: balance, balance, usageIsUnavailable: true, currency: "USD", period: "Prepaid credits" },
           details: [{ title: "Billing", rows }],
           identity: {
             email: text(object(me.user).email),
@@ -88,6 +88,7 @@ defineProvider({
           const report = await request(`/api/billing/spend?start=${start}&end=${end}`);
           if (report.start !== start || report.end !== end || !Array.isArray(report.days))
             return invalid("spend range");
+          const entries = [];
           let today = 0;
           let month = 0;
           for (const raw of report.days) {
@@ -96,10 +97,20 @@ defineProvider({
               return invalid("spend day");
             const nanos = amount(day.nanos);
             if (nanos < 0) return invalid("spend amount");
+            entries.push({ date: day.day, cost: nanos / 1e9 });
             month += nanos;
             if (day.day === end) today += nanos;
           }
           amount(month);
+          snapshot.cost = { used: month / 1e9, balance, currency: "USD", period: "This month (UTC)" };
+          snapshot.costUsage = {
+            currency: "USD",
+            historyDays: Number(end.slice(8)),
+            windowEnd: end,
+            historyLabel: "Provider-reported daily spending (UTC)",
+            entries,
+            metrics: { cost: true },
+          };
           rows.push({ label: "Today (UTC)", value: money(today / 1e9) });
           rows.push({ label: "This month (UTC)", value: money(month / 1e9) });
         } catch (error) {

@@ -31,7 +31,9 @@ defineProvider({
     }
     const rows: CodexBarDetailRow[] = [];
     if (data.purchased != null) {
-      rows.push({ label: "Credit balance", value: ctx.format.usd(amount(data.purchased.balance_usd)) });
+      const purchased = amount(data.purchased.balance_usd);
+      // The typed amount feeds the native extra-usage balance without changing the upstream snapshot fields.
+      rows.push({ label: "Credit balance", value: ctx.format.usd(purchased), usageValue: purchased });
     }
     let primary: CodexBarRateWindow | undefined;
     if (data.included != null) {

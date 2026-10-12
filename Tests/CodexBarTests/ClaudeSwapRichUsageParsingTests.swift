@@ -6,6 +6,27 @@ import Testing
 /// pay-as-you-go spend, the `disabled` marker, measurement freshness, the
 /// `lastGoodUsage` fallback, and the `foreign_credential` status sentinel.
 struct ClaudeSwapRichUsageParsingTests {
+    @Test
+    func `disabled monthly spend remains a measured amount without an active budget`() throws {
+        for amount in [0.0, 3.25] {
+            let list = try self.parse(self.singleAccountPayload("""
+            {"number": 1, "email": "a@b.c", "active": false, "usageStatus": "ok",
+             "usage": {"spend": {"used": \(amount), "limit": 200, "pct": 0, "currency": "USD",
+                               "enabled": false, "period": "Monthly"}}}
+            """))
+            let spend = try #require(list.accounts.first?.spend)
+            #expect(spend.used == amount)
+            #expect(spend.limit == 0)
+            #expect(spend.period == "Monthly")
+        }
+        let noCap = try self.parse(self.singleAccountPayload("""
+        {"number": 1, "email": "a@b.c", "active": false, "usageStatus": "ok",
+         "usage": {"spend": {"used": 0, "limit": 0, "pct": 0, "currency": "USD",
+                           "enabled": false, "period": "Monthly"}}}
+        """))
+        #expect(noCap.accounts.first?.spend?.used == 0)
+    }
+
     private func parse(_ json: String) throws -> ClaudeSwapAccountList {
         try ClaudeSwapListParser.parse(Data(json.utf8))
     }

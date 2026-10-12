@@ -103,6 +103,7 @@ public struct GrokUsageSnapshot: Sendable {
                     currencyCode: "USD",
                     balance: balance,
                     balanceUpdatedAt: self.updatedAt,
+                    usageIsUnavailable: true,
                     updatedAt: self.updatedAt)
             },
             costUsage: self.localSummary?.toCostUsageTokenSnapshot(

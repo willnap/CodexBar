@@ -177,6 +177,57 @@ enum CostUsageJsonl {
             self.appendContainer(byte)
         }
 
+        /// Equivalent to appending each byte in order. Inside a string only quotes and escapes change
+        /// state, so long string payloads are skipped in libc instead of one state transition per byte.
+        mutating func append(contentsOf base: UnsafePointer<UInt8>, count: Int) {
+            var index = 0
+            var nextQuote = -1
+            var nextEscape = -1
+            while index < count {
+                if self.insideString, !self.escaping, self.sawNonWhitespace, case .notScalar = self.scalarState {
+                    if nextQuote < index { nextQuote = Self.offset(of: 0x22, in: base, from: index, count: count) }
+                    if nextEscape < index { nextEscape = Self.offset(of: 0x5C, in: base, from: index, count: count) }
+                    index = min(nextQuote, nextEscape)
+                    guard index < count else { return }
+                }
+                self.append(base[index])
+                index += 1
+            }
+        }
+
+        private static func offset(of byte: UInt8, in base: UnsafePointer<UInt8>, from index: Int, count: Int) -> Int {
+            #if canImport(Darwin) || canImport(Glibc) || canImport(Musl)
+            guard let found = memchr(base + index, Int32(byte), count - index) else { return count }
+            return base.distance(to: found.assumingMemoryBound(to: UInt8.self))
+            #else
+            var offset = index
+            while offset < count, base[offset] != byte {
+                offset += 1
+            }
+            return offset
+            #endif
+        }
+
+        #if DEBUG
+        /// Reference per-byte state for equivalence tests of the bulk path.
+        static func _bulkMatchesPerByteForTesting(_ bytes: [UInt8], splits: [Int]) -> Bool {
+            var reference = Self()
+            for byte in bytes {
+                reference.append(byte)
+            }
+            var bulk = Self()
+            var start = 0
+            bytes.withUnsafeBufferPointer { buffer in
+                guard let base = buffer.baseAddress else { return }
+                for split in splits.sorted() + [bytes.count] where split >= start && split <= bytes.count {
+                    bulk.append(contentsOf: base + start, count: split - start)
+                    start = split
+                }
+            }
+            return reference == bulk
+        }
+        #endif
+
         private mutating func start(_ byte: UInt8) {
             guard !Self.isWhitespace(byte) else { return }
             self.sawNonWhitespace = true
@@ -267,6 +318,12 @@ enum CostUsageJsonl {
             byte == 0x20 || byte == 0x09 || byte == 0x0A || byte == 0x0D
         }
     }
+
+    #if DEBUG
+    static func _tailStateBulkMatchesPerByteForTesting(_ bytes: [UInt8], splits: [Int]) -> Bool {
+        JSONTailState._bulkMatchesPerByteForTesting(bytes, splits: splits)
+    }
+    #endif
 
     @discardableResult
     static func scan(
@@ -439,9 +496,7 @@ enum CostUsageJsonl {
                         #endif
                         // A negative decoded line count can keep tail state alive across the flush.
                         if lineBytes < 0 || !jsonTailState.canSkipTerminatedSpanUpdates(count: index - segmentStart) {
-                            for byteIndex in segmentStart..<index {
-                                jsonTailState.append(base[byteIndex])
-                            }
+                            jsonTailState.append(contentsOf: base + segmentStart, count: index - segmentStart)
                         }
                         appendSegment(base.advanced(by: segmentStart), count: index - segmentStart)
                         let lineEndOffset = chunkStartOffset + Int64(index + 1)
@@ -451,9 +506,7 @@ enum CostUsageJsonl {
                         segmentStart = index + 1
                     }
                     if segmentStart < rawBuffer.count {
-                        for index in segmentStart..<rawBuffer.count {
-                            jsonTailState.append(base[index])
-                        }
+                        jsonTailState.append(contentsOf: base + segmentStart, count: rawBuffer.count - segmentStart)
                         appendSegment(base.advanced(by: segmentStart), count: rawBuffer.count - segmentStart)
                     }
                 }

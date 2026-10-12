@@ -66,6 +66,7 @@ enum KeychainTestSafety {
 }
 
 #if os(macOS)
+import LocalAuthentication
 import Security
 
 /// Process-wide legacy-keychain interaction switch. `KeychainNoUIQuery` marks
@@ -77,15 +78,103 @@ import Security
 /// KeychainNoUIQuery/KeychainCacheStore.
 enum KeychainLegacyInteraction {
     private typealias SetUserInteractionAllowedFn = @convention(c) (DarwinBoolean) -> OSStatus
+    private typealias GetUserInteractionAllowedFn = @convention(c) (UnsafeMutablePointer<DarwinBoolean>) -> OSStatus
+    private static let interactionLock = NSRecursiveLock()
+    private static let log = CodexBarLog.logger(LogCategories.keychainCache)
 
-    static func disableProcessWideInteraction() {
+    final class Driver: @unchecked Sendable {
+        let read: @Sendable () -> (OSStatus, Bool)
+        let set: @Sendable (Bool) -> OSStatus
+        // Protected by interactionLock, including permanent test suppression.
+        var permanentlyDisabled = false
+        var restorationFailed = false
+
+        init(
+            read: @escaping @Sendable () -> (OSStatus, Bool),
+            set: @escaping @Sendable (Bool) -> OSStatus)
+        {
+            self.read = read
+            self.set = set
+        }
+    }
+
+    private static let systemDriver = Driver(
+        read: {
+            guard let get = Self.securityFunction(
+                named: "SecKeychainGetUserInteractionAllowed", as: GetUserInteractionAllowedFn.self)
+            else { return (errSecInternalComponent, false) }
+            var allowed = DarwinBoolean(false)
+            let status = get(&allowed)
+            return (status, allowed.boolValue)
+        },
+        set: { allowed in
+            guard let set = Self.securityFunction(
+                named: "SecKeychainSetUserInteractionAllowed", as: SetUserInteractionAllowedFn.self)
+            else { return errSecInternalComponent }
+            return set(DarwinBoolean(allowed))
+        })
+
+    #if DEBUG
+    @TaskLocal static var driverOverrideForTesting: Driver?
+    #endif
+
+    static func disableProcessWideInteraction(driver: Driver? = nil) {
+        self.interactionLock.lock()
+        defer { self.interactionLock.unlock() }
+        let driver = driver ?? self.systemDriver
+        driver.permanentlyDisabled = true
+        _ = driver.set(false)
+    }
+
+    /// File-based Keychains can ignore SecItem's per-query no-UI flags (FB16959400).
+    /// Serialize all first-party item operations, including interactive ones, while a no-UI
+    /// operation temporarily suppresses legacy UI. Never enable UI for an interactive query.
+    static func performItemOperation(query: CFDictionary, operation: () -> OSStatus) -> OSStatus {
+        self.interactionLock.lock()
+        defer { self.interactionLock.unlock() }
+        #if DEBUG
+        let driver = self.driverOverrideForTesting ?? self.systemDriver
+        #else
+        let driver = self.systemDriver
+        #endif
+        guard self.requiresNoUI(query: query) else {
+            guard !driver.restorationFailed else { return errSecInteractionNotAllowed }
+            return operation()
+        }
+        let (readStatus, wasAllowed) = driver.read()
+        guard readStatus == errSecSuccess else { return errSecInteractionNotAllowed }
+        guard !wasAllowed || driver.set(false) == errSecSuccess else { return errSecInteractionNotAllowed }
+        defer {
+            if wasAllowed {
+                let status = driver.set(driver.permanentlyDisabled ? false : wasAllowed)
+                if status != errSecSuccess {
+                    // A completed mutation cannot be rolled back. Keep subsequent operations
+                    // non-interactive rather than claiming the original UI state was restored.
+                    driver.permanentlyDisabled = true
+                    driver.restorationFailed = true
+                    _ = driver.set(false)
+                    self.log.error("Failed to restore legacy Keychain interaction state: \(status)")
+                }
+            }
+        }
+        return operation()
+    }
+
+    private static func requiresNoUI(query: CFDictionary) -> Bool {
+        guard let query = query as? [String: Any] else { return false }
+        if (query[kSecUseAuthenticationContext as String] as? LAContext)?.interactionNotAllowed == true {
+            return true
+        }
+        return query[kSecUseAuthenticationUI as String] as? String == KeychainNoUIQuery.uiFailPolicyForTesting()
+    }
+
+    private static func securityFunction<T>(named name: String, as _: T.Type) -> T? {
         guard let handle = dlopen(
-            "/System/Library/Frameworks/Security.framework/Security",
-            RTLD_LAZY | RTLD_NOLOAD) else { return }
+            "/System/Library/Frameworks/Security.framework/Security", RTLD_LAZY | RTLD_NOLOAD)
+        else { return nil }
         defer { dlclose(handle) }
-        guard let symbol = dlsym(handle, "SecKeychainSetUserInteractionAllowed") else { return }
-        let setUserInteractionAllowed = unsafeBitCast(symbol, to: SetUserInteractionAllowedFn.self)
-        _ = setUserInteractionAllowed(false)
+        guard let symbol = dlsym(handle, name) else { return nil }
+        return unsafeBitCast(symbol, to: T.self)
     }
 }
 
@@ -98,6 +187,7 @@ public enum KeychainSecurity {
         case add, delete, update
     }
 
+    @TaskLocal static var copyMatchingOverrideForTesting: (@Sendable ([String: Any]) -> OSStatus)?
     @TaskLocal static var mutationOverrideForTesting: (@Sendable (Mutation, [String: Any]) -> OSStatus)?
     #endif
 
@@ -125,20 +215,35 @@ public enum KeychainSecurity {
         _ query: CFDictionary,
         _ result: UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus
     {
-        guard self.currentItemOperationBlockReason() == nil else {
-            return errSecInteractionNotAllowed
-        }
-        return SecItemCopyMatching(query, result)
-    }
-
-    public static func update(_ query: CFDictionary, _ attributesToUpdate: CFDictionary) -> OSStatus {
         #if DEBUG
-        if let override = self.mutationOverrideForTesting { return override(.update, query as? [String: Any] ?? [:]) }
+        if let override = self.copyMatchingOverrideForTesting {
+            return KeychainLegacyInteraction.performItemOperation(query: query) {
+                override(query as? [String: Any] ?? [:])
+            }
+        }
         #endif
         guard self.currentItemOperationBlockReason() == nil else {
             return errSecInteractionNotAllowed
         }
-        return SecItemUpdate(query, attributesToUpdate)
+        return KeychainLegacyInteraction.performItemOperation(query: query) {
+            SecItemCopyMatching(query, result)
+        }
+    }
+
+    public static func update(_ query: CFDictionary, _ attributesToUpdate: CFDictionary) -> OSStatus {
+        #if DEBUG
+        if let override = self.mutationOverrideForTesting {
+            return KeychainLegacyInteraction.performItemOperation(query: query) {
+                override(.update, query as? [String: Any] ?? [:])
+            }
+        }
+        #endif
+        guard self.currentItemOperationBlockReason() == nil else {
+            return errSecInteractionNotAllowed
+        }
+        return KeychainLegacyInteraction.performItemOperation(query: query) {
+            SecItemUpdate(query, attributesToUpdate)
+        }
     }
 
     public static func add(
@@ -146,22 +251,34 @@ public enum KeychainSecurity {
         _ result: UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus
     {
         #if DEBUG
-        if let override = self.mutationOverrideForTesting { return override(.add, attributes as? [String: Any] ?? [:]) }
+        if let override = self.mutationOverrideForTesting {
+            return KeychainLegacyInteraction.performItemOperation(query: attributes) {
+                override(.add, attributes as? [String: Any] ?? [:])
+            }
+        }
         #endif
         guard self.currentItemOperationBlockReason() == nil else {
             return errSecInteractionNotAllowed
         }
-        return SecItemAdd(attributes, result)
+        return KeychainLegacyInteraction.performItemOperation(query: attributes) {
+            SecItemAdd(attributes, result)
+        }
     }
 
     public static func delete(_ query: CFDictionary) -> OSStatus {
         #if DEBUG
-        if let override = self.mutationOverrideForTesting { return override(.delete, query as? [String: Any] ?? [:]) }
+        if let override = self.mutationOverrideForTesting {
+            return KeychainLegacyInteraction.performItemOperation(query: query) {
+                override(.delete, query as? [String: Any] ?? [:])
+            }
+        }
         #endif
         guard self.currentItemOperationBlockReason() == nil else {
             return errSecInteractionNotAllowed
         }
-        return SecItemDelete(query)
+        return KeychainLegacyInteraction.performItemOperation(query: query) {
+            SecItemDelete(query)
+        }
     }
 }
 #endif

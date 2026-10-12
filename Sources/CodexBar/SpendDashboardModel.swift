@@ -1349,7 +1349,7 @@ struct SpendDashboardModel: Equatable, Sendable {
         displayCalendar: Calendar) -> ClosedRange<Date>
     {
         let bucketCalendar = Self.bucketCalendar(for: input.provider, displayCalendar: displayCalendar)
-        let bucketEnd = bucketCalendar.startOfDay(for: input.snapshot.updatedAt)
+        let bucketEnd = bucketCalendar.startOfDay(for: input.snapshot.coverageThrough ?? input.snapshot.updatedAt)
         let scanEnd = displayCalendar.startOfDay(for: bucketEnd)
         let scanDays = max(1, input.snapshot.historyDays)
         let bucketStart = bucketCalendar.date(byAdding: .day, value: -(scanDays - 1), to: bucketEnd) ?? bucketEnd

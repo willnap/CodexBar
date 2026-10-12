@@ -60,7 +60,17 @@ public struct CodebuffUsageSnapshot: Sendable {
             primary: primary,
             secondary: secondary,
             tertiary: nil,
-            providerCost: nil,
+            providerCost: self.creditsRemaining.flatMap { remaining in
+                guard remaining.isFinite else { return nil }
+                return ProviderCostSnapshot(
+                    used: 0,
+                    limit: 0,
+                    currencyCode: "Credits",
+                    balance: remaining,
+                    balanceUpdatedAt: self.updatedAt,
+                    usageIsUnavailable: true,
+                    updatedAt: self.updatedAt)
+            },
             updatedAt: self.updatedAt,
             identity: identity)
     }

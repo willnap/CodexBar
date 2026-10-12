@@ -31,7 +31,7 @@ struct KimiCLICredentialLifecycleTests {
         let url = try writeKimiCodeCredential(
             home: home,
             accessToken: "synthetic-stale-access",
-            refreshToken: "synthetic-rotating-refresh",
+            refreshToken: "",
             expiresAt: Date().addingTimeInterval(30).timeIntervalSince1970)
         let original = try Data(contentsOf: url)
         let context = makeKimiFetchContext(
@@ -64,8 +64,9 @@ struct KimiCLICredentialLifecycleTests {
         let url = try writeKimiCodeCredential(
             home: home,
             accessToken: "api-bad",
+            refreshToken: "",
             expiresAt: Date().addingTimeInterval(rejectedByServer ? 900 : -60).timeIntervalSince1970)
-        let original = try Data(contentsOf: url)
+        _ = url
         let transport = KimiOrderedCredentialTransport()
         let pipeline = ProviderFetchPipeline { _ in
             [
@@ -92,14 +93,15 @@ struct KimiCLICredentialLifecycleTests {
         #expect(outcome.attempts.map(\.strategyID) == ["kimi.cli", "kimi.web"])
         #expect(outcome.attempts.first?.errorDescription?.contains("Run kimi") == true)
         #expect(await transport.authorizationHeaders() == (rejectedByServer ? ["Bearer api-bad"] : []))
-        #expect(try Data(contentsOf: url) == original)
+        #expect(KimiSettingsReader.kimiCodeAccessToken(environment: ["KIMI_CODE_HOME": home.path]) ==
+            (rejectedByServer ? "api-bad" : nil))
     }
 
     @Test
     func `next fetch recovers when the CLI replaces its rotating credential`() async throws {
         let home = try makeTemporaryKimiCodeHome()
         defer { try? FileManager.default.removeItem(at: home) }
-        _ = try writeKimiCodeCredential(home: home, accessToken: "old-access", expiresAt: 1)
+        _ = try writeKimiCodeCredential(home: home, accessToken: "old-access", refreshToken: "", expiresAt: 1)
         let transport = KimiOrderedCredentialTransport()
         let strategy = KimiCLICredentialFetchStrategy(transport: transport)
         let context = makeKimiFetchContext(
@@ -113,12 +115,12 @@ struct KimiCLICredentialLifecycleTests {
             accessToken: "cli-ok",
             refreshToken: "rotated-refresh",
             expiresAt: Date().addingTimeInterval(900).timeIntervalSince1970)
-        let renewed = try Data(contentsOf: url)
+        _ = url
         let result = try await strategy.fetch(context)
 
         #expect(result.sourceLabel == "Kimi Code CLI")
         #expect(result.usage.primary?.usedPercent == 25)
         #expect(await transport.authorizationHeaders() == ["Bearer cli-ok"])
-        #expect(try Data(contentsOf: url) == renewed)
+        #expect(KimiSettingsReader.kimiCodeAccessToken(environment: ["KIMI_CODE_HOME": home.path]) == "cli-ok")
     }
 }

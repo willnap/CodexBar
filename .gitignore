@@ -45,3 +45,10 @@ docs/.astro/
 # Swift Package Manager metadata (leave sources tracked)
 # Packages/
 # Package.resolved
+
+# Local native integration build and verification logs
+.native-*.log
+.native-fixture-sample.txt
+.resolve*.log
+.native-*.txt
+.settings-search-check.log

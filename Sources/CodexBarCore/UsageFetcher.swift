@@ -168,6 +168,7 @@ public struct UsageSnapshot: Codable, Sendable {
     /// Live-only display inventory. Claude grant identifiers are never decoded.
     public let claudeResetCredits: ClaudeRateLimitResetCreditsSnapshot?
     public let mistralUsage: MistralUsageSnapshot?
+    public let kimiRequestQuotas: [KimiRequestQuota]?
     /// Retains an observed zero when a metered Copilot seat has no visible credit row.
     public let copilotMeteredZeroCredits: Bool
     /// Live-only marker for optional Command Code subscription lookup failure.
@@ -194,6 +195,7 @@ public struct UsageSnapshot: Codable, Sendable {
         case openAIAPIUsage
         case codexResetCredits
         case mistralUsage
+        case kimiRequestQuotas
         case copilotMeteredZeroCredits
         case subscriptionExpiresAt
         case subscriptionRenewsAt
@@ -225,6 +227,7 @@ public struct UsageSnapshot: Codable, Sendable {
         grokResetCredits: GrokRateLimitResetCreditsSnapshot? = nil,
         claudeResetCredits: ClaudeRateLimitResetCreditsSnapshot? = nil,
         mistralUsage: MistralUsageSnapshot? = nil,
+        kimiRequestQuotas: [KimiRequestQuota]? = nil,
         copilotMeteredZeroCredits: Bool = false,
         commandCodeSubscriptionEnrichmentUnavailable: Bool = false,
         commandCodeHasSubscriptionPlan: Bool = false,
@@ -257,6 +260,7 @@ public struct UsageSnapshot: Codable, Sendable {
         self.grokResetCredits = grokResetCredits
         self.claudeResetCredits = claudeResetCredits
         self.mistralUsage = mistralUsage
+        self.kimiRequestQuotas = kimiRequestQuotas
         self.copilotMeteredZeroCredits = copilotMeteredZeroCredits
         self.commandCodeSubscriptionEnrichmentUnavailable = commandCodeSubscriptionEnrichmentUnavailable
         self.commandCodeHasSubscriptionPlan = commandCodeHasSubscriptionPlan
@@ -368,6 +372,7 @@ public struct UsageSnapshot: Codable, Sendable {
         self.grokResetCredits = nil // Live-only inventory; refresh without persisting redemption state.
         self.claudeResetCredits = nil // Live-only inventory; a reset used on claude.ai must not reappear.
         self.mistralUsage = try container.decodeIfPresent(MistralUsageSnapshot.self, forKey: .mistralUsage)
+        self.kimiRequestQuotas = try container.decodeIfPresent([KimiRequestQuota].self, forKey: .kimiRequestQuotas)
         self.copilotMeteredZeroCredits = try container
             .decodeIfPresent(Bool.self, forKey: .copilotMeteredZeroCredits) ?? false
         self.commandCodeSubscriptionEnrichmentUnavailable = false // Live-only fetch state
@@ -404,6 +409,7 @@ public struct UsageSnapshot: Codable, Sendable {
         try container.encodeIfPresent(self.openAIAPIUsage, forKey: .openAIAPIUsage)
         try container.encodeIfPresent(self.codexResetCredits, forKey: .codexResetCredits)
         try container.encodeIfPresent(self.mistralUsage, forKey: .mistralUsage)
+        try container.encodeIfPresent(self.kimiRequestQuotas, forKey: .kimiRequestQuotas)
         if self.copilotMeteredZeroCredits {
             try container.encode(true, forKey: .copilotMeteredZeroCredits)
         }
@@ -609,6 +615,7 @@ public struct UsageSnapshot: Codable, Sendable {
             grokResetCredits: grokResetCredits.resolving(self.grokResetCredits),
             claudeResetCredits: self.claudeResetCredits,
             mistralUsage: self.mistralUsage,
+            kimiRequestQuotas: self.kimiRequestQuotas,
             copilotMeteredZeroCredits: self.copilotMeteredZeroCredits,
             commandCodeSubscriptionEnrichmentUnavailable: self.commandCodeSubscriptionEnrichmentUnavailable,
             commandCodeHasSubscriptionPlan: self.commandCodeHasSubscriptionPlan,

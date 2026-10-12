@@ -237,6 +237,7 @@ public struct ClaudeAdminAPIUsageSnapshot: Codable, Equatable, Sendable {
                 currencyCode: "USD",
                 period: "Last 30 days",
                 updatedAt: self.updatedAt),
+            costUsage: self.toCostUsageTokenSnapshot(),
             details: details,
             updatedAt: self.updatedAt,
             identity: ProviderIdentitySnapshot(
@@ -244,6 +245,33 @@ public struct ClaudeAdminAPIUsageSnapshot: Codable, Equatable, Sendable {
                 accountEmail: nil,
                 accountOrganization: nil,
                 loginMethod: "Admin API"))
+    }
+
+    public func toCostUsageTokenSnapshot() -> CostUsageTokenSnapshot {
+        let today = self.currentDay
+        let total = self.last30Days
+        let daily = self.daily.map { bucket in
+            CostUsageDailyReport.Entry(
+                date: bucket.day,
+                inputTokens: bucket.inputTokens,
+                outputTokens: bucket.outputTokens,
+                cacheReadTokens: bucket.cacheReadInputTokens,
+                cacheCreationTokens: bucket.cacheCreationInputTokens,
+                totalTokens: bucket.totalTokens,
+                costUSD: bucket.costUSD,
+                modelsUsed: bucket.models.isEmpty ? nil : bucket.models.map(\.name),
+                modelBreakdowns: bucket.models.isEmpty ? nil : bucket.models.map {
+                    .init(modelName: $0.name, costUSD: nil, totalTokens: $0.totalTokens)
+                })
+        }
+        return CostUsageTokenSnapshot(
+            sessionTokens: today.totalTokens,
+            sessionCostUSD: today.costUSD,
+            last30DaysTokens: total.totalTokens,
+            last30DaysCostUSD: total.costUSD,
+            costProvenance: .vendorMetered,
+            daily: daily,
+            updatedAt: self.updatedAt)
     }
 
     private static func countString(_ value: Int) -> String {

@@ -2509,3 +2509,112 @@
 "Pace sign" = "Tanda laju penggunaan";
 "Ahead of pace is +" = "Di atas laju adalah +";
 "Reserve is +" = "Cadangan adalah +";
+
+"Sign In…" = "Sign In…";
+
+"Connect…" = "Connect…";
+
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+
+// Native gauge settings and states.
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Custom gauges" = "Custom gauges";
+"Each enabled service has its own gauge. Manage services in the sidebar." = "Each enabled service has its own gauge. Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Legacy" = "Legacy";
+"Legacy icons" = "Legacy icons";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Style" = "Style";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+
+/* Settings search and provider ordering */
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+
+// Native orbit popup
+"Available" = "Tersedia";
+"24h" = "24h";
+"No history yet" = "Belum ada riwayat";
+"Recorded available usage" = "Penggunaan tersedia yang tercatat";
+
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+
+"Local usage totals" = "Local usage totals";
+
+"Time period" = "Periode";
+
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Periode riwayat, token, dan pengeluaran semua akun. Indikator kuota menunjukkan ketersediaan saat ini.";
+
+"Active %@ account" = "Akun %@ aktif";
+
+"Use in %@" = "Gunakan di %@";
+
+"Use this account in %@" = "Gunakan akun ini di %@";
+
+"Use %@ in %@" = "Gunakan %@ di %@";
+
+"Last updated %@" = "Terakhir diperbarui %@";
+
+"No observations" = "Belum ada pengamatan";
+
+"History begins with recorded usage. Missing time is left empty." = "Riwayat dimulai dengan data penggunaan yang tercatat. Periode tanpa data dibiarkan kosong.";
+
+"native_orbit_range_help" = "Periode riwayat, token, dan pengeluaran semua akun. Indikator kuota menunjukkan ketersediaan saat ini.";
+
+"1d" = "1 hari";
+"<1m ago" = "<1m lalu";
+"Auto switch" = "Beralih otomatis";
+"Now" = "Sekarang";
+"Updating…" = "Memperbarui…";
+
+"Local Claude archive" = "Arsip Claude lokal";
+
+"Account not recorded" = "Akun tidak tercatat";
+
+"Anonymous observations from this provider. No account identity was recorded." = "Pengamatan anonim dari penyedia ini. Identitas akun tidak tercatat.";
+
+"History begins with recorded usage." = "Riwayat dimulai dari penggunaan yang tercatat.";
+
+"%d observations · %d/%d days" = "%d pengamatan · %d/%d hari";
+
+"No observations in this period" = "Tidak ada pengamatan dalam periode ini";
+
+"Last observed %@" = "Terakhir diamati %@";
+
+"First observed %@" = "Pertama diamati %@";
+
+"Connecting lines hold the last recorded value." = "Garis penghubung mempertahankan nilai terakhir yang tercatat.";
+
+"Local Codex archive" = "Arsip Codex lokal";
+
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Log sesi dapat mengulang pembacaan kuota yang tersimpan dalam cache. Identitas akunnya tidak tercatat.";
+
+"%ds ago" = "%ddtk lalu";
+
+"Local Kimi archive" = "Arsip Kimi lokal";
+"Lines connect nearby observations. Gaps have no recorded data." = "Garis menghubungkan pengukuran yang berdekatan waktunya. Celah tidak memiliki data yang tercatat.";
+"native_refresh_timed_out" = "Penyegaran memakan waktu lebih lama dari perkiraan. Proses berlanjut di latar belakang.";
+"native_orbit_range_day" = "H";
+"native_orbit_range_week" = "M";
+"native_orbit_range_month" = "B";
+"Last 7 days" = "7 hari terakhir";

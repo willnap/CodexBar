@@ -128,7 +128,14 @@ defineProvider({
               ? credits.currency.toUpperCase()
               : "";
         if (typeof balance === "number" && Number.isSafeInteger(balance) && /^[A-Z]{3}$/.test(currency))
-          cost = { used: Math.max(0, balance / 1e6), limit: 0, currency, period: "Prepaid balance" };
+          cost = {
+            used: balance / 1e6,
+            balance: balance / 1e6,
+            usageIsUnavailable: true,
+            limit: 0,
+            currency,
+            period: "Prepaid balance",
+          };
       }
       return {
         primary: windows[0]?.window,

@@ -9,18 +9,22 @@ struct MenuPane: View {
     var body: some View {
         Form {
             Section {
-                SettingsMenuPicker(
-                    selection: self.$settings.usageBarsFillOption,
-                    options: MenuSettingsMenuOptions.usageBarsFill,
-                    label: { Text(L("usage_bars_fill_title")) },
-                    optionLabel: { option in
-                        Text(option.label)
-                    })
+                if !self.settings.usesNativeGauges {
+                    SettingsMenuPicker(
+                        selection: self.$settings.usageBarsFillOption,
+                        options: MenuSettingsMenuOptions.usageBarsFill,
+                        label: { Text(L("usage_bars_fill_title")) },
+                        optionLabel: { option in
+                            Text(option.label)
+                        })
+                }
 
-                Toggle(isOn: self.$settings.quotaWarningMarkersVisible) {
-                    SettingsRowLabel(
-                        L("show_quota_warning_markers_title"),
-                        subtitle: L("show_quota_warning_markers_subtitle"))
+                if !self.settings.usesNativeGauges {
+                    Toggle(isOn: self.$settings.quotaWarningMarkersVisible) {
+                        SettingsRowLabel(
+                            L("show_quota_warning_markers_title"),
+                            subtitle: L("show_quota_warning_markers_subtitle"))
+                    }
                 }
 
                 Toggle(isOn: self.$settings.paceVisible) {
@@ -29,51 +33,57 @@ struct MenuPane: View {
                         subtitle: L("show_pace_subtitle"))
                 }
 
-                SettingsMenuPicker(
-                    selection: self.$settings.weeklyProgressWorkDays,
-                    options: MenuSettingsMenuOptions.weeklyProgressWorkDays,
-                    label: {
-                        Text(L("weekly_progress_work_days_title"))
-                    },
-                    optionLabel: { workDays in
-                        Text(MenuSettingsMenuOptions.weeklyProgressWorkDaysLabel(workDays))
-                    })
+                if !self.settings.usesNativeGauges {
+                    SettingsMenuPicker(
+                        selection: self.$settings.weeklyProgressWorkDays,
+                        options: MenuSettingsMenuOptions.weeklyProgressWorkDays,
+                        label: {
+                            Text(L("weekly_progress_work_days_title"))
+                        },
+                        optionLabel: { workDays in
+                            Text(MenuSettingsMenuOptions.weeklyProgressWorkDaysLabel(workDays))
+                        })
 
-                SettingsMenuPicker(
-                    selection: self.$settings.workdayTickAppearance,
-                    options: MenuSettingsMenuOptions.workdayTickAppearances,
-                    label: {
-                        SettingsRowLabel(
-                            L("workday_tick_appearance_title"),
-                            subtitle: L("workday_tick_appearance_subtitle"))
-                    },
-                    optionLabel: { appearance in
-                        Text(appearance.label)
-                    })
-                    .disabled(self.settings.weeklyProgressWorkDays == nil)
+                    SettingsMenuPicker(
+                        selection: self.$settings.workdayTickAppearance,
+                        options: MenuSettingsMenuOptions.workdayTickAppearances,
+                        label: {
+                            SettingsRowLabel(
+                                L("workday_tick_appearance_title"),
+                                subtitle: L("workday_tick_appearance_subtitle"))
+                        },
+                        optionLabel: { appearance in
+                            Text(appearance.label)
+                        })
+                        .disabled(self.settings.weeklyProgressWorkDays == nil)
+                }
 
-                SettingsMenuPicker(
-                    selection: self.$settings.resetTimesOption,
-                    options: MenuSettingsMenuOptions.resetTimes,
-                    label: { Text(L("reset_times_title")) },
-                    optionLabel: { option in
-                        Text(option.label)
-                    })
+                if !self.settings.usesNativeGauges {
+                    SettingsMenuPicker(
+                        selection: self.$settings.resetTimesOption,
+                        options: MenuSettingsMenuOptions.resetTimes,
+                        label: { Text(L("reset_times_title")) },
+                        optionLabel: { option in
+                            Text(option.label)
+                        })
+                }
             } header: {
                 Text(L("section_usage"))
             }
 
             Section {
-                Toggle(L("show_provider_changelog_links_title"), isOn: self.$settings.providerChangelogLinksEnabled)
+                if !self.settings.usesNativeGauges {
+                    Toggle(L("show_provider_changelog_links_title"), isOn: self.$settings.providerChangelogLinksEnabled)
 
-                SettingsMenuPicker(
-                    selection: self.$settings.mergedOverviewLayout,
-                    options: MenuSettingsMenuOptions.mergedOverviewLayouts,
-                    label: {
-                        SettingsRowLabel(L("overview_layout_title"), subtitle: L("overview_layout_subtitle"))
-                    },
-                    optionLabel: { Text($0.label) })
-                    .disabled(!self.settings.mergeIcons)
+                    SettingsMenuPicker(
+                        selection: self.$settings.mergedOverviewLayout,
+                        options: MenuSettingsMenuOptions.mergedOverviewLayouts,
+                        label: {
+                            SettingsRowLabel(L("overview_layout_title"), subtitle: L("overview_layout_subtitle"))
+                        },
+                        optionLabel: { Text($0.label) })
+                        .disabled(!self.settings.mergeIcons)
+                }
 
                 Toggle(isOn: self.$settings.showOptionalCreditsAndExtraUsage) {
                     SettingsRowLabel(
@@ -81,36 +91,50 @@ struct MenuPane: View {
                         subtitle: L("show_credits_extra_usage_subtitle"))
                 }
 
-                SettingsMenuPicker(
-                    selection: self.$settings.multiAccountMenuLayout,
-                    options: MenuSettingsMenuOptions.multiAccountLayouts,
-                    label: {
-                        Text(L("multi_account_layout_title"))
-                    },
-                    optionLabel: { layout in
-                        Text(layout.label)
-                    })
+                if !self.settings.usesNativeGauges {
+                    SettingsMenuPicker(
+                        selection: self.$settings.multiAccountMenuLayout,
+                        options: MenuSettingsMenuOptions.multiAccountLayouts,
+                        label: {
+                            Text(L("multi_account_layout_title"))
+                        },
+                        optionLabel: { layout in
+                            Text(layout.label)
+                        })
+                }
             } header: {
                 Text(L("section_content"))
             }
 
-            Section(L("section_widgets")) {
-                Toggle(isOn: self.$settings.accountWidgetsEnabled) {
-                    SettingsRowLabel(
-                        L("account_widgets_title"),
-                        subtitle: L("account_widgets_description"))
-                }
-                .onChange(of: self.settings.accountWidgetsEnabled) { _, enabled in
-                    self.store.persistWidgetSnapshot(reason: "account-widgets-setting")
-                    if enabled {
-                        Task { await self.store.refresh() }
+            if !NativeGaugeConfiguration.isEnabled {
+                Section(L("section_widgets")) {
+                    Toggle(isOn: self.$settings.accountWidgetsEnabled) {
+                        SettingsRowLabel(
+                            L("account_widgets_title"),
+                            subtitle: L("account_widgets_description"))
+                    }
+                    .onChange(of: self.settings.accountWidgetsEnabled) { _, enabled in
+                        self.store.persistWidgetSnapshot(reason: "account-widgets-setting")
+                        if enabled {
+                            Task { await self.store.refresh() }
+                        }
                     }
                 }
             }
 
             CostSummarySettingsSection(settings: self.settings, store: self.store)
 
-            AgentSessionsSettingsSection(settings: self.settings)
+            if self.settings.usesNativeGauges {
+                Section(L("Local agents")) {
+                    Toggle(L("Keep Mac awake while agents run"), isOn: self.$settings.stayAwakeEnabled)
+                        .help(
+                            L(
+                                "Prevents idle system sleep. Uses battery power; "
+                                    + "does not prevent lid-close or display sleep."))
+                }
+            } else {
+                AgentSessionsSettingsSection(settings: self.settings)
+            }
         }
         .formStyle(.grouped)
         .toggleStyle(.switch)
@@ -197,36 +221,44 @@ struct CostSummarySettingsSection: View {
 
     var body: some View {
         Section {
-            SettingsMenuPicker(
-                selection: self.$settings.costSummaryOption,
-                options: MenuSettingsMenuOptions.costSummaries,
-                label: {
-                    SettingsRowLabel(L("cost_summary_title"), subtitle: L("show_cost_summary_subtitle"))
-                },
-                optionLabel: { option in
-                    Text(option.label)
-                })
+            if self.settings.usesNativeGauges {
+                Toggle(L("Local usage totals"), isOn: self.$settings.costUsageEnabled)
+            } else {
+                SettingsMenuPicker(
+                    selection: self.$settings.costSummaryOption,
+                    options: MenuSettingsMenuOptions.costSummaries,
+                    label: {
+                        SettingsRowLabel(L("cost_summary_title"), subtitle: L("show_cost_summary_subtitle"))
+                    },
+                    optionLabel: { option in
+                        Text(option.label)
+                    })
+            }
 
             if self.settings.costUsageEnabled {
                 CostHistoryDaysEditor(settings: self.settings)
 
-                Toggle(isOn: self.$settings.costComparisonPeriodsEnabled) {
-                    SettingsRowLabel(
-                        L("cost_comparison_periods_title"),
-                        subtitle: L("cost_comparison_periods_subtitle"))
+                if !self.settings.usesNativeGauges {
+                    Toggle(isOn: self.$settings.costComparisonPeriodsEnabled) {
+                        SettingsRowLabel(
+                            L("cost_comparison_periods_title"),
+                            subtitle: L("cost_comparison_periods_subtitle"))
+                    }
                 }
             }
         } header: {
-            Text(L("section_cost_summary"))
+            Text(self.settings.usesNativeGauges ? L("Local usage totals") : L("section_cost_summary"))
         } footer: {
             if self.settings.costUsageEnabled {
                 SettingsSectionFooter {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(L("cost_auto_refresh_info"))
-                        ForEach(Self.costStatusProviders, id: \.self) { provider in
-                            self.costStatusLine(provider: provider)
+                        if !self.settings.usesNativeGauges {
+                            ForEach(Self.costStatusProviders, id: \.self) { provider in
+                                self.costStatusLine(provider: provider)
+                            }
+                            Text(Self.costDataExplanation())
                         }
-                        Text(Self.costDataExplanation())
                     }
                 }
             }

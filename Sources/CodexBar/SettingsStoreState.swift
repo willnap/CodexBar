@@ -2,6 +2,7 @@ import CodexBarCore
 import Foundation
 
 struct SettingsDefaultsState {
+    var nativeGaugeStyleRaw: String
     var refreshFrequency: RefreshFrequency
     var adaptiveActivityScanConsent: AdaptiveActivityScanConsent
     var refreshAllProvidersOnMenuOpen: Bool
@@ -95,6 +96,7 @@ struct SettingsDefaultsState {
     var selectedMenuProviderRaw: String?
     var providerDetectionCompleted: Bool
     var providersSortedAlphabetically: Bool
+    var settingsProvidersUsedFirst: Bool
     var appLanguageRaw: String?
     var terminalAppRaw: String?
     var agentSessionsEnabled: Bool

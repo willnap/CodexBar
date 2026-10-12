@@ -119,6 +119,8 @@ defineProvider({
         return (Math.floor(cents) / 100).toFixed(2);
       return value.toFixed(2);
     };
+    const sourceDate = new Date(root.snapshot_at);
+    const observedAt = Number.isFinite(sourceDate.getTime()) ? sourceDate.toISOString() : ctx.date.now().toISOString();
     const end = subscription.current_period_end;
     const minutes = (Date.parse(end) - Date.parse(subscription.current_period_start)) / 60000;
     const primary =
@@ -137,14 +139,42 @@ defineProvider({
           ? ctx.pct(allowance.spent_usd, allowance.limit_usd)
           : undefined;
     const plan = subscription.plan?.trim();
+    const month = usage.current_month;
+    const periodDate = new Date(observedAt);
+    const costUsage =
+      month && [month.tokens, month.requests, month.cost_usd].some((value) => nonnegative(value) !== undefined)
+        ? {
+            currency: "USD",
+            historyDays: periodDate.getUTCDate(),
+            historyCoverageIsEstablished: false,
+            historyLabel: "Reported month",
+            windowEnd: observedAt.slice(0, 10),
+            updatedAt: observedAt,
+            entries: [],
+            totals: {
+              totalTokens: nonnegative(month.tokens),
+              requests: nonnegative(month.requests),
+              cost: nonnegative(month.cost_usd),
+            },
+          }
+        : undefined;
     return {
       empty: true,
       primary,
       dataConfidence: "exact",
+      costUsage,
       cost:
-        remaining === undefined
+        remaining === undefined && used === undefined
           ? undefined
-          : { used: remaining, limit: 0, currency: "USD", period: "Neuralwatt prepaid balance" },
+          : {
+              used: used ?? remaining ?? 0,
+              limit: used === undefined ? 0 : (total ?? 0),
+              balance: remaining,
+              balanceUpdatedAt: remaining === undefined ? undefined : observedAt,
+              usageIsUnavailable: used === undefined,
+              currency: "USD",
+              period: "Neuralwatt prepaid balance",
+            },
       identity: {
         loginMethod: plan
           ? `${title(plan.replace(/_/gu, " "))} plan`

@@ -42,7 +42,9 @@ package struct DefaultCodexLiveAuthSwapper: CodexLiveAuthSwapping {
     package init() {}
     package func swapLiveAuthData(_ data: Data, liveHomeURL: URL) throws {
         let liveAuthURL = CodexAuthFingerprint.authFileURL(homePath: liveHomeURL.path)
-        guard CodexCredentialFileAccess.permits(liveAuthURL) else { throw CodexOAuthCredentialsError.notFound }
+        guard CodexCredentialFileAccess.permits(liveAuthURL),
+              !CodexLiveAuthFileSafety.isSymbolicLink(liveAuthURL)
+        else { throw CodexOAuthCredentialsError.notFound }
         if try CodexCredentialFileAccess.substituteWriteForTesting(at: liveAuthURL) {
             return
         }

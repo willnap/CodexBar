@@ -55,7 +55,14 @@ defineProvider({
         const free = credits?.freeCredits === undefined ? 0 : amount(credits.freeCredits?.balance);
         const balance = amount(paid + free);
         return {
-          cost: { used: 0, balance, currency: "USD", period: "Prepaid credits" },
+          cost: {
+            used: 0,
+            balance,
+            balanceUpdatedAt: ctx.date.now().toISOString(),
+            usageIsUnavailable: true,
+            currency: "USD",
+            period: "Prepaid credits",
+          },
           details: [
             {
               title: "Credits",

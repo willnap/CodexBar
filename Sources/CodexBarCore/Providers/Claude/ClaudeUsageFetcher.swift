@@ -1045,7 +1045,7 @@ extension ClaudeUsageFetcher {
             ?? makeWindow(usage.sevenDaySonnet, windowMinutes: 7 * 24 * 60)
             ?? makeWindow(usage.sevenDayOpus, windowMinutes: 7 * 24 * 60)
         let treatAsSpendLimit = primary == nil && usage.extraUsage?.isEnabled == true
-        let providerCost = Self.oauthExtraUsageCost(
+        let providerCost = usage.monthlySpend?.cost(updatedAt: Date()) ?? Self.oauthExtraUsageCost(
             usage.extraUsage,
             loginMethod: loginMethod,
             treatAsSpendLimit: treatAsSpendLimit)

@@ -43,12 +43,14 @@ extension UsageStore {
         self.lastSourceLabels.removeValue(forKey: provider.instanceID)
         self.lastFetchAttempts.removeValue(forKey: provider.instanceID)
         self.accountSnapshots.removeValue(forKey: provider.instanceID)
+        self.nativeTokenAccountRefreshAttempts.removeValue(forKey: provider.instanceID)
         if self.widgetVerifiedTokenSnapshots.removeValue(forKey: provider) != nil {
             self.widgetAccountSnapshotStore?.save(self.widgetVerifiedTokenSnapshots)
         }
         self.tokenAccountLiveStateProviders.remove(provider.instanceID)
         if provider == .codex {
             self.codexAccountSnapshots = []
+            self.nativeCodexAccountRefreshAttempts = [:]
             self.lastCodexUsagePublicationGuard = nil
         }
         if provider == .kilo {

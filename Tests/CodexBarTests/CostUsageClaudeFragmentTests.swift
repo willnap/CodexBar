@@ -260,7 +260,7 @@ struct CostUsageClaudeFragmentTests {
             }
             #expect(recorder.snapshot().fragmentEncodes == 4)
             #expect(recorder.snapshot().fragmentFallbacks == 0)
-            cache.usage.version = 4
+            cache.usage.version = CostUsageClaudeCacheIO.schemaVersion
             cache.usage.timeZoneIdentifier = Calendar.current.timeZone.identifier
             let url = CostUsageClaudeCacheIO.cacheFileURL(provider: .claude, cacheRoot: root)
             #expect(try Data(contentsOf: url) == self.encoder.encode(cache))
@@ -355,7 +355,7 @@ struct CostUsageClaudeFragmentTests {
     @Test
     func `decoded cache and persistence identity release their mapped input`() throws {
         var cache = CostUsageClaudeCache()
-        cache.usage.version = 4
+        cache.usage.version = CostUsageClaudeCacheIO.schemaVersion
         cache.usage.timeZoneIdentifier = Calendar.current.timeZone.identifier
         cache.usage.files["file"] = self.file(1)
         let root = self.directory.url

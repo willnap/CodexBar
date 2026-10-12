@@ -34,7 +34,14 @@ struct APIBalancePluginTests {
         let snapshot = try await Self.fetch(provider, engine: engine)
         #expect(snapshot.primary == nil)
         #expect(snapshot.secondary == nil)
-        #expect(snapshot.providerCost == nil)
+        #expect(snapshot.providerCost?.balance == 95.5)
+        #expect(snapshot.providerCost?.currencyCode == "USD")
+        #expect(snapshot.providerCost?.limit == 0)
+        #expect(snapshot.providerCost?.usageIsUnavailable == (provider == "atlascloud"))
+        if provider == "vercel" {
+            #expect(snapshot.providerCost?.used == 4.5)
+            #expect(snapshot.providerCost?.period == "Lifetime")
+        }
         #expect(snapshot.details.first?.rows.first?.value == "$95.50")
         #expect(snapshot.details.first?.rows.count == (provider == "vercel" ? 2 : 1))
         if provider == "vercel" {

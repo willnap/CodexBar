@@ -177,6 +177,7 @@ defineProvider({
               source: text(budget.source_name),
               limit,
               used: _nullishCoalesce(number(budget.current_usage), () => 0),
+              reportedCost: number(budget.current_usage),
               timing: timing(budget.reset_duration, budget.last_reset),
               models: array(budget.per_model_usage),
             },
@@ -288,7 +289,35 @@ defineProvider({
       }
       return String(value);
     };
-    const models = (_optionalChain([first, "optionalAccess", (_4) => _4.models]) || [])
+    const observedModels = (_optionalChain([first, "optionalAccess", (_4) => _4.models]) || []).map((model) => ({
+      tokens: number(model.total_tokens),
+      requests: number(model.total_requests),
+    }));
+    const observedSum = (values) => {
+      if (!values.length || values.some((value) => value === undefined || !Number.isSafeInteger(value) || value < 0))
+        return undefined;
+      return values.reduce((total, value) => total + value, 0);
+    };
+    const reportedTokens = observedSum(observedModels.map((model) => model.tokens));
+    const reportedRequests = observedSum(observedModels.map((model) => model.requests));
+    const reportedCost = _optionalChain([first, "optionalAccess", (_5) => _5.reportedCost]);
+    const costUsage =
+      reportedTokens === undefined && reportedRequests === undefined && reportedCost === undefined
+        ? undefined
+        : {
+            currency: "USD",
+            historyDays: 1,
+            historyCoverageIsEstablished: false,
+            historyLabel: `${_optionalChain([first, "optionalAccess", (_6) => _6.timing, "access", (_7) => _7.label]) || "Budget"} reported model usage`,
+            windowEnd: ctx.date.now().toISOString().slice(0, 10),
+            entries: [],
+            totals: {
+              totalTokens: reportedTokens,
+              requests: reportedRequests,
+              cost: reportedCost !== undefined && reportedCost >= 0 ? reportedCost : undefined,
+            },
+          };
+    const models = (_optionalChain([first, "optionalAccess", (_8) => _8.models]) || [])
       .map((model) => {
         const tokens = number(model.total_tokens);
         number(model.total_requests);
@@ -336,10 +365,11 @@ defineProvider({
         })),
       });
     return {
-      primary: _optionalChain([windows, "access", (_5) => _5[0], "optionalAccess", (_6) => _6.window]),
-      secondary: _optionalChain([windows, "access", (_7) => _7[1], "optionalAccess", (_8) => _8.window]),
+      primary: _optionalChain([windows, "access", (_9) => _9[0], "optionalAccess", (_10) => _10.window]),
+      secondary: _optionalChain([windows, "access", (_11) => _11[1], "optionalAccess", (_12) => _12.window]),
       extraWindows,
       details,
+      costUsage,
       cost: first
         ? {
             used: first.used,
@@ -351,7 +381,7 @@ defineProvider({
         : undefined,
       identity: {
         email: text(root.virtual_key_name),
-        organization: _optionalChain([first, "optionalAccess", (_9) => _9.source]),
+        organization: _optionalChain([first, "optionalAccess", (_13) => _13.source]),
         loginMethod: "api",
       },
     };
