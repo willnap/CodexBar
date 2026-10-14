@@ -171,7 +171,8 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
         let dayFormatter = DateFormatter()
         dayFormatter.locale = Locale(identifier: "en_US_POSIX")
         dayFormatter.dateFormat = "yyyy-MM-dd"
-        state.accounts = (0..<(CommandLine.arguments.contains("--preview-single") ? 1 : 2)).map { index in
+        let count = CommandLine.arguments.contains("--preview-single") ? 1 : 2
+        let makeAccount = { (index: Int, active: Bool) -> NativeOrbitAccountPresentation in
             let snapshot = self.snapshot(for: provider)
             let gauge = NativeUsageGaugeProjection.state(
                 provider: provider, snapshot: snapshot, includeModelScopedWeeklyUsage: true)
@@ -223,8 +224,8 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
                 label: index == 0 ? "Personal · Preview" : "Work · Preview",
                 email: nil,
                 symbol: "person.crop.circle",
-                isActive: index == 0,
-                canActivate: false,
+                isActive: active,
+                canActivate: !active,
                 gauge: gauge,
                 updatedAt: self.now,
                 history: gauge.resolvedWindows.enumerated().map { lane, window in
@@ -246,7 +247,40 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
                 quotaLabels: UsageStore.nativeOrbitQuotaLabels(provider: provider, snapshot: snapshot),
                 quotaWindows: UsageStore.nativeOrbitQuotaWindowMap(provider: provider, snapshot: snapshot))
         }
-        let content = NativeOrbitPopupView(state: state, activate: { _ in }, signIn: nil, refresh: {
+        state.accounts = (0..<count).map { makeAccount($0, $0 == 0) }
+        // A fixture switch: a short wait, then the target becomes active, or with `CODEXBAR_PREVIEW_SWITCH_FAILS`
+        // the failure a real switch reports. `CODEXBAR_PREVIEW_SWITCH_AFTER` (seconds) starts one unattended.
+        var target: String?
+        let switching = NativeAccountSwitchController(
+            provider: provider,
+            store: nil,
+            defaults: UserDefaults(suiteName: "codexbar-native-preview") ?? .standard,
+            activate: { _ in
+                try? await Task.sleep(for: .seconds(1.5 * NativeOrbitProjectionStyle.previewAnimationScale))
+                if ProcessInfo.processInfo.environment["CODEXBAR_PREVIEW_SWITCH_FAILS"] != nil {
+                    return .failed("ChatGPT didn’t quit. If it asked to confirm, answer it, then try again. "
+                        + "No account was changed.")
+                }
+                state.accounts = (0..<count).map { makeAccount($0, target == "fixture-\($0)") }
+                    .sorted { $0.isActive && !$1.isActive }
+                return .activated
+            },
+            refresh: {},
+            allowed: { true },
+            accounts: { state.accounts })
+        state.accountSwitch = switching
+        let activate = { (id: String) in
+            guard let account = state.accounts.first(where: { $0.id == id }) else { return }
+            target = id
+            switching.activate(account)
+        }
+        if let delay = ProcessInfo.processInfo.environment["CODEXBAR_PREVIEW_SWITCH_AFTER"].flatMap(Double.init) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(delay))
+                if let other = state.accounts.first(where: { !$0.isActive }) { activate(other.id) }
+            }
+        }
+        let content = NativeOrbitPopupView(state: state, activate: activate, signIn: nil, refresh: {
             state.isRefreshing = true
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(5))

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import CodexBar
@@ -90,8 +91,8 @@ struct NativeOrbitResetEventTests {
             now: self.now).only)
         #expect(event.kind == .provider)
         #expect(!event.kind.isBankable)
-        #expect(event.title(provider: .claude) == "Reset by Anthropic")
-        #expect(event.title(provider: .codex) == "Reset by OpenAI")
+        #expect(event.title(provider: .claude) == "Reset early by Anthropic")
+        #expect(event.title(provider: .codex) == "Reset early by OpenAI")
     }
 
     @Test func `an early reset without inventory around it keeps an unknown cause unless others saw it`() throws {
@@ -103,7 +104,7 @@ struct NativeOrbitResetEventTests {
         #expect(alone.kind == .early)
         #expect(alone.date == self.now.addingTimeInterval(-1800))
         #expect(alone.earliest == self.now.addingTimeInterval(-3600))
-        #expect(alone.help(provider: .codex, laneLabels: ["Weekly"]).contains("cause not recorded"))
+        #expect(alone.help(provider: .codex, laneLabels: ["Weekly"]).hasPrefix("Reset early, cause unknown: Weekly, "))
 
         // Another account of the provider started over in the same bracket with nothing redeemed.
         let peer = self.lane("nativeQuota:secondary", minutes: 10080, [
@@ -181,17 +182,36 @@ struct NativeOrbitResetEventTests {
         let events = NativeOrbitHistoryWidget.resetEvents(lanes)
         // The inventory brackets only the redemption, so the earlier weekly drop keeps an unknown cause.
         #expect(events.map(\.kind) == [.natural, .early, .manual])
+        // A planned window reset has only its rule; resets that broke the schedule carry a glyph.
         #expect(events.map { NativeOrbitHistoryWidget.resetSymbol($0.kind) } == [
             nil, "questionmark.circle.fill", "arrow.uturn.backward.circle.fill",
         ])
         #expect(NativeOrbitHistoryWidget.resetSymbol(.provider) == "building.2.crop.circle.fill")
-        #expect(NativeOrbitHistoryWidget.resetStroke(.natural).dash == [2, 3])
-        #expect(NativeOrbitHistoryWidget.resetStroke(.manual).dash.isEmpty)
-        #expect(NativeOrbitHistoryWidget.topPadding(lanes) == 13)
-        let help = widget.resetHelp(lanes)
-        #expect(help.contains("Window reset · Session"))
-        #expect(help.contains("Reset by you (banked reset) · Session, Weekly"))
-        #expect(help.contains("Early reset · cause not recorded · Weekly"))
+        // Recorded reset rules are solid; dashes mean projected.
+        #expect(NativeOrbitResetEvent.Kind.allCases
+            .allSatisfy { NativeOrbitHistoryWidget.resetStroke($0).dash.isEmpty })
+        // Glyphs ride inside the plot; its height never changes for them.
+        #expect(NativeOrbitHistoryWidget.topPadding(lanes) == 3)
+        // Hovering onto a mark names it in the pill: a planned reset by its window, the others by their cause.
+        #expect(widget.markedEvents(lanes).map(\.title) == ["Session reset", "Early reset", "Reset by you"])
+        #expect(widget.markedEvents(lanes).map(\.symbol) == events
+            .map { NativeOrbitHistoryWidget.resetSymbol($0.kind) })
+        // Hovering a point off a reset snaps onto it, or onto a dial reading beside it (readings win); either way
+        // the mark stays within the point the pill names it from.
+        let point = widget.chartEnd.timeIntervalSince(widget.start) / 196
+        let marks = widget.markedEvents(lanes)
+        for (event, mark) in zip(events, marks) {
+            let snapped = widget.inspectionDate(at: event.date.addingTimeInterval(point), plotWidth: 196)
+            #expect(abs(snapped.timeIntervalSince(event.date)) <= point)
+            let named = marks.filter { abs($0.date.timeIntervalSince(snapped)) <= point }
+                .min { abs($0.date.timeIntervalSince(snapped)) < abs($1.date.timeIntervalSince(snapped)) }
+            #expect(named == mark)
+        }
+        #expect(widget.inspectionDate(at: events[0].date.addingTimeInterval(point), plotWidth: 196) == events[0].date)
+        let labels = events.map { widget.resetAccessibilityLabel($0, lanes: lanes) }
+        #expect(labels[0].hasPrefix("Window reset: Session, "))
+        #expect(labels[1].hasPrefix("Reset early, cause unknown: Weekly, "))
+        #expect(labels[2].hasPrefix("You used a banked reset: Session, Weekly, "))
 
         // A reset that is reclassified redraws the equatable plot.
         let unexplained = NativeOrbitHistoryWidget(
@@ -229,16 +249,16 @@ struct NativeOrbitResetEventTests {
                 displayed: metrics,
                 redeemed: NativeOrbitResetEvent.redemptions(in: histories, days: 7, now: date),
                 provider: .claude,
-                moment: .inspecting))
+                moment: .inspecting,
+                now: self.now))
         }
         #expect(corner(-3700).0 == .unknown)
-        #expect(corner(-3700).1 == "No banked-reset reading at this time")
+        #expect(corner(-3700).1 == "No banked-reset reading for this moment")
         #expect(corner(-3500).0 == .inventory(available: 1, used: 0))
-        #expect(!corner(-3500).1.contains("You used"))
+        #expect(!corner(-3500).1.contains("Last used"))
         let after = corner(-3200)
         #expect(after.0 == .inventory(available: 0, used: 1))
-        #expect(after.1.hasPrefix("0 banked resets · 1 used"))
-        #expect(after.1.contains("You used a banked reset between"))
+        #expect(after.1.hasPrefix("No banked resets left, 1 used\nLast used "))
         #expect(after.0.glyphs == [false])
     }
 
@@ -312,6 +332,53 @@ struct NativeOrbitResetEventTests {
         #expect(!NativeOrbitSlashableGlyph.hasSlashVariant(NativeOrbitExtraUsageComplication.symbol))
         #expect(NativeOrbitSlashableGlyph.hasSlashVariant("bell"))
         #expect(NativeOrbitSlashableGlyph.hasSlashVariant("bell.fill"))
+    }
+
+    @Test func `a drawn slash and its glyph are one template image, inked as one symbol`() throws {
+        for (name, size) in [
+            (NativeOrbitResetComplication.symbol, 17.0),
+            (NativeOrbitExtraUsageComplication.symbol, 16),
+        ] {
+            let template = try #require(NativeOrbitSlashableGlyph.slashedTemplate(name, size: size, weight: .medium))
+            #expect(template.isTemplate)
+            let glyph = try #require(NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(pointSize: size, weight: .medium)))
+            #expect(template.size.width >= glyph.size.width && template.size.height >= glyph.size.height)
+            // Made once per symbol and size.
+            #expect(NativeOrbitSlashableGlyph.slashedTemplate(name, size: size, weight: .medium) === template)
+            // Against the plain glyph on the same canvas: a clearance cut out of it, and a slash drawn in.
+            let slashed = try Self.coverage(template, canvas: template.size)
+            let plain = try Self.coverage(glyph, canvas: template.size)
+            #expect(zip(plain, slashed).contains { $0 && !$1 }, "\(name) has a clearance")
+            #expect(zip(plain, slashed).contains { !$0 && $1 } || name.hasSuffix(".fill"), "\(name) has a slash")
+        }
+    }
+
+    /// Which pixels `image`, centred on `canvas` at 2x, covers.
+    private static func coverage(_ image: NSImage, canvas: NSSize) throws -> [Bool] {
+        let bitmap = try #require(NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(canvas.width * 2),
+            pixelsHigh: Int(canvas.height * 2),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0))
+        bitmap.size = canvas
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+        image.draw(in: NSRect(
+            x: (canvas.width - image.size.width) / 2,
+            y: (canvas.height - image.size.height) / 2,
+            width: image.size.width,
+            height: image.size.height))
+        NSGraphicsContext.restoreGraphicsState()
+        return (0..<bitmap.pixelsHigh).flatMap { y in
+            (0..<bitmap.pixelsWide).map { x in (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 }
+        }
     }
 
     // MARK: - Fixtures

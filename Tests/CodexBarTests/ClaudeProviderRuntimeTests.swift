@@ -118,6 +118,24 @@ struct ClaudeProviderRuntimeTests {
     }
 
     @Test
+    func `the first refresh joins the list the provider started at launch instead of restarting it`() async throws {
+        let (settings, store) = self.makeStore()
+        let fixture = try self.makeVersionRecoveryExecutable(delayFirstProbe: true)
+        let metadata = try #require(ProviderRegistry.shared.metadata[.claude])
+        settings.setProviderEnabled(provider: .claude, metadata: metadata, enabled: true)
+        settings.claudeSwapExecutablePath = fixture.executablePath
+        settings.claudeSwapEnabled = true
+
+        store.scheduleClaudeSwapAccountRefresh()
+        let launch = try #require(store.claudeSwapRefreshTask)
+        store.scheduleClaudeSwapAccountRefresh(generation: 1)
+        #expect(store.claudeSwapRefreshTask == launch, "Restarting would make the popup wait for two lists")
+        await launch.value
+        #expect(store.claudeSwapAccountSnapshots.count == 1)
+        #expect(store.claudeSwapTransientState.generationFreeList == nil)
+    }
+
+    @Test
     func `explicit account activation is serialized through claude swap and refreshes Claude`() async throws {
         let (settings, store) = self.makeStore()
         let marker = FileManager.default.temporaryDirectory
@@ -144,6 +162,11 @@ struct ClaudeProviderRuntimeTests {
         store.switchClaudeSwapAccount(accountID)
         let task = try #require(store.claudeSwapTransientState.task)
         await task.value
+        // The ambient Claude reading follows the finished switch.
+        let deadline = ContinuousClock.now + .seconds(5)
+        while refreshedProviders.isEmpty, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
 
         let arguments = try String(contentsOf: marker, encoding: .utf8)
         #expect(arguments == "--switch-to\n2\n--json\n")
@@ -207,7 +230,7 @@ struct ClaudeProviderRuntimeTests {
     }
 
     @Test
-    func `configuration change during provider refresh discards switch result`() async throws {
+    func `provider refresh follows a settled switch`() async throws {
         let (settings, store) = self.makeStore()
         let executable = try self.makeFailedSwitchExecutable()
         let metadata = try #require(ProviderRegistry.shared.metadata[.claude])
@@ -224,19 +247,27 @@ struct ClaudeProviderRuntimeTests {
             snapshot: nil,
             error: nil,
             sourceLabel: ClaudeSwapAccountProjection.sourceLabel)]
+        // The switch settles on claude-swap's list alone; the slower provider fetch starts once it is over.
+        var switchStateAtRefresh: [Bool] = []
         store._test_providerRefreshOverride = { _ in
-            settings.claudeSwapExecutablePath = "/new/path/to/cswap"
+            switchStateAtRefresh.append(store.claudeSwapTransientState.task == nil
+                && store.claudeSwapTransientState.switchPhase == nil)
         }
         defer { store._test_providerRefreshOverride = nil }
 
         store.switchClaudeSwapAccount(accountID)
         let task = try #require(store.claudeSwapTransientState.task)
         await task.value
+        let deadline = ContinuousClock.now + .seconds(5)
+        while switchStateAtRefresh.isEmpty, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
 
+        #expect(switchStateAtRefresh == [true])
         #expect(store.claudeSwapTransientState.task == nil)
         #expect(store.claudeSwapTransientState.switchingAccountID == nil)
-        #expect(store.claudeSwapTransientState.lastError == nil)
-        #expect(store.claudeSwapTransientState.lastErrorAccountID == nil)
+        #expect(store.claudeSwapTransientState.lastError?.contains("credentials missing") == true)
+        #expect(store.claudeSwapTransientState.lastErrorAccountID == accountID)
     }
 
     @Test
@@ -366,9 +397,10 @@ struct ClaudeProviderRuntimeTests {
             .appendingPathComponent("claude-switch-runtime-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("cswap")
+        // Only the switch is recorded; the list that settles it (and its version probe) run here too.
         let script = """
         #!/bin/sh
-        printf '%s\n' "$@" > '\(marker.path)'
+        if [ "$1" = "--switch-to" ]; then printf '%s\n' "$@" > '\(marker.path)'; fi
         echo '{"schemaVersion":1,"switched":true,"from":{"number":1},"to":{"number":2},"reason":"switched"}'
         """
         try script.write(to: url, atomically: true, encoding: .utf8)

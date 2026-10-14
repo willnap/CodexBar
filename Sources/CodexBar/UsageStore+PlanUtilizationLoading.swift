@@ -27,7 +27,15 @@ extension UsageStore {
                 }
                 guard shouldLoad, !Task.isCancelled else { return }
             }
-            let loaded = await historyStore.loadAsync()
+            // Each provider's history shows as soon as its own file is decoded; writes still wait for all of them
+            // (`planUtilizationHistoryLoaded`), so nothing is recorded against a partial history.
+            let loaded = await historyStore.loadAsync { [weak self] instanceID, buckets in
+                await MainActor.run {
+                    guard let self, !self.planUtilizationHistoryLoaded else { return }
+                    self.planUtilizationHistory[instanceID] = buckets
+                    self.planUtilizationHistoryLoadedProviders.insert(instanceID)
+                }
+            }
             guard !Task.isCancelled, let self, !self.planUtilizationHistoryLoaded else { return }
             self.planUtilizationHistory = loaded
             self.planUtilizationHistoryLoaded = true

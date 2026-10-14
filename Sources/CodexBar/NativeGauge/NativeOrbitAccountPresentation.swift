@@ -40,6 +40,8 @@ struct NativeOrbitAccountPresentation: Identifiable {
     var quotaLabels: [String: String] = [:]
     var quotaWindows: [String: RateWindow] = [:]
     var historySourceLabel: String?
+    /// The token and spend corners show a remembered reading measured at this time until the live one publishes.
+    var usageLastKnownAt: Date?
 }
 
 extension UsageStore {
@@ -107,9 +109,7 @@ extension UsageStore {
                 selection: .none)]
         }
         let accounts = Self.nativeOrbitCodexAccountsWithoutImportedCopies(projection.visibleAccounts)
-        let labels = CodexAccountSwitcherLabeling.labels(
-            for: accounts,
-            hidePersonalInfo: self.settings.hidePersonalInfo)
+        let labels = Self.nativeOrbitCodexLabels(accounts, hidePersonalInfo: self.settings.hidePersonalInfo)
         let uniqueIDs = Dictionary(
             grouping: accounts,
             by: \.id).filter { $0.value.count == 1 }
@@ -162,7 +162,7 @@ extension UsageStore {
                     canonicalKey: historyKey))
         }
         // Every account's own window evidence is needed before any account can claim a shared local session.
-        let localUsages = self.nativeOrbitCodexLocalUsages(contexts.map {
+        let localUsages = self.nativeOrbitCodexResolvedLocalUsages(contexts.map {
             (account: $0.account, history: $0.history, snapshot: $0.snapshot)
         })
         let rows = contexts.map { context in
@@ -187,11 +187,48 @@ extension UsageStore {
                     && account.authenticationHealthLabel == nil && context.record?.snapshot != nil
                     && context.record?.error == nil,
                 autoSwitchWindows: context.snapshot.map { [$0.primary, $0.secondary] } ?? [],
-                localUsage: localUsages[account.id],
+                localUsage: localUsages[account.id]?.usage,
+                usageLastKnownAt: localUsages[account.id]?.lastKnownAt,
                 accountUsage: context.record?.accountUsageHistory?.tokenSnapshot(),
                 accountUsageHistory: context.record?.accountUsageHistory)
         }
         return Self.nativeOrbitOrdered(rows)
+    }
+
+    /// Each column's name: its email, or "Account N" in privacy mode. Only when another shown column has the same
+    /// email does it add the workspace, or failing a distinct workspace name its number. Counted over the columns
+    /// shown, so a hidden imported copy never adds anything, and never a hash.
+    static func nativeOrbitCodexLabels(
+        _ accounts: [CodexVisibleAccount],
+        hidePersonalInfo: Bool) -> [String: String]
+    {
+        let ordinals = CodexAccountSwitcherLabeling.ordinals(for: accounts)
+        func number(_ account: CodexVisibleAccount) -> String {
+            CodexAccountSwitcherLabeling.accountLabel(ordinal: ordinals[account.id])
+        }
+        func workspace(_ account: CodexVisibleAccount) -> String? {
+            guard let name = account.workspaceLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
+                  name.compare("Personal", options: .caseInsensitive) != .orderedSame,
+                  !name.contains("@")
+            else { return nil }
+            return name
+        }
+        let emails = Dictionary(grouping: accounts) { CodexIdentityResolver.normalizeEmail($0.email) ?? "" }
+        return accounts.reduce(into: [:]) { labels, account in
+            let email = account.email.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !hidePersonalInfo, !email.isEmpty else {
+                labels[account.id] = number(account)
+                return
+            }
+            let peers = emails[CodexIdentityResolver.normalizeEmail(account.email) ?? ""] ?? []
+            guard peers.count > 1 else {
+                labels[account.id] = email
+                return
+            }
+            let name = workspace(account)
+            let distinct = name != nil && peers.count(where: { workspace($0) == name }) == 1
+            labels[account.id] = "\(email) · \(distinct ? name ?? "" : number(account))"
+        }
     }
 
     private static func nativeOrbitCodexAccountsWithoutImportedCopies(
@@ -236,10 +273,14 @@ extension UsageStore {
                 adapterError: self.claudeSwapLastError,
                 switchError: self.claudeSwapTransientState.lastErrorAccountID == account.id
                     ? self.claudeSwapTransientState.lastError : nil)
-            let ambient = switching ? nil : self.nativeOrbitClaudeOwnedAmbientSnapshot(for: account)
-            let snapshot = switching ? nil : Self.nativeOrbitClaudeMergedSnapshot(
+            // A switch keeps every column as it was until claude-swap's list names the new active row: each reading
+            // here is tied to its own slot, and the ambient one also to its email and organization, so none can land
+            // on the wrong column meanwhile.
+            let ambient = self.nativeOrbitClaudeOwnedAmbientSnapshot(for: account)
+            let snapshot = Self.nativeOrbitClaudeMergedSnapshot(
                 adapter: account.snapshot,
                 ambient: ambient)
+            let localUsage = self.nativeOrbitClaudeResolvedLocalUsage(account)
             let displayError = account.usesLastKnownUsage && ambient == nil
                 ? error ?? L(
                     "claude_showing_last_known_usage",
@@ -252,9 +293,9 @@ extension UsageStore {
                     for: account,
                     hidePersonalInfo: self.settings.hidePersonalInfo),
                 email: account.accountEmail,
-                isActive: !switching && NativeAccountActivationVerification.claudeOwnsLogin(
+                isActive: NativeAccountActivationVerification.claudeOwnsLogin(
                     account.id, accounts: self.claudeSwapAccountSnapshots),
-                canActivate: account.canActivate && !switching,
+                canActivate: account.canActivate,
                 snapshot: snapshot,
                 error: displayError,
                 history: self.nativeOrbitClaudeHistory(
@@ -264,7 +305,8 @@ extension UsageStore {
                 autoSwitchEligible: account.autoSwitchEligible && account.canActivate && !account.usesLastKnownUsage
                     && account.snapshot != nil && !switching && error == nil,
                 autoSwitchWindows: snapshot.map { [$0.primary, $0.secondary] } ?? [],
-                localUsage: switching ? nil : self.nativeOrbitClaudeLocalUsage(account))
+                localUsage: localUsage?.usage,
+                usageLastKnownAt: localUsage?.lastKnownAt)
             // Ambient observations enter this owner bucket only through a verified accepted-publication bridge.
         }
         return Self.nativeOrbitOrdered(rows)
@@ -302,11 +344,16 @@ extension UsageStore {
         let isAnonymousSource = Self.nativeOrbitAllowsAnonymousQuotaHistory(for: provider)
             && self.settings.effectiveSelectedTokenAccount(for: provider) == nil
             && snapshot.flatMap { Self.planUtilizationIdentityAccountKey(provider: provider, snapshot: $0) } == nil
-        let sourceHistory = isAnonymousSource && self.planUtilizationHistoryLoaded
+        let sourceHistory = isAnonymousSource && self.nativeHistoryAvailable(provider)
             ? (self.planUtilizationHistory[provider.instanceID]?.unscoped ?? [])
             .filter(\.name.isNativeQuotaObservation)
             : history.accountKey == nil ? [] : history.histories
         let reports = self.nativeOrbitAmbientUsageReports(for: provider, snapshot: snapshot)
+        // The ambient local report is the remembered one until this launch's first scan publishes.
+        let ambientLocal = self.nativeOrbitAmbientResolvedLocalUsage(for: provider)
+        let usageLastKnownAt = reports.local.flatMap { local in
+            ambientLocal?.lastKnownAt.flatMap { local.snapshot.updatedAt == $0 ? $0 : nil }
+        }
         let accountLabel = presentation.model.email.isEmpty
             ? self.metadata(for: provider).displayName
             : presentation.model.email
@@ -335,14 +382,16 @@ extension UsageStore {
                 snapshot: snapshot,
                 usage: reports.usage,
                 now: Date(),
-                localUsage: reports.local),
+                localUsage: reports.local,
+                quotaHistory: sourceHistory),
             quotaLabels: Self.nativeOrbitQuotaLabels(
                 provider: provider,
                 snapshot: snapshot),
             quotaWindows: Self.nativeOrbitQuotaWindowMap(
                 provider: provider,
                 snapshot: snapshot),
-            historySourceLabel: isAnonymousSource ? L("Account not recorded") : nil)
+            historySourceLabel: isAnonymousSource ? L("Account not recorded") : nil,
+            usageLastKnownAt: usageLastKnownAt)
     }
 
     // swiftlint:disable:next function_parameter_count
@@ -361,6 +410,7 @@ extension UsageStore {
         autoSwitchEligible: Bool = false,
         autoSwitchWindows: [RateWindow?] = [],
         localUsage: NativeOrbitLocalUsage? = nil,
+        usageLastKnownAt: Date? = nil,
         accountUsage: CostUsageTokenSnapshot? = nil,
         accountUsageHistory: NativeCodexAccountUsageHistory? = nil) -> NativeOrbitAccountPresentation
     {
@@ -413,7 +463,8 @@ extension UsageStore {
                 historyDays: self.settings.costUsageHistoryDays)),
             now: input.now,
             credits: credits,
-            localUsage: localUsage)
+            localUsage: localUsage,
+            quotaHistory: history)
         metrics.accountUsageHistory = accountUsageHistory
         let total = metrics.summary(days: 30, now: input.now)
         // Provider-specific by design: Codex's verified account-paired credit cap may be the account's only
@@ -458,7 +509,8 @@ extension UsageStore {
                 snapshot: historySnapshot),
             quotaWindows: Self.nativeOrbitQuotaWindowMap(
                 provider: provider,
-                snapshot: historySnapshot))
+                snapshot: historySnapshot),
+            usageLastKnownAt: localUsage == nil ? nil : usageLastKnownAt)
     }
 
     private func nativeOrbitHistory(
@@ -466,8 +518,14 @@ extension UsageStore {
         key: String?) -> [PlanUtilizationSeriesHistory]
     {
         _ = self.planUtilizationHistoryRevision
-        guard self.planUtilizationHistoryLoaded, let key else { return [] }
+        guard self.nativeHistoryAvailable(provider), let key else { return [] }
         return self.planUtilizationHistory[provider.instanceID]?.accounts[key] ?? []
+    }
+
+    /// Whether `provider`'s persisted history is in memory, which can be before the whole load finishes: display
+    /// reads use it as soon as its own file is decoded, while writes still wait for every file.
+    func nativeHistoryAvailable(_ provider: UsageProvider) -> Bool {
+        self.planUtilizationHistoryLoaded || self.planUtilizationHistoryLoadedProviders.contains(provider.instanceID)
     }
 
     private static func nativeOrbitDigest(_ value: String) -> String {

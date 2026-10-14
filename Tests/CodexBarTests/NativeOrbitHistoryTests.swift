@@ -143,7 +143,6 @@ struct NativeOrbitHistoryTests {
         let event = try #require(widget.events.first)
         #expect(event.date == deadline)
         #expect(event.recoveryPercent == 12.5)
-        #expect(event.help.contains("12.5%"))
         #expect(widget.chartEnd == now)
         #expect(widget.visibleEvents.isEmpty)
         #expect(widget.lanes.first?.samples.count == 2)
@@ -286,7 +285,7 @@ struct NativeOrbitHistoryTests {
     }
 
     @Test
-    func `overlapping quota values draw the solid base before distinct dashed lines`() throws {
+    func `recorded quota lanes are solid lines told apart by color`() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let histories = [
             self.history("nativeQuota:primary", minutes: 300, dates: [-600, 0], now: now),
@@ -296,8 +295,8 @@ struct NativeOrbitHistoryTests {
         let widget = NativeOrbitHistoryWidget(histories: histories, now: now)
         let first = try #require(widget.lanes.first)
         #expect(first.history.name.rawValue == "nativeQuota:primary")
-        #expect(widget.stroke(first).dash.isEmpty)
-        #expect(Set(widget.lanes.map { widget.stroke($0).dash }).count == 3)
+        // Dashes are reserved for the projection; recorded lanes never use them.
+        #expect(widget.lanes.allSatisfy { widget.stroke($0).dash.isEmpty })
         #expect(widget.lanes.allSatisfy { $0.samples.map(\.available) == [75, 75] })
     }
 

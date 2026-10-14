@@ -186,8 +186,9 @@ struct NativeOrbitKimiHistoryRestoreTests {
             days: 1,
             now: self.now,
             accent: .blue).body)
-        #expect(labels.contains { $0.hasPrefix("$5.10") && $0.contains("Estimated") && $0.contains("this Mac") })
-        #expect(labels.contains { $0.contains("Additional usage") && $0.contains("$0.00") })
+        #expect(labels
+            .contains { $0.contains("$5.10 spent") && $0.hasSuffix("at list prices") && $0.contains("this Mac") })
+        #expect(labels.contains { $0.contains("additional usage") && $0.contains("$0.00") })
         // Plan routes priced at zero on models.dev never become a $0 estimate on their own.
         let planOnly = NativeKimiLocalUsageParser.snapshot(
             data: Data(lines.utf8),

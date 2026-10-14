@@ -97,6 +97,36 @@ extension UsageStore {
         coalesceIfRefreshing: Bool = false,
         codexAccountIDs: Set<String>? = nil) async
     {
+        _ = await self.requestProviderRefresh(
+            provider,
+            allowDisabled: allowDisabled,
+            coalesceIfRefreshing: coalesceIfRefreshing,
+            codexAccountIDs: codexAccountIDs)
+    }
+
+    /// A person's explicit refresh: a fresh fetch that replaces whatever request is in flight, since a background
+    /// pass may have started long before the press. If a newer request in turn replaces this one before it
+    /// publishes (a settings change, an account switch), this follows that request instead of returning first, so
+    /// the caller always ends on a fetch requested no earlier than its own.
+    func refreshProviderForUser(_ provider: UsageProvider) async {
+        var result = await self.requestProviderRefresh(provider)
+        var followed = 0
+        while result == .retryRequired, followed < 3, !Task.isCancelled,
+              let replacement = self.providerRefreshCoordinator.coalescingState(for: provider.instanceID)
+        {
+            followed += 1
+            result = await self.providerRefreshCoordinator.wait(for: provider.instanceID, state: replacement)
+        }
+    }
+
+    /// `refreshProvider`, reporting how the request ended: `.retryRequired` when a newer request replaced it before
+    /// it could publish.
+    private func requestProviderRefresh(
+        _ provider: UsageProvider,
+        allowDisabled: Bool = false,
+        coalesceIfRefreshing: Bool = false,
+        codexAccountIDs: Set<String>? = nil) async -> ProviderRefreshCoordinator<ProviderInstanceID>.WaitResult
+    {
         // Codex source reconciliation can persist a settings correction. Perform it before
         // capturing the publication revision so the request cannot invalidate itself.
         self.prepareRefreshState(for: provider)
@@ -105,12 +135,12 @@ extension UsageStore {
         {
             switch await self.providerRefreshCoordinator.wait(for: provider.instanceID, state: existingState) {
             case .cancelled:
-                return
+                return .cancelled
             case .retryRequired:
                 self.providerRefreshCoordinator.remove(existingState, for: provider.instanceID)
                 continue
             case .completed:
-                return
+                return .completed
             }
         }
 
@@ -166,7 +196,7 @@ extension UsageStore {
                 retryRequired: retryRequired)
         }
         request.state.install(task: task)
-        _ = await self.providerRefreshCoordinator.wait(for: provider.instanceID, state: request.state)
+        return await self.providerRefreshCoordinator.wait(for: provider.instanceID, state: request.state)
     }
 
     func isCurrentProviderRefreshGeneration(_ provider: UsageProvider, generation: UInt64?) -> Bool {

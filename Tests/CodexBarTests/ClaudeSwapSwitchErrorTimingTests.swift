@@ -5,6 +5,39 @@ import Testing
 
 @MainActor
 struct ClaudeSwapSwitchErrorTimingTests {
+    /// A list that holds until released, then fails: the switch reconciles on it, and the failure leaves the
+    /// listed active account as it was. The version probe that follows a failed list answers without logging.
+    static let gatedListScript = #"""
+    if [ "$#" -eq 1 ] && [ "$1" = "--version" ]; then
+      echo 'cswap 0.0.0-synthetic'
+      exit 0
+    fi
+    if [ "$#" -eq 2 ] && [ "$1" = "--list" ] && [ "$2" = "--json" ]; then
+      touch "$0.list-entered"
+      remaining=800
+      while [ ! -e "$0.list-release" ] && [ "$remaining" -gt 0 ]; do
+        sleep 0.01
+        remaining=$((remaining - 1))
+      done
+      echo '{"schemaVersion":1,"error":{"type":"ListError","message":"list unavailable"}}'
+      exit 1
+    fi
+    """#
+
+    static func waitForList(_ executable: URL) async throws {
+        let deadline = ContinuousClock.now + .seconds(8)
+        while !FileManager.default.fileExists(atPath: executable.path + ".list-entered"),
+              ContinuousClock.now < deadline
+        {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try #require(FileManager.default.fileExists(atPath: executable.path + ".list-entered"))
+    }
+
+    static func releaseList(_ executable: URL) throws {
+        try Data().write(to: URL(fileURLWithPath: executable.path + ".list-release"))
+    }
+
     @Test(arguments: [true, false])
     func `active foreign credential repair respects adapter capability`(supportsAccountSwitching: Bool) async throws {
         let fixture = try CodexWorkspacesNavigationFixture(userDefaults: InMemoryUserDefaults())
@@ -57,6 +90,11 @@ struct ClaudeSwapSwitchErrorTimingTests {
         }
         let task = try #require(fixture.store.claudeSwapTransientState.task)
         await task.value
+        // The ambient Claude reading follows the finished switch.
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !gate.entered, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         #expect(gate.entered)
         #expect(try String(contentsOfFile: executable.path + ".calls", encoding: .utf8) == "--switch-to\n1\n--json\n")
         #expect(fixture.store.claudeSwapTransientState.lastError == nil)
@@ -64,7 +102,7 @@ struct ClaudeSwapSwitchErrorTimingTests {
     }
 
     @Test(arguments: ConfigurationChange.allCases)
-    func `failed switch is visible before ambient refresh finishes`(
+    func `failed switch is visible while its list reconciles`(
         configurationChange: ConfigurationChange) async throws
     {
         let fixture = try CodexWorkspacesNavigationFixture(userDefaults: InMemoryUserDefaults())
@@ -72,6 +110,7 @@ struct ClaudeSwapSwitchErrorTimingTests {
         let executable = fixture.files.root.appendingPathComponent("cswap")
         let script = """
         #!/bin/sh
+        \(Self.gatedListScript)
         printf '%s\\n' "$@" >> "${0}.calls"
         echo '{"schemaVersion":1,"error":{"type":"SwitchError","message":"credentials missing"}}'
         exit 1
@@ -109,11 +148,8 @@ struct ClaudeSwapSwitchErrorTimingTests {
         #expect(fixture.store.claudeSwapTransientState.switchPhase == .activating)
         #expect(progress.phases == [.activating])
         let startedRevision = fixture.store.claudeSwapRevision
-        let deadline = Date().addingTimeInterval(8)
-        while !gate.entered, Date() < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(gate.entered)
+        try await Self.waitForList(executable)
+        #expect(!gate.entered)
         #expect(fixture.store.claudeSwapRevision > startedRevision)
         #expect(fixture.store.claudeSwapTransientState.lastError?.contains("credentials missing") == true)
         #expect(fixture.store.claudeSwapTransientState.lastErrorAccountID == accountID)
@@ -140,7 +176,7 @@ struct ClaudeSwapSwitchErrorTimingTests {
             #expect(fixture.store.claudeSwapTransientState.lastError == nil)
             fixture.store.switchClaudeSwapAccount(accountID)
         }
-        gate.release()
+        try Self.releaseList(executable)
         await task.value
         let calls = try String(contentsOfFile: executable.path + ".calls", encoding: .utf8)
         #expect(calls == "--switch-to\n2\n--json\n")
@@ -166,6 +202,7 @@ struct ClaudeSwapSwitchErrorTimingTests {
         let executable = fixture.files.root.appendingPathComponent("cswap-success")
         let script = #"""
         #!/bin/sh
+        """# + "\n" + Self.gatedListScript + "\n" + #"""
         if [ "$#" -ne 3 ] || [ "$1" != "--switch-to" ] || [ "$2" != "2" ] || [ "$3" != "--json" ]; then
           exit 64
         fi
@@ -218,8 +255,10 @@ struct ClaudeSwapSwitchErrorTimingTests {
             #expect(fixture.store.claudeSwapTransientState.switchPhase == nil)
             fixture.store.switchClaudeSwapAccount(target.id)
             gate.release()
+            try Self.releaseList(executable)
             await task.value
             #expect(!gate.entered)
+            #expect(!FileManager.default.fileExists(atPath: executable.path + ".list-entered"))
             #expect(progress.phases == [.activating])
             #expect(fixture.store.claudeSwapTransientState.task == nil)
             #expect(fixture.store.claudeSwapTransientState.switchPhase == nil)
@@ -228,11 +267,8 @@ struct ClaudeSwapSwitchErrorTimingTests {
                 "--switch-to\n2\n--json\n")
             return
         }
-        let deadline = Date().addingTimeInterval(8)
-        while !gate.entered, Date() < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(gate.entered)
+        try await Self.waitForList(executable)
+        #expect(!gate.entered)
         #expect(progress.phases == [.activating, .reconciling])
         #expect(fixture.store.claudeSwapTransientState.task != nil)
         #expect(fixture.store.claudeSwapTransientState.switchingAccountID == target.id)
@@ -241,7 +277,7 @@ struct ClaudeSwapSwitchErrorTimingTests {
         let targetSnapshot = fixture.store.claudeSwapAccountSnapshots.first { $0.id == target.id }?.snapshot
         #expect(targetSnapshot?.primary?.usedPercent == 34)
         fixture.store.switchClaudeSwapAccount(target.id)
-        gate.release()
+        try Self.releaseList(executable)
         await task.value
         #expect(progress.phases == [.activating, .reconciling, nil])
         #expect(fixture.store.claudeSwapTransientState.task == nil)

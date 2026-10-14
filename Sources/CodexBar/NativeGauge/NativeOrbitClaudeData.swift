@@ -5,9 +5,9 @@ extension UsageStore {
     /// Cached Claude readings can enrich only a uniquely identified adapter owner.
     func nativeOrbitClaudeOwnedAmbientSnapshot(for account: ProviderAccountUsageSnapshot) -> UsageSnapshot? {
         // Provider-specific by design: ClaudeSwap adjuncts require its uniquely active email and organization owner.
-        guard self.claudeSwapTransientState.switchingAccountID == nil,
-              self.claudeSwapTransientState.switchPhase == nil else { return nil }
-        return Self.nativeOrbitClaudeOwnedAmbientSnapshot(
+        // That match holds through a switch too: until the list names the new row, a reading of the new login
+        // carries the other email and matches no column.
+        Self.nativeOrbitClaudeOwnedAmbientSnapshot(
             account: account, accounts: self.claudeSwapAccountSnapshots, snapshot: self.snapshots[.claude])
     }
 
@@ -24,14 +24,20 @@ extension UsageStore {
               }) == 1,
               let snapshot, let identity = snapshot.identity(for: .claude),
               CodexIdentityResolver.normalizeEmail(identity.accountEmail) == email else { return nil }
-        let organization = account.accountOrganizationName?.trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        let measuredOrganization = identity.accountOrganization?.trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        let ownerOrganization = organization.flatMap { $0.isEmpty ? nil : $0 }
-        let observedOrganization = measuredOrganization.flatMap { $0.isEmpty ? nil : $0 }
-        guard ownerOrganization == observedOrganization else { return nil }
+        guard Self.nativeOrbitClaudeOwnerOrganization(account.accountOrganizationName, email: email)
+            == Self.nativeOrbitClaudeOwnerOrganization(identity.accountOrganization, email: email)
+        else { return nil }
         return snapshot
+    }
+
+    /// The organization that tells two owners of one email apart, or nil for the email's own personal organization.
+    /// Claude names that one after the email ("name@example.com's Organization") and the CLI scrape drops such a
+    /// name (`ClaudeStatusProbe`), so a named personal organization and none are the same owner, while any other
+    /// organization must match exactly.
+    nonisolated static func nativeOrbitClaudeOwnerOrganization(_ name: String?, email: String) -> String? {
+        guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !name.isEmpty,
+              !name.hasPrefix(email.lowercased()) else { return nil }
+        return name
     }
 
     nonisolated static func nativeOrbitClaudeMergedSnapshot(

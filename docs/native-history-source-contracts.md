@@ -35,6 +35,13 @@ logo, account badge), not readings.
 Coverage also decides whether a real total is labelled complete or a recorded
 subtotal.
 
+A covered zero is overruled by the account's own quota readings: if any of its
+quota lanes rose inside the selected period (`NativeOrbitActivity
+.consumptionDates`), the account was used where the token sources cannot see it
+yet — another machine, claude.ai, or a provider's statistics that lag by hours —
+so the corner reads "—" with help saying quota use was recorded but no token or
+spend report covers it yet.
+
 ## Spend corner
 
 The top-leading corner shows spend for the selected Day / 7D / 30D period:
@@ -212,6 +219,48 @@ is priced only when models.dev unambiguously identifies the underlying Moonshot
 API model (`kimi-code/k3` → `kimi-k3`). Other routes stay unpriced and mark the
 cost partial. Prompt text, credentials, raw root paths and raw record payloads
 are never archived.
+
+## Last-known dial inputs
+
+The local usage behind the token and spend corners comes from background
+scans that can take minutes after a launch (the Claude organization
+projection, the Codex spend scan plus window attribution, the Kimi wire scan).
+Each account's latest published local usage is therefore remembered
+(`NativeOrbitLastKnownUsage.swift`) and stands in until this launch's live
+publication for that owner exists:
+
+- **Stored**: per provider, `~/Library/Application Support/CodexBar/native-last-known-usage/<provider>.json`
+  (versioned document, atomic owner-only writes, at most 32 MiB, 16 owners per
+  provider). Each entry is a `NativeOrbitLocalUsage`: daily entries (with model
+  breakdowns), exact event slices, coverage flags, `coverageThrough`, bucket
+  zone, provenance, scope, attribution and unattributed days. Projects,
+  sessions and hourly buckets are not stored. Entries are keyed by a SHA-256
+  owner digest; no email, path, organization or account ID is written.
+- **Written** when a live reading differs from the remembered one: 5 s after
+  the first change, then at most every 5 minutes, and on a normal quit.
+- **Read** at launch off the main actor; entries measured more than 32 days ago,
+  another document version or another provider's document are ignored.
+- **Ownership** is the live check's evidence, hashed:
+  - Claude (claude-swap rows): slot, the row's organization (unique among the
+    visible rows, as for live attribution), the row's email fingerprint and the
+    bucket zone. Used only until a projection has served that owner; a
+    projection that served it without a report is authoritative.
+  - Codex: the spend scan's home ownership (account, selection source, home,
+    credential fingerprint, bucket zone) plus a digest of every visible
+    account's ownership, because attribution splits a shared home between
+    exactly those accounts. Used only while the spend scan still has a home
+    loading or the window attribution has not produced a result, and only while
+    cost tracking is on; a settled scan without a report is the live reading.
+  - Kimi and the ambient Claude row: their local scan configuration (root,
+    bucket zone, source mode, region).
+- **Presentation**: a remembered reading is marked retained (`isStale`, so its
+  totals are lower bounds and help reads "Recorded subtotal; coverage
+  incomplete"), and the column's `usageLastKnownAt` carries its measurement
+  time for the help suffix "Last updated 3 min ago". Coverage rules apply
+  unchanged: a period past the remembered coverage reads "—", never 0.
+- Live readings are remembered in memory as they render, so a later gap in a
+  live source (a spend-scan reload, a pending Claude projection after the owner
+  set changed) shows the newest reading instead of "—".
 
 ## Live inspection evidence
 

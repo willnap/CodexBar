@@ -5,64 +5,15 @@ import Testing
 
 @MainActor
 struct ClaudeSwapSwitchReconciliationTests {
-    @Test
-    func `later switch reconciles its adapter while ambient refresh waits for a stalled predecessor`() async throws {
-        try await self.withFixture(failure: .switchFailure) { fixture in
-            let first = try fixture.startSwitch()
-            try await fixture.waitForBothReads()
-            try fixture.releaseList(1)
-            try await fixture.waitUntil { fixture.switchCompleted }
-            await first.value
-
-            fixture.expectedAmbientCalls = 2
-            let second = try fixture.startSwitch()
-            try await fixture.waitUntil { fixture.listEntered(2) }
-            #expect(fixture.ambientGate.callCount == 1)
-            #expect(fixture.store.claudeSwapTransientState.switchPhase == .reconciling)
-            #expect(!fixture.switchCompleted)
-            try fixture.releaseList(2)
-            try await fixture.waitUntil { fixture.switchCompleted }
-            await second.value
-            #expect(fixture.store.claudeSwapTransientState.task == nil)
-            #expect(try fixture.switchArguments() == "--switch-to\n2\n--json\n--switch-to\n2\n--json\n")
-            try await fixture.finishAmbientRefresh()
-            #expect(fixture.ambientGate.callCount == 2)
-        }
-    }
-
-    @Test(arguments: [ClaudeSwapReconciliationFailure.none, .switchFailure])
-    func `stalled ambient refresh releases switching after adapter reconciliation`(
-        failure: ClaudeSwapReconciliationFailure) async throws
-    {
-        try await self.withFixture(failure: failure) { fixture in
-            let task = try fixture.startSwitch()
-            try await fixture.waitForBothReads()
-            try await Task.sleep(for: .seconds(5.2))
-            #expect(fixture.store.claudeSwapTransientState.switchPhase == .reconciling)
-            #expect(!fixture.switchCompleted)
-            try fixture.releaseList(1)
-            try await fixture.waitUntil { fixture.switchCompleted }
-            await task.value
-            #expect(fixture.store.claudeSwapTransientState.task == nil)
-            #expect(fixture.store.claudeSwapTransientState.switchingAccountID == nil)
-            #expect(fixture.activeSlots == (failure.switchFails ? ["1"] : ["2"]))
-            #expect((fixture.store.claudeSwapTransientState.lastError != nil) == failure.switchFails)
-            #expect(fixture.store.refreshingProviders.contains(.claude))
-            try await fixture.finishAmbientRefresh()
-            #expect(fixture.store.snapshot(for: .claude)?.primary?.usedPercent == (failure.switchFails ? 61 : 17))
-            #expect(fixture.phases == [.activating, .reconciling, nil])
-        }
-    }
-
     @Test(arguments: ClaudeSwapReconciliationFailure.allCases)
-    func `ambient completion keeps switching serialized until the real adapter list finishes`(
+    func `switch settles on its own list and the ambient reading follows`(
         failure: ClaudeSwapReconciliationFailure) async throws
     {
         try await self.withFixture(failure: failure) { fixture in
             let task = try fixture.startSwitch()
-            try await fixture.waitForBothReads()
-            try await fixture.finishAmbientRefresh()
-            #expect(fixture.store.snapshot(for: .claude)?.primary?.usedPercent == (failure.switchFails ? 61 : 17))
+            try await fixture.waitUntil { fixture.listEntered(1) }
+            // Only claude-swap's list stands between the switch and its result; the provider fetch waits for it.
+            #expect(fixture.ambientGate.callCount == 0)
             #expect(fixture.store.claudeSwapTransientState.switchPhase == .reconciling)
             #expect(fixture.store.claudeSwapTransientState.switchingAccountID == fixture.targetID)
             #expect(fixture.store.claudeSwapTransientState.task != nil)
@@ -85,10 +36,7 @@ struct ClaudeSwapSwitchReconciliationTests {
             #expect(fixture.activeSlots == (failure.switchFails || failure.listFails ? ["1"] : ["2"]))
             #expect(fixture.store.claudeSwapDetectedVersion == "0.0.0-synthetic")
             #expect(try fixture.readSuffix("version-calls") == "--version\n")
-            #expect(try fixture.readSuffix("list-calls") == "--list\n--json\n")
             #expect(try fixture.switchArguments() == "--switch-to\n2\n--json\n")
-            #expect(fixture.ambientGate.callCount == 1)
-            #expect(!fixture.ambientGate.requestedUnexpectedProvider)
             #expect((fixture.store.claudeSwapTransientState.lastError != nil) == failure.switchFails)
             #expect((fixture.store.claudeSwapLastError != nil) == failure.listFails)
             if failure.switchFails {
@@ -99,6 +47,39 @@ struct ClaudeSwapSwitchReconciliationTests {
                 #expect(error?.contains("credentials missing") == true)
                 #expect(error?.contains("list unavailable") == false)
             }
+
+            try await fixture.waitUntil { fixture.ambientGate.entered }
+            try await fixture.finishAmbientRefresh()
+            #expect(fixture.store.snapshot(for: .claude)?.primary?.usedPercent == (failure.switchFails ? 61 : 17))
+            #expect(!fixture.ambientGate.requestedUnexpectedProvider)
+        }
+    }
+
+    @Test(arguments: [ClaudeSwapReconciliationFailure.none, .switchFailure])
+    func `a stalled ambient reading never holds a switch open`(
+        failure: ClaudeSwapReconciliationFailure) async throws
+    {
+        try await self.withFixture(failure: failure) { fixture in
+            // The reading started before the login changed is followed by one for the new login.
+            fixture.expectedAmbientCalls = 2
+            // A provider refresh already waiting on its fetch, with the list it scheduled.
+            let ambient = Task { await fixture.store.refreshProvider(.claude) }
+            try await fixture.waitUntil { fixture.ambientGate.entered && fixture.listEntered(1) }
+            let task = try fixture.startSwitch()
+            // The switch reads its own list rather than joining one started before the login changed.
+            try await fixture.waitUntil { fixture.listEntered(2) }
+            #expect(!fixture.switchCompleted)
+            try fixture.releaseList(2)
+            try await fixture.waitUntil { fixture.switchCompleted }
+            await task.value
+            #expect(fixture.store.refreshingProviders.contains(.claude))
+            #expect(fixture.store.claudeSwapTransientState.task == nil)
+            #expect(fixture.store.claudeSwapTransientState.switchingAccountID == nil)
+            #expect(fixture.activeSlots == (failure.switchFails ? ["1"] : ["2"]))
+            #expect((fixture.store.claudeSwapTransientState.lastError != nil) == failure.switchFails)
+            #expect(fixture.phases == [.activating, .reconciling, nil])
+            try await fixture.finishAmbientRefresh()
+            await ambient.value
         }
     }
 
@@ -106,8 +87,7 @@ struct ClaudeSwapSwitchReconciliationTests {
     func `same configuration list replacement remains part of switch reconciliation`() async throws {
         try await self.withFixture { fixture in
             let task = try fixture.startSwitch()
-            try await fixture.waitForBothReads()
-            try await fixture.finishAmbientRefresh()
+            try await fixture.waitUntil { fixture.listEntered(1) }
             let firstList = try fixture.currentAdapterTask()
             fixture.store.scheduleClaudeSwapAccountRefresh()
             try await fixture.waitUntil { fixture.listEntered(2) }
@@ -127,15 +107,17 @@ struct ClaudeSwapSwitchReconciliationTests {
             #expect(fixture.phases == [.activating, .reconciling, nil])
             #expect(try fixture.readSuffix("list-calls") == "--list\n--json\n--list\n--json\n")
             #expect(try fixture.switchArguments() == "--switch-to\n2\n--json\n")
+            try await fixture.waitUntil { fixture.ambientGate.entered }
+            try await fixture.finishAmbientRefresh()
         }
     }
 
     @Test(arguments: [false, true])
     func `invalidated switch does not join a new configuration adapter read`(changePath: Bool) async throws {
         try await self.withFixture(failure: .switchFailure) { fixture in
+            fixture.expectedAmbientCalls = 0
             let task = try fixture.startSwitch()
-            try await fixture.waitForBothReads()
-            try await fixture.finishAmbientRefresh()
+            try await fixture.waitUntil { fixture.listEntered(1) }
             let oldList = try fixture.currentAdapterTask()
             fixture.settings.claudeSwapEnabled = false
             fixture.store.clearClaudeSwapAccountState()

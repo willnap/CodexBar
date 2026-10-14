@@ -296,10 +296,9 @@ extension NativeOrbitResetEvent {
     func title(provider: UsageProvider?) -> String {
         switch self.kind {
         case .natural: "Window reset"
-        case .manual:
-            self.quantity > 1 ? "Reset by you (\(self.quantity) banked resets)" : "Reset by you (banked reset)"
-        case .provider: "Reset by \(Self.resetterName(provider))"
-        case .early: "Early reset · cause not recorded"
+        case .manual: self.quantity > 1 ? "You used \(self.quantity) banked resets" : "You used a banked reset"
+        case .provider: "Reset early by \(Self.resetterName(provider))"
+        case .early: "Reset early, cause unknown"
         }
     }
 
@@ -313,16 +312,9 @@ extension NativeOrbitResetEvent {
         }
     }
 
+    /// What the reset's rule says to VoiceOver: "You used a banked reset: Session, Weekly, Oct 13, 3:42 PM".
     func help(provider: UsageProvider?, laneLabels: [String]) -> String {
-        var parts = [self.title(provider: provider)]
-        if !laneLabels.isEmpty { parts.append(laneLabels.joined(separator: ", ")) }
-        let time = self.date.formatted(date: .abbreviated, time: .shortened)
-        if let earliest {
-            parts.append("between \(earliest.formatted(date: .abbreviated, time: .shortened)) and \(time)")
-        } else {
-            parts.append(time)
-        }
-        if self.kind == .early { parts.append("no reset inventory was recorded around it") }
-        return parts.joined(separator: " · ")
+        self.title(provider: provider) + (laneLabels.isEmpty ? "" : ": " + laneLabels.joined(separator: ", "))
+            + ", " + self.date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
     }
 }

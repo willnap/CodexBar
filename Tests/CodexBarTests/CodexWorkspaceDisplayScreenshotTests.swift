@@ -44,7 +44,8 @@ final class CodexWorkspaceDisplayScreenshotTests: XCTestCase {
                     reauthenticateAccount: { _ in },
                     removeAccount: { _ in },
                     requestSystemVisibleAccount: { _ in },
-                    addAccount: {})
+                    addAccount: {},
+                    automaticSwitchingDefaults: InMemoryUserDefaults())
                 Divider()
                 Text("Menu account switcher").font(.headline)
                 WorkspaceProofSwitcher(accounts: accounts).frame(width: 310, height: accounts.count > 3 ? 56 : 26)

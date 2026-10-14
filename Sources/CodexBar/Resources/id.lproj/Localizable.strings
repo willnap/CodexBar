@@ -2579,11 +2579,17 @@
 
 "History begins with recorded usage. Missing time is left empty." = "Riwayat dimulai dengan data penggunaan yang tercatat. Periode tanpa data dibiarkan kosong.";
 
-"native_orbit_range_help" = "Periode riwayat, token, dan pengeluaran semua akun. Indikator kuota menunjukkan ketersediaan saat ini.";
+"native_orbit_range_help" = "Rentang untuk riwayat, token, dan pengeluaran";
 
 "1d" = "1 hari";
 "<1m ago" = "<1m lalu";
 "Auto switch" = "Beralih otomatis";
+
+"Switch" = "Beralih";
+
+"Switch accounts automatically" = "Beralih akun secara otomatis";
+
+"native_auto_switch_settings_detail" = "Saat akun aktif habis, Codex CLI beralih ke akun yang masih punya kuota. Peralihan manual menjeda ini selama 10 menit.";
 "Now" = "Sekarang";
 "Updating…" = "Memperbarui…";
 
@@ -2614,6 +2620,9 @@
 "Local Kimi archive" = "Arsip Kimi lokal";
 "Lines connect nearby observations. Gaps have no recorded data." = "Garis menghubungkan pengukuran yang berdekatan waktunya. Celah tidak memiliki data yang tercatat.";
 "native_refresh_timed_out" = "Penyegaran memakan waktu lebih lama dari perkiraan. Proses berlanjut di latar belakang.";
+"native_refresh_claude_swap_paced" = "claude-swap memperbarui akun ini setiap beberapa menit agar tetap dalam batas laju Anthropic.";
+"native_refresh_issue_stale" = "Usang";
+"native_refresh_issue_slow" = "Lambat";
 "native_orbit_range_day" = "H";
 "native_orbit_range_week" = "M";
 "native_orbit_range_month" = "B";

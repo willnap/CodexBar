@@ -364,6 +364,40 @@ struct PlanUtilizationHistoryStore: Sendable {
         await Task.detached(priority: .utility) { self.load() }.value
     }
 
+    /// Decodes every provider's file concurrently and reports each one as it lands, so a small file never waits
+    /// behind a large one; returns them all once every file is read.
+    func loadAsync(
+        reporting report: @escaping @Sendable (ProviderInstanceID, PlanUtilizationHistoryBuckets) async -> Void) async
+        -> [ProviderInstanceID: PlanUtilizationHistoryBuckets]
+    {
+        guard let directoryURL = self.directoryURL,
+              let fileURLs = try? FileManager.default.contentsOfDirectory(
+                  at: directoryURL,
+                  includingPropertiesForKeys: nil)
+        else { return [:] }
+        return await withTaskGroup(of: (ProviderInstanceID, PlanUtilizationHistoryBuckets)?.self) { group in
+            for fileURL in fileURLs where fileURL.pathExtension == "json" {
+                guard let instanceID = ProviderInstanceID(rawValue: fileURL.deletingPathExtension().lastPathComponent)
+                else { continue }
+                group.addTask(priority: .userInitiated) {
+                    let decoder = JSONDecoder()
+                    decoder.dateDecodingStrategy = .iso8601
+                    guard let data = try? Data(contentsOf: fileURL),
+                          let decoded = try? decoder.decode(ProviderHistoryDocument.self, from: data)
+                    else { return nil }
+                    return (instanceID, Self.decodeProvider(decoded))
+                }
+            }
+            var output: [ProviderInstanceID: PlanUtilizationHistoryBuckets] = [:]
+            for await result in group {
+                guard let (instanceID, buckets) = result else { continue }
+                output[instanceID] = buckets
+                await report(instanceID, buckets)
+            }
+            return output
+        }
+    }
+
     @discardableResult
     func save(_ providers: [ProviderInstanceID: PlanUtilizationHistoryBuckets]) -> Set<ProviderInstanceID> {
         guard let directoryURL = self.directoryURL else { return [] }

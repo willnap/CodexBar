@@ -72,10 +72,10 @@ struct NativeOrbitKimiComplicationTests {
         let view = NativeOrbitInstruments(account: account, days: 7, now: self.now, accent: .blue)
         let labels = Self.cornerLabels(view.body)
         #expect(labels.count == 4)
-        #expect(labels.contains { $0.contains("$0.00") && $0.contains("Monthly") })
-        #expect(labels.contains { $0.contains("Token total is not reported") })
-        #expect(labels.contains { $0.contains("Banked resets are not reported") })
-        #expect(labels.contains { $0.contains("Additional usage") && $0.contains("$0.00") })
+        #expect(labels.contains { $0.contains("$0.00") && $0.contains("this month") })
+        #expect(labels.contains { $0.hasPrefix("No token count for") })
+        #expect(labels.contains { $0 == "Banked resets unavailable" })
+        #expect(labels.contains { $0.contains("additional usage") && $0.contains("$0.00") })
         #expect(!labels.contains { $0.contains("10 of 100 requests") || $0.contains("allowance resets") })
     }
 

@@ -2580,11 +2580,17 @@
 
 "History begins with recorded usage. Missing time is left empty." = "تاریخچه از داده‌های مصرف ثبت‌شده آغاز می‌شود. بازه‌های بدون داده خالی می‌مانند.";
 
-"native_orbit_range_help" = "بازهٔ زمانی تاریخچه، توکن‌ها و هزینه‌های همهٔ حساب‌ها. نشانگرهای سهمیه مقدار در دسترس فعلی را نمایش می‌دهند.";
+"native_orbit_range_help" = "بازه برای تاریخچه، توکن‌ها و هزینه";
 
 "1d" = "1 روز";
 "<1m ago" = "کمتر از 1د پیش";
 "Auto switch" = "تعویض خودکار";
+
+"Switch" = "تعویض";
+
+"Switch accounts automatically" = "تعویض خودکار حساب‌ها";
+
+"native_auto_switch_settings_detail" = "وقتی سهمیه حساب فعال تمام شود، Codex CLI به حسابی با سهمیه باقی‌مانده می‌رود. تعویض دستی این کار را ۱۰ دقیقه متوقف می‌کند.";
 "Now" = "اکنون";
 "Updating…" = "در حال به‌روزرسانی…";
 
@@ -2615,6 +2621,9 @@
 "Local Kimi archive" = "بایگانی محلی Kimi";
 "Lines connect nearby observations. Gaps have no recorded data." = "خط‌ها اندازه‌گیری‌های نزدیک به هم در زمان را به هم وصل می‌کنند. فاصله‌های خالی دادهٔ ثبت‌شده‌ای ندارند.";
 "native_refresh_timed_out" = "به‌روزرسانی بیش از حد انتظار طول می‌کشد. در پس‌زمینه ادامه می‌یابد.";
+"native_refresh_claude_swap_paced" = "claude-swap این حساب را هر چند دقیقه یک‌بار به‌روزرسانی می‌کند تا در محدودهٔ نرخ مجاز Anthropic بماند.";
+"native_refresh_issue_stale" = "قدیمی";
+"native_refresh_issue_slow" = "کند";
 "native_orbit_range_day" = "ر";
 "native_orbit_range_week" = "ه";
 "native_orbit_range_month" = "م";

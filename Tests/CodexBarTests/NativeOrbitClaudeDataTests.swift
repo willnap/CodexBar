@@ -34,7 +34,25 @@ struct NativeOrbitClaudeDataTests {
         #expect(merged.updatedAt == self.now)
     }
 
-    @Test func `popup retains timestamped last known Claude readings while switching hides them`() throws {
+    @Test func `a personal organization named after the email matches a reading whose scrape dropped it`() {
+        // claude-swap keeps "name@example.com's Organization"; the CLI scrape drops a name that starts with the email.
+        let personal = self.account(organization: "Owner@Example.com's Organization")
+        for organization in [nil, "owner@example.com's Organization"] {
+            #expect(UsageStore.nativeOrbitClaudeOwnedAmbientSnapshot(
+                account: personal, accounts: [personal], snapshot: self.snapshot(organization: organization)) != nil)
+        }
+        #expect(
+            UsageStore.nativeOrbitClaudeOwnedAmbientSnapshot(
+                account: personal, accounts: [personal], snapshot: self.snapshot(organization: "Team")) == nil,
+            "A team login of the same email is another owner")
+        let team = self.account()
+        #expect(UsageStore.nativeOrbitClaudeOwnedAmbientSnapshot(
+            account: team,
+            accounts: [team],
+            snapshot: self.snapshot(organization: "owner@example.com's Organization")) == nil)
+    }
+
+    @Test func `popup retains timestamped last known Claude readings through a switch`() throws {
         let store = self.store()
         let retained = self.account(lastKnown: true)
         store.claudeSwapAccountSnapshots = [retained]
@@ -43,10 +61,12 @@ struct NativeOrbitClaudeDataTests {
         #expect(row.updatedAt == retained.snapshot?.updatedAt)
         #expect(row.statusText != nil)
         #expect(!row.autoSwitchEligible)
+        // The column holds still while a switch is under way; each slot's reading stays its own.
         store.claudeSwapTransientState.switchPhase = .activating
         let switching = try #require(store.nativeOrbitAccounts(for: .claude).first)
-        #expect(switching.gauge.resolvedWindows.allSatisfy { $0.usedFraction == nil })
-        #expect(switching.updatedAt == nil)
+        #expect(switching.gauge.resolvedWindows.first?.usedFraction == 0.25)
+        #expect(switching.updatedAt == retained.snapshot?.updatedAt)
+        #expect(!switching.autoSwitchEligible)
     }
 
     @Test func `newer Claude spend retains an independent balance but respects confirmed absence`() throws {
@@ -175,6 +195,7 @@ struct NativeOrbitClaudeDataTests {
     private func account(
         slot: String = "1",
         email: String = "owner@example.com",
+        organization: String = "Team",
         active: Bool = true,
         lastKnown: Bool = false,
         provider: UsageProvider = .claude,
@@ -187,7 +208,7 @@ struct NativeOrbitClaudeDataTests {
             provider: provider,
             displayLabel: "Fixture",
             accountEmail: email,
-            accountOrganizationName: "Team",
+            accountOrganizationName: organization,
             isActive: active,
             usesLastKnownUsage: lastKnown,
             snapshot: UsageSnapshot(

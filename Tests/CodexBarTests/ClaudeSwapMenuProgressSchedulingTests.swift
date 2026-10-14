@@ -27,17 +27,21 @@ struct ClaudeSwapMenuProgressSchedulingTests {
 
             try await Self.waitUntil { fixture.subprocessStarted }
             try fixture.releaseSubprocess()
-            try await Self.waitUntil { fixture.gate.entered }
+            try await Self.waitUntil { fixture.listStarted }
             Self.drainTracking()
             #expect(fixture.rebuildPhases == [.activating, .reconciling])
             #expect(fixture.store.claudeSwapTransientState.task != nil)
             #expect(fixture.store.claudeSwapAccountSnapshots.first(where: \.isActive)?.id == fixture.active.id)
+            #expect(!fixture.gate.entered)
 
-            fixture.gate.release()
+            try fixture.releaseList()
             await task.value
             Self.drainTracking()
             #expect(fixture.rebuildPhases == [.activating, .reconciling, nil])
             #expect(fixture.store.claudeSwapTransientState.task == nil)
+            // The ambient Claude reading follows the settled switch.
+            try await Self.waitUntil { fixture.gate.entered }
+            fixture.gate.release()
             #expect(fixture.gate.callCount == 1)
             #expect(try String(contentsOf: fixture.callsURL, encoding: .utf8) == "--switch-to\n2\n--json\n")
         }
@@ -68,16 +72,19 @@ struct ClaudeSwapMenuProgressSchedulingTests {
 
             try fixture.releaseSubprocess()
             if invalidation != .configuration {
-                try await Self.waitUntil { fixture.gate.entered }
+                try await Self.waitUntil { fixture.listStarted }
                 Self.drainTracking()
                 #expect(fixture.rebuildPhases.isEmpty)
             }
+            try fixture.releaseList()
             fixture.gate.release()
             await task.value
             Self.drainTracking()
             #expect(fixture.rebuildPhases.isEmpty)
             #expect(fixture.store.claudeSwapTransientState.task == nil)
             #expect(fixture.store.claudeSwapTransientState.switchPhase == nil)
+            // The ambient Claude reading follows a switch that settled under its own configuration.
+            if invalidation != .configuration { try await Self.waitUntil { fixture.gate.entered } }
             #expect(fixture.gate.callCount == (invalidation == .configuration ? 0 : 1))
         }
     }
@@ -144,6 +151,10 @@ private final class ClaudeSwapMenuProgressFixture {
         FileManager.default.fileExists(atPath: self.executable.path + ".entered")
     }
 
+    var listStarted: Bool {
+        FileManager.default.fileExists(atPath: self.executable.path + ".list-entered")
+    }
+
     init() throws {
         let navigation = try CodexWorkspacesNavigationFixture(userDefaults: InMemoryUserDefaults())
         self.navigation = navigation
@@ -155,8 +166,23 @@ private final class ClaudeSwapMenuProgressFixture {
         self.target = target
         let gate = ClaudeSwapMenuProgressGate()
         self.gate = gate
+        // The switch, then the list it settles on, each hold until released; the list then fails, leaving the listed
+        // active account as it was.
         let script = #"""
         #!/bin/sh
+        if [ "$#" -eq 1 ] && [ "$1" = "--version" ]; then
+          echo 'cswap 0.0.0-synthetic'
+          exit 0
+        fi
+        if [ "$#" -eq 2 ] && [ "$1" = "--list" ] && [ "$2" = "--json" ]; then
+          touch "$0.list-entered"
+          remaining=800
+          while [ ! -e "$0.list-release" ] && [ "$remaining" -gt 0 ]; do
+            sleep 0.01
+            remaining=$((remaining - 1))
+          done
+          exit 64
+        fi
         if [ "$#" -ne 3 ] || [ "$1" != "--switch-to" ] || [ "$2" != "2" ] || [ "$3" != "--json" ]; then
           exit 64
         fi
@@ -208,8 +234,13 @@ private final class ClaudeSwapMenuProgressFixture {
         try Data().write(to: URL(fileURLWithPath: self.executable.path + ".release"))
     }
 
+    func releaseList() throws {
+        try Data().write(to: URL(fileURLWithPath: self.executable.path + ".list-release"))
+    }
+
     func cleanup() async {
         try? self.releaseSubprocess()
+        try? self.releaseList()
         self.gate.release()
         await self.store.claudeSwapTransientState.task?.value
         self.controller._test_openMenuRebuildObserver = nil

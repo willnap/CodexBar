@@ -25,9 +25,10 @@ struct NativeOrbitSymbol: View {
 
     var body: some View {
         ZStack {
+            // Empty tracks stay faint so a filled ring reads at a glance, even in a secondary account's muted accent.
             Image("\(self.prefix).usage", variableValue: 1)
                 .symbolVariableValueMode(.draw)
-                .foregroundStyle(Color.primary.opacity(0.11))
+                .foregroundStyle(Color.primary.opacity(0.075))
             if let remaining = Self.normalized(self.remaining), remaining > 0 {
                 NativeOrbitUsageGlass(
                     name: "\(self.prefix).usage",
@@ -40,7 +41,7 @@ struct NativeOrbitSymbol: View {
             }
             Image(self.countdownName, variableValue: 1)
                 .symbolVariableValueMode(.color)
-                .foregroundStyle(Color.primary.opacity(0.08))
+                .foregroundStyle(Color.primary.opacity(0.055))
             if let countdown = Self.normalized(self.countdown), countdown > 0 {
                 Image(self.countdownName, variableValue: countdown)
                     .symbolVariableValueMode(.color)

@@ -2577,11 +2577,17 @@
 
 "History begins with recorded usage. Missing time is left empty." = "Lịch sử bắt đầu từ dữ liệu sử dụng được ghi lại. Khoảng thời gian thiếu dữ liệu được để trống.";
 
-"native_orbit_range_help" = "Khoảng thời gian cho lịch sử, token và chi phí của mọi tài khoản. Đồng hồ hạn mức hiển thị mức khả dụng hiện tại.";
+"native_orbit_range_help" = "Khoảng thời gian cho lịch sử, token và chi tiêu";
 
 "1d" = "1d";
 "<1m ago" = "<1phút trước đây";
 "Auto switch" = "Tự động chuyển";
+
+"Switch" = "Chuyển";
+
+"Switch accounts automatically" = "Tự động chuyển tài khoản";
+
+"native_auto_switch_settings_detail" = "Khi tài khoản đang dùng hết hạn mức, Codex CLI chuyển sang tài khoản còn hạn mức. Chuyển thủ công sẽ tạm dừng tính năng này trong 10 phút.";
 "Now" = "Bây giờ";
 "Updating…" = "Đang cập nhật…";
 
@@ -2612,6 +2618,9 @@
 "Local Kimi archive" = "Kho lưu Kimi cục bộ";
 "Lines connect nearby observations. Gaps have no recorded data." = "Các đường nối những lần đo gần nhau về thời gian. Các khoảng trống không có dữ liệu được ghi lại.";
 "native_refresh_timed_out" = "Quá trình làm mới lâu hơn dự kiến. Quá trình này tiếp tục ở chế độ nền.";
+"native_refresh_claude_swap_paced" = "claude-swap cập nhật tài khoản này vài phút một lần để không vượt quá giới hạn tốc độ của Anthropic.";
+"native_refresh_issue_stale" = "Cũ";
+"native_refresh_issue_slow" = "Chậm";
 "native_orbit_range_day" = "N";
 "native_orbit_range_week" = "T";
 "native_orbit_range_month" = "Th";

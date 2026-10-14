@@ -2544,11 +2544,17 @@
 
 "History begins with recorded usage. Missing time is left empty." = "기록된 사용 데이터부터 기록이 시작됩니다. 데이터가 없는 기간은 비워 둡니다.";
 
-"native_orbit_range_help" = "모든 계정의 기록, 토큰 및 지출 기간입니다. 할당량 게이지는 현재 사용 가능한 양을 표시합니다.";
+"native_orbit_range_help" = "기록, 토큰, 지출의 기간";
 
 "1d" = "1일";
 "<1m ago" = "1분 미만 전";
 "Auto switch" = "자동 전환";
+
+"Switch" = "전환";
+
+"Switch accounts automatically" = "계정 자동 전환";
+
+"native_auto_switch_settings_detail" = "활성 계정의 사용량이 소진되면 Codex CLI가 남은 사용량이 있는 계정으로 전환됩니다. 수동으로 전환하면 10분 동안 일시 중지됩니다.";
 "Now" = "지금";
 "Updating…" = "업데이트 중…";
 
@@ -2579,6 +2585,9 @@
 "Local Kimi archive" = "로컬 Kimi 보관 기록";
 "Lines connect nearby observations. Gaps have no recorded data." = "선은 시간상 가까운 측정값을 연결합니다. 빈 구간에는 기록된 데이터가 없습니다.";
 "native_refresh_timed_out" = "새로 고침이 예상보다 오래 걸립니다. 백그라운드에서 계속됩니다.";
+"native_refresh_claude_swap_paced" = "claude-swap은 Anthropic의 속도 제한을 지키기 위해 이 계정을 몇 분마다 업데이트합니다.";
+"native_refresh_issue_stale" = "오래됨";
+"native_refresh_issue_slow" = "느림";
 "native_orbit_range_day" = "일";
 "native_orbit_range_week" = "주";
 "native_orbit_range_month" = "월";

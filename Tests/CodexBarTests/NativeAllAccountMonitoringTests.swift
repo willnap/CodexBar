@@ -154,7 +154,11 @@ struct NativeAllAccountMonitoringTests {
         #expect(store.nativeOrbitAccounts(for: .claude).first?.isActive == true)
         store.claudeSwapTransientState.switchPhase = .reconciling
         #expect(store.nativeServiceGauge(for: .claude).resolvedWindows.allSatisfy { $0.usedFraction == nil })
-        #expect(store.nativeOrbitAccounts(for: .claude).allSatisfy { !$0.isActive })
+        // The popup's columns hold still through a switch: the listed active row stays marked until claude-swap's
+        // next list names another, with its own slot's reading.
+        let reconciling = store.nativeOrbitAccounts(for: .claude)
+        #expect(reconciling.first?.isActive == true)
+        #expect(reconciling.first?.gauge.resolvedWindows.contains { $0.usedFraction != nil } == true)
     }
 
     @Test func `Codex automatic activation eligibility requires a successful owned saved account reading`() throws {

@@ -2579,11 +2579,17 @@
 
 "History begins with recorded usage. Missing time is left empty." = "Geçmiş, kaydedilen kullanım verileriyle başlar. Veri olmayan dönemler boş bırakılır.";
 
-"native_orbit_range_help" = "Tüm hesapların geçmişi, tokenları ve harcamaları için dönem. Kota göstergeleri mevcut kullanılabilirliği gösterir.";
+"native_orbit_range_help" = "Geçmiş, token ve harcama dönemi";
 
 "1d" = "1 gün";
 "<1m ago" = "<1 dk önce";
 "Auto switch" = "Otomatik geçiş";
+
+"Switch" = "Geç";
+
+"Switch accounts automatically" = "Hesapları otomatik değiştir";
+
+"native_auto_switch_settings_detail" = "Etkin hesabın kotası bittiğinde Codex CLI, kotası kalan bir hesaba geçer. Elle geçiş bunu 10 dakika duraklatır.";
 "Now" = "Şimdi";
 "Updating…" = "Güncelleniyor…";
 
@@ -2614,6 +2620,9 @@
 "Local Kimi archive" = "Yerel Kimi arşivi";
 "Lines connect nearby observations. Gaps have no recorded data." = "Çizgiler, zaman olarak yakın ölçümleri birleştirir. Boşluklarda kaydedilmiş veri yoktur.";
 "native_refresh_timed_out" = "Yenileme beklenenden uzun sürüyor. Arka planda devam ediyor.";
+"native_refresh_claude_swap_paced" = "claude-swap, Anthropic’in istek sınırı içinde kalmak için bu hesabı birkaç dakikada bir günceller.";
+"native_refresh_issue_stale" = "Eski";
+"native_refresh_issue_slow" = "Yavaş";
 "native_orbit_range_day" = "G";
 "native_orbit_range_week" = "H";
 "native_orbit_range_month" = "A";

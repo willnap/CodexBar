@@ -126,7 +126,9 @@ struct NativeCodexDesktopHandoff {
     var quitTimeout: TimeInterval = 20
     var probeDrainTimeout: TimeInterval = 10
     var relaunchTimeout: TimeInterval = 30
-    var appServerGrace: TimeInterval = 15
+    /// How long to watch for the reopened app's Codex server. Nothing waits on it: every earlier server had exited
+    /// before the install, so whichever starts reads the new login. The switch is done once the app is back.
+    var appServerGrace: TimeInterval = 0
     var pollInterval: TimeInterval = 0.25
 
     private var appName: String {

@@ -28,13 +28,14 @@ struct NativeOrbitComplication: View {
     var monospaced = false
     var numericValue: Double?
 
+    /// Primary ink throughout: the readout inks its own placeholder, so a "—" rolling in or out keeps its colour.
     var body: some View {
         NativeOrbitArcText(
             value: self.value,
             corner: self.corner,
             monospaced: self.monospaced,
             numericValue: self.numericValue)
-            .foregroundStyle(self.value == "—" ? Color.secondary : Color.primary)
+            .foregroundStyle(Color.primary)
             .contentShape(NativeOrbitCornerRegion(corner: self.corner))
             .help(self.help)
             .accessibilityElement(children: .ignore)
@@ -42,11 +43,18 @@ struct NativeOrbitComplication: View {
     }
 }
 
+/// A corner readout bent along the dial. It is one `Text` with SwiftUI's numeric content transition, the one Apple's
+/// money and counter readouts use: only the characters that change animate, rolling up as the value grows and down as
+/// it shrinks. `NativeOrbitArcTextRenderer` lays each glyph onto the corner's arc. While the chart is scrubbed the
+/// readout follows the pointer in place, as Apple's scrubbed charts do; a transition at every step would leave the
+/// changing digits a permanent blur.
 struct NativeOrbitArcText: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var displayedValue: String
-    @State private var previousNumber: Double?
-    @State private var increasing = true
+    /// What the text shows, and the number its transition compares; nil until the readout first changes.
+    @State private var shown: String?
+    @State private var shownNumber: Double?
+    /// When the readout last changed, in system uptime.
+    @State private var changedAt: TimeInterval = -.infinity
     let value: String
     let corner: NativeOrbitComplication.Corner
     let radius: CGFloat
@@ -71,100 +79,217 @@ struct NativeOrbitArcText: View {
         self.fontSize = fontSize
         self.maximumSpan = maximumSpan
         self.numericValue = numericValue
-        self._displayedValue = State(initialValue: value)
-        self._previousNumber = State(initialValue: numericValue)
+    }
+
+    static let placeholder = "—"
+
+    /// Changes closer together than this come from scrubbing the chart, and show at once.
+    static let scrubInterval: TimeInterval = 0.25 * NativeOrbitProjectionStyle.previewAnimationScale
+
+    /// SF Mono for counts and SF Rounded for money, semibold, both with tabular figures as `.monospacedDigit()` sets
+    /// them: a digit's width never moves the characters a change keeps.
+    nonisolated static func font(monospaced: Bool, size: CGFloat) -> NSFont {
+        if monospaced {
+            return NSFont.monospacedSystemFont(ofSize: size, weight: .semibold)
+        }
+        let base = NSFont.systemFont(ofSize: size, weight: .semibold)
+        let rounded = base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor
+        let tabular = rounded.addingAttributes([.featureSettings: [[
+            NSFontDescriptor.FeatureKey.typeIdentifier: kNumberSpacingType,
+            NSFontDescriptor.FeatureKey.selectorIdentifier: kMonospacedNumbersSelector,
+        ]]])
+        return NSFont(descriptor: tabular, size: size) ?? base
+    }
+
+    /// The value the transition compares to pick each change's direction: the caller's number, else the readout's own
+    /// (compact suffixes included). A readout without one counts as zero, so a value appearing rolls up and one
+    /// vanishing rolls down.
+    static func transitionValue(_ value: String, numericValue: Double?) -> Double {
+        numericValue ?? NativeOrbitReadoutNumber.value(in: value) ?? 0
     }
 
     var body: some View {
-        ZStack {
-            NativeOrbitArcTextShape(
-                value: self.displayedValue,
+        let font = Self.font(monospaced: self.monospaced, size: self.fontSize)
+        let text = self.shown ?? self.value
+        Text(text)
+            .font(Font(font as CTFont))
+            .foregroundStyle(text == Self.placeholder ? Color.secondary : Color.primary)
+            .lineLimit(1)
+            .fixedSize()
+            .contentTransition(.numericText(
+                value: self.shownNumber ?? Self.transitionValue(self.value, numericValue: self.numericValue)))
+            .textRenderer(NativeOrbitArcTextRenderer(
                 corner: self.corner,
                 radius: self.radius,
-                monospaced: self.monospaced,
-                fontSize: self.fontSize,
-                maximumSpan: self.maximumSpan)
-                .fill()
-                .id(self.displayedValue)
-                .transition(self.reduceMotion ? .opacity : .asymmetric(
-                    insertion: .offset(y: self.increasing ? 12 : -12).combined(with: .opacity),
-                    removal: .offset(y: self.increasing ? -12 : 12).combined(with: .opacity)))
+                maximumSpan: self.maximumSpan,
+                capHeight: font.capHeight))
+            .frame(width: 224, height: 224)
+            .accessibilityHidden(true)
+            .onChange(of: self.value) { _, new in
+                self.show(new)
+            }
+    }
+
+    private func show(_ new: String) {
+        let now = ProcessInfo.processInfo.systemUptime
+        let scrubbing = now - self.changedAt < Self.scrubInterval
+        self.changedAt = now
+        let number = Self.transitionValue(new, numericValue: self.numericValue)
+        var transaction = Transaction(animation: scrubbing ? nil : self.reduceMotion
+            ? .easeInOut(duration: 0.2)
+            : .smooth(duration: 0.4 * NativeOrbitProjectionStyle.previewAnimationScale))
+        transaction.disablesAnimations = scrubbing
+        withTransaction(transaction) {
+            self.shown = new
+            self.shownNumber = number
         }
-        .frame(width: 224, height: 224)
-        .accessibilityHidden(true)
-        .onChange(of: self.value) { _, value in
-            self.increasing = (self.numericValue ?? 0) >= (self.previousNumber ?? 0)
-            self.previousNumber = self.numericValue
-            withAnimation(self.reduceMotion ? nil : .smooth(duration: 0.22)) {
-                self.displayedValue = value
+    }
+}
+
+/// Lays a one-line `Text` onto a corner's arc: each glyph centred where its advance falls along the line, scaled to fit
+/// `maximumSpan` of the radius, upright to the arc, with the middle of its cap height on the circle. The text's own
+/// centre is the dial's, as the readout is centred in the dial's frame.
+struct NativeOrbitArcTextRenderer: TextRenderer {
+    let corner: NativeOrbitComplication.Corner
+    let radius: CGFloat
+    let maximumSpan: CGFloat
+    let capHeight: CGFloat
+
+    /// The glyphs land on the arc, far outside the text's own bounds.
+    var displayPadding: EdgeInsets {
+        EdgeInsets(top: 240, leading: 240, bottom: 240, trailing: 240)
+    }
+
+    func draw(layout: Text.Layout, in context: inout GraphicsContext) {
+        let arc = NativeOrbitCornerArc(corner: self.corner, radius: self.radius)
+        for line in layout {
+            let bounds = line.typographicBounds
+            let scale = min(1, self.radius * self.maximumSpan / max(1, bounds.width))
+            let center = CGPoint(x: bounds.rect.midX, y: bounds.rect.midY)
+            for run in line {
+                for slice in run {
+                    let glyph = slice.typographicBounds
+                    let distance = (glyph.rect.midX - bounds.rect.midX) * scale
+                    let point = arc.point(along: distance, height: 0)
+                    // Upright to the arc: along its tangent, tops outward on top corners and inward on bottom ones.
+                    let angle = arc.angle(along: distance) + (self.corner.isTop ? 1 : -1) * CGFloat.pi / 2
+                    var placed = context
+                    placed.translateBy(x: center.x + point.x, y: center.y + point.y)
+                    placed.rotate(by: .radians(angle))
+                    placed.scaleBy(x: scale, y: scale)
+                    placed.translateBy(x: -glyph.rect.midX, y: -(glyph.origin.y - self.capHeight / 2))
+                    placed.draw(slice)
+                }
             }
         }
     }
 }
 
-/// Bend the actual font outlines onto one continuous baseline, rather than rotate separate text tiles.
-private struct NativeOrbitArcTextShape: Shape {
-    let value: String
-    let corner: NativeOrbitComplication.Corner
-    let radius: CGFloat
-    let monospaced: Bool
-    let fontSize: CGFloat
-    let maximumSpan: CGFloat
+/// The number a corner readout shows, which its numeric transition compares to roll each change the right way.
+enum NativeOrbitReadoutNumber {
+    /// A character's place relative to the number in its readout. Indices count away from the decimal separator.
+    enum Place: Hashable {
+        /// Characters before the first digit, counted leftward from it ("$", "US$", "—").
+        case prefix(Int)
+        /// Integer digits and their grouping separators, counted leftward from the ones digit.
+        case integer(Int)
+        /// The decimal separator.
+        case separator
+        /// Fraction digits, counted rightward from the separator.
+        case fraction(Int)
+        /// Characters after the number, counted rightward from it ("M", " credits").
+        case suffix(Int)
+    }
 
-    func path(in rect: CGRect) -> Path {
-        let base = self.monospaced
-            ? NSFont.monospacedSystemFont(ofSize: self.fontSize, weight: .semibold)
-            : NSFont.systemFont(ofSize: self.fontSize, weight: .semibold)
-        let font = self.monospaced ? base : NSFont(
-            descriptor: base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor,
-            size: self.fontSize) ?? base
-        let line = CTLineCreateWithAttributedString(NSAttributedString(
-            string: self.value, attributes: [.font: font]))
-        let width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
-        let scale = min(1, self.radius * self.maximumSpan / max(1, width))
-        let direction: CGFloat = self.corner.isTop ? 1 : -1
-        // Provider-specific by design: pi references here are geometric constants, not the Pi provider.
-        let angle = CGFloat(self.corner.degrees) * CGFloat.pi / 180
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        var path = Path()
-        for run in CTLineGetGlyphRuns(line) as? [CTRun] ?? [] {
-            let count = CTRunGetGlyphCount(run)
-            var glyphs = [CGGlyph](repeating: 0, count: count)
-            var positions = [CGPoint](repeating: .zero, count: count)
-            CTRunGetGlyphs(run, CFRange(location: 0, length: count), &glyphs)
-            CTRunGetPositions(run, CFRange(location: 0, length: count), &positions)
-            let attributes = CTRunGetAttributes(run) as NSDictionary
-            let runFont = attributes[kCTFontAttributeName] as? NSFont ?? font
-            let outlineFont = CTFontCreateWithName(runFont.fontName as CFString, self.fontSize, nil)
-            for index in 0..<count {
-                guard let outline = CTFontCreatePathForGlyph(outlineFont, glyphs[index], nil) else { continue }
-                let origin = positions[index]
-                let middle = CTFontGetCapHeight(outlineFont) / 2
-                func point(_ source: CGPoint) -> CGPoint {
-                    let offset = (origin.x + source.x - width / 2) * scale
-                    let theta = angle + direction * offset / self.radius
-                    let radial = self.radius + direction * (origin.y + source.y - middle) * scale
-                    return CGPoint(x: center.x + radial * cos(theta), y: center.y + radial * sin(theta))
-                }
-                outline.applyWithBlock { element in
-                    let segment = element.pointee
-                    switch segment.type {
-                    case .moveToPoint: path.move(to: point(segment.points[0]))
-                    case .addLineToPoint: path.addLine(to: point(segment.points[0]))
-                    case .addQuadCurveToPoint:
-                        path.addQuadCurve(to: point(segment.points[1]), control: point(segment.points[0]))
-                    case .addCurveToPoint:
-                        path.addCurve(
-                            to: point(segment.points[2]),
-                            control1: point(segment.points[0]),
-                            control2: point(segment.points[1]))
-                    case .closeSubpath: path.closeSubpath()
-                    @unknown default: break
-                    }
-                }
+    /// The decimal separator the readouts are formatted with.
+    static var localSeparator: Character {
+        Locale.autoupdatingCurrent.decimalSeparator?.first ?? "."
+    }
+
+    /// Each character's place, in reading order. The number is the first run of digits together with the single
+    /// separators between them (grouping or decimal), the last `separator` among them being the decimal one. A
+    /// readout without digits is all prefix.
+    static func places(of text: String, separator: Character = Self.localSeparator) -> [Place] {
+        let characters = Array(text)
+        guard let start = characters.firstIndex(where: \.isWholeNumber) else {
+            return characters.indices.map { .prefix(characters.count - 1 - $0) }
+        }
+        var end = start + 1
+        while end < characters.count {
+            if characters[end].isWholeNumber {
+                end += 1
+            } else if !characters[end].isLetter, end + 1 < characters.count, characters[end + 1].isWholeNumber {
+                end += 2
+            } else {
+                break
             }
         }
-        return path
+        let point = characters[start..<end].lastIndex(of: separator)
+        let integerEnd = point ?? end
+        return characters.indices.map { index in
+            if index < start { return .prefix(start - 1 - index) }
+            if index < integerEnd { return .integer(integerEnd - 1 - index) }
+            if index == point { return .separator }
+            if index < end { return .fraction(index - integerEnd - 1) }
+            return .suffix(index - end)
+        }
+    }
+
+    /// The number a readout shows, scaled by a compact suffix ("276.7M"), or nil when it shows none ("—").
+    static func value(in text: String, separator: Character = Self.localSeparator) -> Double? {
+        var digits = ""
+        var suffix = ""
+        var sign: Double = 1
+        for (place, character) in zip(self.places(of: text, separator: separator), text) {
+            switch place {
+            case .prefix:
+                if character == "-" || character == "\u{2212}" { sign = -1 }
+            case .integer, .fraction:
+                if let digit = character.wholeNumberValue { digits += String(digit) }
+            case .separator:
+                digits += "."
+            case .suffix:
+                suffix.append(character)
+            }
+        }
+        guard let magnitude = Double(digits) else { return nil }
+        let multiplier: Double = switch suffix.first {
+        case "K": 1e3
+        case "M": 1e6
+        case "B": 1e9
+        case "T": 1e12
+        default: 1
+        }
+        return sign * magnitude * multiplier
+    }
+}
+
+/// The arc a corner readout follows: distance along it from the corner's centre, and height above the text's middle,
+/// map to a point around the dial's centre. Bottom corners run the other way so their text stays upright.
+struct NativeOrbitCornerArc {
+    let corner: NativeOrbitComplication.Corner
+    let radius: CGFloat
+
+    private var direction: CGFloat {
+        self.corner.isTop ? 1 : -1
+    }
+
+    /// The angle around the dial's centre, in radians, a distance along the arc.
+    func angle(along distance: CGFloat) -> CGFloat {
+        // Provider-specific by design: pi references here are geometric constants, not the Pi provider.
+        CGFloat(self.corner.degrees) * CGFloat.pi / 180 + self.direction * distance / self.radius
+    }
+
+    /// How far a height above the text's middle reaches away from the dial's centre: outward on top corners, inward
+    /// on bottom ones, whose glyphs stand with their tops toward the centre.
+    func outward(height: CGFloat) -> CGFloat {
+        self.direction * height
+    }
+
+    func point(along distance: CGFloat, height: CGFloat) -> CGPoint {
+        let theta = self.angle(along: distance)
+        let radial = self.radius + self.outward(height: height)
+        return CGPoint(x: radial * cos(theta), y: radial * sin(theta))
     }
 }
 
@@ -237,8 +362,8 @@ struct NativeOrbitResetComplication: View {
                 NativeOrbitSlashableGlyph(name: Self.symbol, size: 17, slashed: true, ink: AnyShapeStyle(.tertiary))
                     .position(Self.position(0, count: 1, pitch: 25))
             case .unknown:
+                // The readout inks its placeholder secondary itself.
                 NativeOrbitArcText(value: "—", corner: .bottomLeading)
-                    .foregroundStyle(.secondary)
             }
         }
         .frame(width: 224, height: 224)
@@ -308,8 +433,10 @@ struct NativeOrbitExtraUsageComplication: View {
 }
 
 /// SF Symbols' slash modifier atop a glyph. `.symbolVariant(.slash)` silently draws the plain glyph when a symbol has
-/// no slash variant (the reset and rewards-card glyphs have none), so those get the system slash layer of
-/// `circle.slash` drawn over them, with a clearance cut along it, as the UsageIndicator component draws its modifiers.
+/// no slash variant (the reset and rewards-card glyphs have none), so those are composed into one template image: the
+/// glyph, cut clear along the slash layer of `circle.slash`, with that slash drawn in, as the UsageIndicator component
+/// draws its modifiers. Inked as one symbol, glyph and slash render alike, vibrancy in a dark popover included; a
+/// slash overlaid on a masked glyph took the popover's vibrancy while the glyph lost it.
 struct NativeOrbitSlashableGlyph: View {
     let name: String
     let size: CGFloat
@@ -331,10 +458,13 @@ struct NativeOrbitSlashableGlyph: View {
                 self.glyph
                     .symbolVariant(.slash)
                     .transition(.opacity)
+            } else if let slashed = Self.slashedTemplate(self.name, size: self.size, weight: self.nsWeight) {
+                Image(nsImage: slashed)
+                    .renderingMode(.template)
+                    .foregroundStyle(self.ink)
+                    .transition(.opacity)
             } else {
                 self.glyph
-                    .mask { self.clearance }
-                    .overlay { self.slash(self.ink) }
                     .transition(.opacity)
             }
         }
@@ -346,25 +476,68 @@ struct NativeOrbitSlashableGlyph: View {
             .foregroundStyle(self.ink)
     }
 
-    /// Palette rendering keeps only the slash layer; the circle layer is clear.
-    private func slash(_ ink: some ShapeStyle) -> some View {
-        Image(systemName: "circle.slash")
-            .font(.system(size: self.size, weight: self.weight))
-            .symbolRenderingMode(.palette)
-            .foregroundStyle(ink, Color.clear)
+    private var nsWeight: NSFont.Weight {
+        switch self.weight {
+        case .ultraLight: .ultraLight
+        case .thin: .thin
+        case .light: .light
+        case .regular: .regular
+        case .semibold: .semibold
+        case .bold: .bold
+        case .heavy: .heavy
+        case .black: .black
+        default: .medium
+        }
     }
 
-    private var clearance: some View {
-        let gap = max(1, self.size * 0.06)
-        return ZStack {
-            Color.white
-            ForEach(0..<8, id: \.self) { index in
-                let angle = Double(index) * Double.pi / 4
-                self.slash(Color.black).offset(x: gap * cos(angle), y: gap * sin(angle))
-            }
+    private struct TemplateKey: Hashable {
+        let name: String
+        let size: CGFloat
+        let weight: CGFloat
+    }
+
+    @MainActor private static var templates: [TemplateKey: NSImage] = [:]
+
+    /// `name` with the system slash across it, centred where the plain symbol would be, as a template image.
+    @MainActor
+    static func slashedTemplate(_ name: String, size: CGFloat, weight: NSFont.Weight) -> NSImage? {
+        let key = TemplateKey(name: name, size: size, weight: weight.rawValue)
+        if let template = self.templates[key] { return template }
+        let configuration = NSImage.SymbolConfiguration(pointSize: size, weight: weight)
+        // The palette keeps only the slash layer; the circle layer is clear.
+        guard let glyph = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration),
+            let slash = NSImage(systemSymbolName: "circle.slash", accessibilityDescription: nil)?
+                .withSymbolConfiguration(configuration.applying(.init(paletteColors: [.black, .clear])))
+        else { return nil }
+        let canvas = NSSize(
+            width: max(glyph.size.width, slash.size.width),
+            height: max(glyph.size.height, slash.size.height))
+        func centred(_ image: NSImage, offset: CGPoint = .zero) -> NSRect {
+            NSRect(
+                x: (canvas.width - image.size.width) / 2 + offset.x,
+                y: (canvas.height - image.size.height) / 2 + offset.y,
+                width: image.size.width,
+                height: image.size.height)
         }
-        .compositingGroup()
-        .luminanceToAlpha()
+        let gap = max(1, size * 0.06)
+        let template = NSImage(size: canvas, flipped: false) { _ in
+            glyph.draw(in: centred(glyph))
+            // A clearance as wide as `gap` either side of the slash.
+            for index in 0..<8 {
+                let angle = Double(index) * Double.pi / 4
+                slash.draw(
+                    in: centred(slash, offset: CGPoint(x: gap * cos(angle), y: gap * sin(angle))),
+                    from: .zero,
+                    operation: .destinationOut,
+                    fraction: 1)
+            }
+            slash.draw(in: centred(slash))
+            return true
+        }
+        template.isTemplate = true
+        self.templates[key] = template
+        return template
     }
 }
 

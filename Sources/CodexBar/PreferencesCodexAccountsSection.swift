@@ -1,3 +1,4 @@
+import CodexBarCore
 import Foundation
 import SwiftUI
 
@@ -122,6 +123,8 @@ struct CodexAccountsSectionView: View {
     let removeAccount: (CodexVisibleAccount) -> Void
     let requestSystemVisibleAccount: (String) -> Void
     let addAccount: () -> Void
+    /// Where the native popup's automatic switching is stored; nil hides the setting.
+    var automaticSwitchingDefaults: UserDefaults?
 
     var body: some View {
         Section {
@@ -189,6 +192,10 @@ struct CodexAccountsSectionView: View {
                             onRemove: { self.removeAccount(account) })
                     }
                 }
+            }
+
+            if let defaults = self.automaticSwitchingDefaults, self.state.visibleAccounts.count > 1 {
+                CodexAutomaticSwitchingToggle(defaults: defaults)
             }
 
             if let notice = self.state.notice {
@@ -270,6 +277,31 @@ struct CodexAccountsSectionView: View {
         Text(L("The default Codex account on this Mac."))
             .font(.footnote)
             .foregroundStyle(.secondary)
+    }
+}
+
+/// The native popup's automatic switching, read live by its switch controller.
+private struct CodexAutomaticSwitchingToggle: View {
+    @AppStorage private var enabled: Bool
+
+    init(defaults: UserDefaults) {
+        self._enabled = AppStorage(
+            wrappedValue: false,
+            NativeAccountSwitchController.automaticKey(.codex),
+            store: defaults)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle(L("Switch accounts automatically"), isOn: self.$enabled)
+                .font(.subheadline.weight(.semibold))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+            Text(L("native_auto_switch_settings_detail"))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

@@ -2575,11 +2575,17 @@
 
 "History begins with recorded usage. Missing time is left empty." = "L’historique commence avec les données d’utilisation enregistrées. Les périodes manquantes restent vides.";
 
-"native_orbit_range_help" = "Période de l’historique, des jetons et des dépenses de tous les comptes. Les jauges de quota indiquent la disponibilité actuelle.";
+"native_orbit_range_help" = "Période de l'historique, des jetons et des dépenses";
 
 "1d" = "1d";
 "<1m ago" = "Il y a <1min";
 "Auto switch" = "Changement auto";
+
+"Switch" = "Changer";
+
+"Switch accounts automatically" = "Changer de compte automatiquement";
+
+"native_auto_switch_settings_detail" = "Quand le compte actif est épuisé, Codex CLI passe à un compte qui a encore du quota. Un changement manuel suspend ceci pendant 10 minutes.";
 "Now" = "Maintenant";
 "Updating…" = "Actualisation…";
 
@@ -2610,6 +2616,9 @@
 "Local Kimi archive" = "Archive locale Kimi";
 "Lines connect nearby observations. Gaps have no recorded data." = "Les lignes relient les mesures proches dans le temps. Les intervalles vides ne contiennent aucune donnée enregistrée.";
 "native_refresh_timed_out" = "L’actualisation prend plus de temps que prévu. Elle se poursuit en arrière-plan.";
+"native_refresh_claude_swap_paced" = "claude-swap met à jour ce compte toutes les quelques minutes pour respecter la limite de débit d’Anthropic.";
+"native_refresh_issue_stale" = "Obsolète";
+"native_refresh_issue_slow" = "Lent";
 "native_orbit_range_day" = "J";
 "native_orbit_range_week" = "S";
 "native_orbit_range_month" = "M";

@@ -2569,11 +2569,17 @@
 
 "History begins with recorded usage. Missing time is left empty." = "历史记录从已记录的使用数据开始。缺少数据的时间段保持空白。";
 
-"native_orbit_range_help" = "所有账户的历史记录、Token 和支出的时间范围。配额表盘显示当前可用量。";
+"native_orbit_range_help" = "历史、令牌和花费的时间范围";
 
 "1d" = "1 天";
 "<1m ago" = "不到1分钟前";
 "Auto switch" = "自动切换";
+
+"Switch" = "切换";
+
+"Switch accounts automatically" = "自动切换账户";
+
+"native_auto_switch_settings_detail" = "当前账户用尽额度时，Codex CLI 会切换到仍有额度的账户。手动切换后暂停 10 分钟。";
 "Now" = "现在";
 "Updating…" = "正在更新…";
 
@@ -2604,6 +2610,9 @@
 "Local Kimi archive" = "本地 Kimi 存档";
 "Lines connect nearby observations. Gaps have no recorded data." = "线条连接时间相近的测量值。空白区间没有记录的数据。";
 "native_refresh_timed_out" = "刷新耗时超出预期，将在后台继续。";
+"native_refresh_claude_swap_paced" = "claude-swap 每隔几分钟更新一次此账户，以遵守 Anthropic 的速率限制。";
+"native_refresh_issue_stale" = "已过时";
+"native_refresh_issue_slow" = "较慢";
 "native_orbit_range_day" = "日";
 "native_orbit_range_week" = "周";
 "native_orbit_range_month" = "月";

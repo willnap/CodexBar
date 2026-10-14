@@ -36,7 +36,10 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     private let claudeArchiveReader: NativeClaudeLocalArchive
     let orbitState = NativeOrbitPopupState()
     let manualRefresh = NativePopoverManualRefresh()
+    /// When the toolbar's newest load started; a column measured well before it was not brought up to date.
+    private var manualLoadStartedAt: Date?
     private var badgeTask: Task<Void, Never>?
+    private var readinessCheckTask: Task<Void, Never>?
     private var badgeIdentityKey = ""
     private(set) var presentationClockTask: Task<Void, Never>?
     private var claudeArchiveTask: Task<Void, Never>?
@@ -91,6 +94,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 
     override func loadView() {
+        self.store.prepareNativeAccountInventory(for: self.provider)
         self.refreshPresentation()
         self.view = NSHostingView(rootView: NativeOrbitPopupView(
             state: self.orbitState,
@@ -140,15 +144,15 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         // Provider-specific by design: Claude excludes only the exact owners already shown by ClaudeSwap rows.
         self.orbitState.claudeLocalArchiveHistory = NativeOrbitClaudeLocalArchive.mergedHistories(
             fileHistories: self.claudeFileArchiveHistory,
-            buckets: self.store.planUtilizationHistoryLoaded ? self.store.planUtilizationHistory[.claude] : nil,
+            buckets: self.store.nativeHistoryAvailable(.claude) ? self.store.planUtilizationHistory[.claude] : nil,
             excludingOwnerKeys: Set(self.store.claudeSwapAccountSnapshots.compactMap(
                 UsageStore.nativeOrbitClaudeHistoryKey)),
             provider: self.provider)
         // Provider-specific by design: anonymous Codex log readings stay outside every named account column.
-        self.orbitState.codexLocalArchiveHistory = self.provider == .codex && self.store.planUtilizationHistoryLoaded
+        self.orbitState.codexLocalArchiveHistory = self.provider == .codex && self.store.nativeHistoryAvailable(.codex)
             ? (self.store.planUtilizationHistory[.codex]?.unscoped ?? []) : []
         // Provider-specific by design: Kimi archives exclude only the accepted credential owner's bucket.
-        self.orbitState.kimiLocalArchiveHistory = self.provider == .kimi && self.store.planUtilizationHistoryLoaded
+        self.orbitState.kimiLocalArchiveHistory = self.provider == .kimi && self.store.nativeHistoryAvailable(.kimi)
             ? NativeOrbitKimiLocalArchive.histories(
                 self.store.planUtilizationHistory[.kimi] ?? .init(),
                 excludingAcceptedOwnerKey: self.store.snapshot(for: UsageProvider.kimi.instanceID)
@@ -156,8 +160,10 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         self.orbitState.now = Date()
         // The spinner follows the toolbar's own load; background refreshes publish without one.
         self.orbitState.isRefreshing = self.manualRefresh.isLoading
-        if self.orbitState.refreshError != nil, !self.manualRefresh.isLoading {
-            self.orbitState.refreshError = Self.refreshError(self.orbitState.accounts)
+        if self.orbitState.refreshIssue != nil, !self.manualRefresh.isLoading {
+            self.orbitState.refreshIssue = Self.refreshIssue(
+                self.orbitState.accounts,
+                requestedAt: self.manualLoadStartedAt)
         }
         let color = self.settings.accentColor(for: self.provider)
         self.orbitState.accent = Color(red: color.red, green: color.green, blue: color.blue)
@@ -170,9 +176,10 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
                 await NativeOrbitBadgeResolver.resolve(self.orbitState)
             }
         }
-        let count = max(1, self.orbitState.accounts.count)
+        self.updateReadiness()
+        let count = self.orbitState.layoutColumns
         let availableWidth = self.statusButton?.window?.screen?.visibleFrame.width ?? 1200
-        let footerHeight = self.orbitState.accounts.count > 1
+        let footerHeight = count > 1
             || (self.orbitState.accounts.first?.updatedAt == nil && self.canSignIn) ? 28 : 0
         self.preferredContentSize = NSSize(
             width: min(CGFloat(count * 240 + (count - 1)), availableWidth - 40),
@@ -181,14 +188,52 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         NativeOrbitHistoryInspectionProof.write(provider: self.provider, store: self.store, state: self.orbitState)
     }
 
+    /// Readiness and the layout's column count. Ready, the popup remembers how many columns it showed, so the next
+    /// launch lays the popup out for them before they load. Not ready, it checks again when the wait runs out.
+    private func updateReadiness() {
+        let key = "nativePopupColumns.\(self.provider.rawValue)"
+        let defaults = self.settings.userDefaults
+        let ready = self.store.nativePopupIsReady(for: self.provider, accounts: self.orbitState.accounts)
+        let shown = max(1, self.orbitState.accounts.count)
+        if ready {
+            if defaults.integer(forKey: key) != shown { defaults.set(shown, forKey: key) }
+            self.readinessCheckTask?.cancel()
+            self.readinessCheckTask = nil
+        } else if self.readinessCheckTask == nil {
+            let wait = self.store.nativePopupReadinessWaitRemaining()
+            self.readinessCheckTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(wait))
+                guard let self, !Task.isCancelled else { return }
+                self.readinessCheckTask = nil
+                self.refreshPresentation()
+            }
+        }
+        if self.orbitState.isReady != ready { self.orbitState.isReady = ready }
+        let columns = ready ? shown : max(shown, defaults.integer(forKey: key))
+        if self.orbitState.layoutColumns != columns { self.orbitState.layoutColumns = columns }
+    }
+
+    /// Every press of the toolbar's refresh lands here; `NativePopoverManualRefresh` decides whether it starts a
+    /// load, joins the running one, or queues one more after it.
     func refreshUsage() {
-        let started = self.manualRefresh.start(
-            load: { [weak self] in await self?.actions.refresh() },
+        let press = self.manualRefresh.press(
+            load: { [weak self] in
+                self?.manualLoadStartedAt = Date()
+                await self?.actions.refresh()
+            },
             enrich: { [weak self] startedAt in await self?.actions.enrich(startedAt) },
             completion: { [weak self] outcome in self?.finishManualRefresh(outcome) })
-        guard started else { return }
+        CodexBarLog.logger("native-gauges").info(
+            "Native popup refresh pressed",
+            metadata: [
+                "provider": self.provider.rawValue,
+                "press": "\(press)",
+                "providerBusy": self.store.refreshingProviders.contains(self.provider.instanceID) ? "1" : "0",
+                "storeBusy": self.store.isRefreshing ? "1" : "0",
+            ])
+        guard press == .started else { return }
         self.reloadClaudeLocalArchive()
-        self.orbitState.refreshError = nil
+        self.orbitState.refreshIssue = nil
         self.orbitState.isRefreshing = true
     }
 
@@ -197,21 +242,56 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         self.presentationRefreshTask?.cancel()
         self.presentationRefreshTask = nil
         self.observePresentation()
-        self.orbitState.refreshError = switch outcome {
-        case .finished: Self.refreshError(self.orbitState.accounts)
-        case .timedOut: L("native_refresh_timed_out")
+        self.orbitState.refreshIssue = switch outcome {
+        case .finished: Self.refreshIssue(self.orbitState.accounts, requestedAt: self.manualLoadStartedAt)
+        case .timedOut: NativeOrbitRefreshIssue(kind: .slow, detail: L("native_refresh_timed_out"))
         }
         self.orbitState.isRefreshing = false
     }
 
-    /// The columns' own failures, so the toolbar reports why a refresh left a reading out of date.
-    static func refreshError(_ accounts: [NativeOrbitAccountPresentation]) -> String? {
-        let failures = accounts.compactMap { account -> String? in
-            guard let status = account.statusText?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !status.isEmpty else { return nil }
-            return accounts.count > 1 ? "\(account.label): \(status)" : status
+    /// A column measured this long before the toolbar's load started was not brought up to date by it.
+    static let refreshFreshnessTolerance: TimeInterval = 60
+    /// claude-swap measures an idle account at most every 10 minutes (plus 10 % jitter) and serves that reading in
+    /// between; the press runs its list, so only a reading older than its schedule allows was left behind.
+    static let claudeSwapFreshnessTolerance: TimeInterval = 12 * 60
+
+    /// The columns' own failures, and the columns the toolbar's last load could not bring up to date, so the toolbar
+    /// never reports a refresh that left a reading old as if it had succeeded. A failure outranks a stale column.
+    static func refreshIssue(
+        _ accounts: [NativeOrbitAccountPresentation],
+        requestedAt: Date? = nil) -> NativeOrbitRefreshIssue?
+    {
+        var failed = false
+        let messages = accounts.compactMap { account -> String? in
+            let message: String
+            if let status = account.statusText?.trimmingCharacters(in: .whitespacesAndNewlines), !status.isEmpty {
+                failed = true
+                message = status
+            } else if let requestedAt, let updated = account.updatedAt,
+                      updated < requestedAt.addingTimeInterval(-Self.freshnessTolerance(account))
+            {
+                message = Self.notRefreshedNotice(account, measuredAt: updated)
+            } else {
+                return nil
+            }
+            return accounts.count > 1 ? "\(account.label): \(message)" : message
         }
-        return failures.isEmpty ? nil : failures.joined(separator: "\n")
+        guard !messages.isEmpty else { return nil }
+        return NativeOrbitRefreshIssue(kind: failed ? .failed : .stale, detail: messages.joined(separator: "\n"))
+    }
+
+    private static func freshnessTolerance(_ account: NativeOrbitAccountPresentation) -> TimeInterval {
+        // Provider-specific by design: claude-swap paces Anthropic's usage API itself; within its schedule a reading
+        // is as fresh as its source allows.
+        if case .claudeSwap = account.selection { return self.claudeSwapFreshnessTolerance }
+        return self.refreshFreshnessTolerance
+    }
+
+    private static func notRefreshedNotice(_ account: NativeOrbitAccountPresentation, measuredAt: Date) -> String {
+        let shown = L("Updated %@", NativeOrbitTooltip.moment(measuredAt, now: Date()))
+        // Provider-specific by design: claude-swap paces Anthropic's usage API itself, so say why its row waited.
+        if case .claudeSwap = account.selection { return shown + "\n" + L("native_refresh_claude_swap_paced") }
+        return shown
     }
 
     func openSettings() {

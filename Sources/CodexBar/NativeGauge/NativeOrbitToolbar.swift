@@ -24,11 +24,11 @@ struct NativeOrbitToolbar: View {
             NativeOrbitRangeControl(
                 days: Binding(get: { self.state.days }, set: { self.state.days = $0 }),
                 accent: self.state.accent,
-                fullWords: self.state.accounts.count > 1)
+                fullWords: self.state.layoutColumns > 1)
                 // Words where columns leave room; three even letter segments in a single 240 pt column.
-                    .frame(width: self.state.accounts.count > 1 ? 180 : 102, height: Self.rowHeight)
+                    .frame(width: self.state.layoutColumns > 1 ? 180 : 102, height: Self.rowHeight)
                     .help(L("native_orbit_range_help"))
-            self.trailingControls
+            self.settingsButton
         }
         .frame(height: Self.rowHeight)
         .font(.system(size: 12, weight: .medium))
@@ -62,22 +62,27 @@ struct NativeOrbitToolbar: View {
             TimelineView(.periodic(from: .now, by: 1)) { timeline in
                 let now = max(timeline.date, self.state.now)
                 // Wide columns read "5m ago"; a single column drops "ago" (or the whole label) before it would
-                // crowd the centered range control.
+                // crowd the centered range control. A refresh issue adds its one word ("5m ago · Stale"), which
+                // outlasts the age when room runs out.
                 ViewThatFits(in: .horizontal) {
                     self.ageLabel(self.refreshText(at: now, compact: false), now: now)
                     self.ageLabel(self.refreshText(at: now, compact: true), now: now)
+                    if self.issue != nil { self.ageLabel(nil, now: now) }
                     Color.clear.frame(width: 0, height: 0)
                 }
+                .animation(self.reduceMotion ? nil : .smooth(duration: 0.3), value: self.issue)
+                // The age appears with the columns it describes.
+                .opacity(self.state.isReady ? 1 : 0)
+                .animation(self.reduceMotion ? nil : .smooth(duration: 0.35), value: self.state.isReady)
             }
         }
     }
 
     private var refreshButton: some View {
         Button(action: self.pressRefresh) {
-            Image(systemName: self.state.refreshError == nil
+            Image(systemName: self.issue == nil
                 ? "arrow.clockwise" : "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
-                .foregroundStyle(self.state.refreshError == nil ? AnyShapeStyle(.secondary)
-                    : AnyShapeStyle(Color.orange))
+                .foregroundStyle(self.issue == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange))
                 .contentTransition(.symbolEffect(.replace))
                 .symbolEffect(.rotate.clockwise, options: .nonRepeating.speed(2), value: self.refreshPresses)
                 .opacity(self.showingSpinner ? 0 : 1)
@@ -94,24 +99,39 @@ struct NativeOrbitToolbar: View {
                 .frame(height: Self.rowHeight)
                 .contentShape(Rectangle())
         }
-        .help(self.state.refreshError ?? L("Refresh"))
+        .help(self.issue?.detail ?? L("Refresh"))
         .accessibilityLabel(L("Refresh"))
-        .accessibilityValue(self.state.refreshError ?? "")
+        .accessibilityValue(self.issue.map { "\($0.label). \($0.detail)" } ?? "")
     }
 
-    private func ageLabel(_ text: String, now: Date) -> some View {
-        Text(text)
-            .monospacedDigit()
-            .contentTransition(.numericText(value: self.refreshAge(at: now)))
-            .animation(self.reduceMotion ? nil : .smooth(duration: 0.3), value: text)
-            .lineLimit(1)
-            .fixedSize()
-            .help(self.state.refreshError ?? self.refreshHelp)
+    /// The last press's issue, once its spinner has stopped.
+    private var issue: NativeOrbitRefreshIssue? {
+        self.state.isRefreshing ? nil : self.state.refreshIssue
+    }
+
+    /// The age, then the issue's word in the arrow's orange; a nil age shows the word alone.
+    private func ageLabel(_ text: String?, now: Date) -> some View {
+        HStack(spacing: 0) {
+            if let text {
+                Text(text)
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: self.refreshAge(at: now)))
+                    .animation(self.reduceMotion ? nil : .smooth(duration: 0.3), value: text)
+            }
+            if let issue = self.issue {
+                Text(verbatim: text == nil ? issue.label : " · \(issue.label)")
+                    .foregroundStyle(Color.orange)
+                    .transition(.blurReplace)
+            }
+        }
+        .lineLimit(1)
+        .fixedSize()
+        .help(self.issue?.detail ?? self.refreshHelp)
     }
 
     private func pressRefresh() {
-        // Ignore presses during a load instead of disabling the button, which would dim its spinner.
-        guard !self.state.isRefreshing else { return }
+        // Every press counts, even during a load: the popup joins the running load and, for a later press, runs
+        // one more after it (`NativePopoverManualRefresh`). The button never disables, which would dim its spinner.
         if !self.reduceMotion { self.refreshPresses += 1 }
         // Start the refresh on the next turn so the arrow's spin is on screen before any loading work begins.
         Task { @MainActor in self.refresh() }
@@ -129,49 +149,10 @@ struct NativeOrbitToolbar: View {
 
     private var refreshHelp: String {
         guard let updated = self.state.accounts.compactMap(\.updatedAt).min() else { return L("Refresh") }
-        return L("Updated %@", updated.formatted(date: .abbreviated, time: .standard))
+        return L("Updated %@", NativeOrbitTooltip.moment(updated, now: Date()))
     }
 
     // MARK: Settings
-
-    private var trailingControls: some View {
-        // The automatic-switch label yields before the switch, and the switch before the settings button.
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                self.autoSwitchToggle(labelled: true)
-                self.settingsButton
-            }
-            HStack(spacing: 8) {
-                self.autoSwitchToggle(labelled: false)
-                self.settingsButton
-            }
-            self.settingsButton
-        }
-    }
-
-    @ViewBuilder
-    private func autoSwitchToggle(labelled: Bool) -> some View {
-        if let switching = self.state.accountSwitch, switching.canAutomate {
-            let toggle = Toggle(isOn: Binding(
-                get: { switching.automatic },
-                set: { switching.setAutomatic($0) }))
-            {
-                Text(L("Auto switch")).lineLimit(1)
-            }
-            Group {
-                if labelled {
-                    toggle
-                } else {
-                    toggle.labelsHidden()
-                }
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .fixedSize()
-            .help(switching.error
-                ?? L("Uses an account with available quota. Manual switching pauses this for 10 minutes."))
-        }
-    }
 
     private var settingsButton: some View {
         Button(action: self.pressSettings) {
@@ -187,8 +168,13 @@ struct NativeOrbitToolbar: View {
     }
 
     private func pressSettings() {
-        if !self.reduceMotion { self.settingsPresses += 1 }
-        self.settings()
+        guard !self.reduceMotion else { return self.settings() }
+        self.settingsPresses += 1
+        // Settings becoming key dismisses the popup; let the gear's turn get under way before it opens.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(280))
+            self.settings()
+        }
     }
 
     // MARK: Age text
@@ -236,6 +222,29 @@ struct NativeOrbitToolbar: View {
         if seconds < 3600 { return seconds / 60 * 60 }
         if seconds < 86400 { return seconds / 3600 * 3600 }
         return seconds / 86400 * 86400
+    }
+}
+
+/// Why the toolbar's last refresh left a column behind: a word beside the age, and the full account for its help.
+struct NativeOrbitRefreshIssue: Equatable {
+    enum Kind: Equatable {
+        /// A column's own fetch failed.
+        case failed
+        /// A column kept a reading taken well before the press.
+        case stale
+        /// The load outlived its timeout; it still publishes when it completes.
+        case slow
+    }
+
+    let kind: Kind
+    let detail: String
+
+    var label: String {
+        switch self.kind {
+        case .failed: L("Failed")
+        case .stale: L("native_refresh_issue_stale")
+        case .slow: L("native_refresh_issue_slow")
+        }
     }
 }
 

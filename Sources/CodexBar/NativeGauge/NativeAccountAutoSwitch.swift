@@ -81,9 +81,12 @@ final class NativeAccountSwitchController {
     private(set) var automatic: Bool
     private(set) var inFlightID: String?
     private(set) var error: String?
+    /// The account the last failed switch was aiming for, whose column reports `error`.
+    private(set) var errorAccountID: String?
     private(set) var canAutomate = false
     let provider: UsageProvider
-    private let store: UsageStore
+    /// Nil only for the offline preview, which supplies its accounts directly.
+    private let store: UsageStore?
     private let defaults: UserDefaults
     private let activateLogin: (NativeOrbitAccountSelection) async -> NativeAccountActivationResult
     private let refresh: () async -> Void
@@ -95,13 +98,14 @@ final class NativeAccountSwitchController {
     private var notifiedDeferrals: [NativeAccountAutoSwitchPolicy.Exhaustion] = []
     private var cooldownUntil: Date?
     private var desktopQuitObserver: (any NSObjectProtocol)?
+    private var defaultsObserver: (any NSObjectProtocol)?
     private var task: Task<Void, Never>?
     private var stopped = false
     private var transactionStarted = false
 
     init(
         provider: UsageProvider,
-        store: UsageStore,
+        store: UsageStore?,
         defaults: UserDefaults,
         activate: @escaping (NativeOrbitAccountSelection) async -> NativeAccountActivationResult,
         refresh: @escaping () async -> Void,
@@ -121,18 +125,33 @@ final class NativeAccountSwitchController {
         self.accountsOverride = accounts
         self.notify = notify
         self.workspaceCenter = workspaceCenter
-        self.automatic = defaults.bool(forKey: "nativeAutoSwitch.\(provider.rawValue)")
+        self.automatic = defaults.bool(forKey: Self.automaticKey(provider))
         self.observe()
+        // The setting lives in Settings; follow it there without a relaunch.
+        self.defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: defaults,
+            queue: .main)
+        { [weak self] _ in
+            MainActor.assumeIsolated { self?.followAutomaticSetting() }
+        }
+    }
+
+    static func automaticKey(_ provider: UsageProvider) -> String {
+        "nativeAutoSwitch.\(provider.rawValue)"
     }
 
     isolated deinit {
         self.task?.cancel()
         self.stopWatchingDesktop()
+        if let observer = self.defaultsObserver { NotificationCenter.default.removeObserver(observer) }
     }
 
     func stop() {
         self.stopped = true
         self.stopWatchingDesktop()
+        if let observer = self.defaultsObserver { NotificationCenter.default.removeObserver(observer) }
+        self.defaultsObserver = nil
         // Let a credential transaction finish atomically; only cancel pending preflight work.
         if !self.transactionStarted { self.task?.cancel() }
     }
@@ -140,15 +159,27 @@ final class NativeAccountSwitchController {
     func setAutomatic(_ enabled: Bool) {
         guard !self.stopped else { return }
         self.automatic = enabled
-        self.defaults.set(enabled, forKey: "nativeAutoSwitch.\(self.provider.rawValue)")
+        self.defaults.set(enabled, forKey: Self.automaticKey(self.provider))
+        self.clearError()
+    }
+
+    private func followAutomaticSetting() {
+        let enabled = self.defaults.bool(forKey: Self.automaticKey(self.provider))
+        guard !self.stopped, enabled != self.automatic else { return }
+        self.automatic = enabled
+        self.clearError()
+    }
+
+    private func clearError() {
         self.error = nil
+        self.errorAccountID = nil
     }
 
     func activate(_ account: NativeOrbitAccountPresentation) {
         guard !self.stopped, self.task == nil, account.canActivate, self.allowed() else { return }
         self.cooldownUntil = Date().addingTimeInterval(600)
         self.inFlightID = account.id
-        self.error = nil
+        self.clearError()
         self.task = Task { [weak self] in
             guard let self else { return }
             guard !self.stopped, !Task.isCancelled, self.allowed() else {
@@ -165,7 +196,7 @@ final class NativeAccountSwitchController {
     }
 
     private func currentAccounts() -> [NativeOrbitAccountPresentation] {
-        self.accountsOverride?() ?? self.store.nativeOrbitAccounts(for: self.provider)
+        self.accountsOverride?() ?? self.store?.nativeOrbitAccounts(for: self.provider) ?? []
     }
 
     private func observe() {
@@ -191,7 +222,7 @@ final class NativeAccountSwitchController {
                   cooldownUntil: self.cooldownUntil)
         else { return }
         self.inFlightID = decision.targetID
-        self.error = nil
+        self.clearError()
         self.task = Task { [weak self] in
             guard let self else { return }
             // A displayed cached reading never directly authorizes an automatic credential change.
@@ -266,6 +297,7 @@ final class NativeAccountSwitchController {
         if case let .failed(message) = result { self.error = message }
         if case let .unavailable(message) = result { self.error = message }
         if case let .deferred(message) = result { self.error = message }
+        if self.error != nil { self.errorAccountID = self.inFlightID }
         self.inFlightID = nil
         self.task = nil
     }

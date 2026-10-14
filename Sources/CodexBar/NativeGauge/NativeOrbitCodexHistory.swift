@@ -11,8 +11,8 @@ extension UsageStore {
         canonicalKey: String?) -> [PlanUtilizationSeriesHistory]
     {
         _ = self.planUtilizationHistoryRevision
-        guard self.planUtilizationHistoryLoaded, let canonicalKey else { return [] }
         // Provider-specific by design: Codex legacy history carries email/workspace continuity evidence.
+        guard self.nativeHistoryAvailable(.codex), let canonicalKey else { return [] }
         var buckets = self.planUtilizationHistory[.codex] ?? PlanUtilizationHistoryBuckets()
         let cached = self.settings.cachedCodexAccountReconciliationSnapshot?.snapshot
         let ownership = Self.nativeOrbitCodexHistoryOwnership(

@@ -40,7 +40,8 @@ if [[ -z "$SCRATCH_PATH" && ! -e "$ROOT/.build/out" ]]; then
     ln -s "$BUILD_STORAGE/out" "$ROOT/.build/out"
 fi
 BUILD_OUTPUT_ROOT="${SCRATCH_PATH:-$ROOT/.build}/out"
-if [[ -d "$BUILD_OUTPUT_ROOT" ]]; then xattr -cr "$BUILD_OUTPUT_ROOT/"; fi
+# Clearing Finder metadata is best effort: dangling framework symlinks must not stop the build.
+if [[ -d "$BUILD_OUTPUT_ROOT" ]]; then xattr -cr "$BUILD_OUTPUT_ROOT/" 2>/dev/null || true; fi
 
 BUILD_ARGS=(--disable-sandbox --jobs "${NATIVE_BUILD_JOBS:-8}" -c "$CONF")
 if [[ -n "$SCRATCH_PATH" ]]; then BUILD_ARGS+=(--scratch-path "$SCRATCH_PATH"); fi

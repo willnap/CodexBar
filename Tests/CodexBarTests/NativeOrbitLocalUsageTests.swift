@@ -322,9 +322,10 @@ struct NativeOrbitLocalUsageTests {
             metrics: metrics)
         let today = NativeOrbitInstruments(account: account, days: 1, now: self.now, accent: .blue)
         let week = NativeOrbitInstruments(account: account, days: 7, now: self.now, accent: .blue)
-        #expect(Self.cornerLabels(today.body).contains { $0.contains("Local sessions in this profile") })
+        #expect(Self.cornerLabels(today.body).contains { $0.hasSuffix("tokens today in this profile on this Mac") })
         #expect(!Self.cornerLabels(today.body).contains { $0.contains("Provider-reported daily account tokens") })
-        #expect(Self.cornerLabels(week.body).contains { $0.contains("Provider-reported daily account tokens") })
+        // The account's own total names no narrower source.
+        #expect(Self.cornerLabels(week.body).contains { $0.hasSuffix("tokens in the last 7 days") })
     }
 
     private static func cornerLabels(_ value: Any, depth: Int = 0) -> [String] {

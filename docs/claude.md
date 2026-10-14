@@ -428,10 +428,10 @@ The accepted multi-account design in
   Omitting the capability preserves existing switching behavior; a present value must be a JSON boolean.
 - Switching: an inactive account with usable source credentials shows “Switch Account…”. Clicking it runs exactly
   `cswap --switch-to <slot> --json`, validates the versioned result and requested slot, then refreshes both ambient
-  Claude usage and every claude-swap account card. Switches are serialized; no automatic switching occurs. While
-  reconciling, the ambient Claude refresh is given five seconds to finish; a stalled refresh continues in the
-  background while switching waits for the adapter's active-account list, so it cannot leave the account chips inert.
-  A later switch can refresh the adapter list even when its ambient refresh is queued behind an earlier probe. While
+  Claude usage and every claude-swap account card. Switches are serialized; no automatic switching occurs. The switch
+  settles on claude-swap's own `--list --json`, which names the new active account (a replacement list still owns
+  reconciliation); the ambient Claude refresh starts once it is over, so a slow or stalled provider fetch never holds
+  a switch open or leaves the account chips inert. While
   claude-swap owns account presentation, the separate ambient OAuth action reads “Sign in with Claude Code…” and does
   not add or switch a claude-swap account.
 - Expired, missing, unknown, or Keychain-inaccessible credentials stay non-actionable. A failed switch remains visible

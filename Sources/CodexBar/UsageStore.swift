@@ -116,6 +116,13 @@ extension UsageStore {
     var preferredSnapshot: UsageSnapshot? {
         self.enabledProviders().lazy.compactMap { self.snapshots[$0] }.first
     }
+
+    var isStale: Bool {
+        for provider in self.enabledProviders() where self.errors[provider] != nil {
+            return true
+        }
+        return false
+    }
 }
 
 @MainActor
@@ -489,11 +496,15 @@ final class UsageStore {
     @ObservationIgnored var planUtilizationHistory: [ProviderInstanceID: PlanUtilizationHistoryBuckets] = [:]
     /// Owns the session-history scanner; observable itself, so a landed window attribution redraws the dials.
     let nativeCodexSessionAttribution = NativeCodexSessionAttributionStore()
+    /// Each dial's last published local usage, read off the main actor from launch until live publications land.
+    let nativeLastKnownUsage = NativeOrbitLastKnownUsageStore.launching()
     @ObservationIgnored var sessionEquivalentBurnCache: [ProviderInstanceID: SessionEquivalentBurnCacheEntry] = [:]
     @ObservationIgnored var sessionEquivalentHistoryScanCount: Int = 0
 
     /// Background load task; cleared on deinit and on the cancel test seam.
     @ObservationIgnored var planUtilizationHistoryLoadTask: Task<Void, Never>?
+    /// Providers whose persisted history has been decoded, ahead of the whole load finishing.
+    var planUtilizationHistoryLoadedProviders: Set<ProviderInstanceID> = []
     /// Set once after the load completes. Gates mutation paths and sync menu
     /// accessors so they cannot race the decode or write empty history back to disk.
     @ObservationIgnored var planUtilizationHistoryLoaded: Bool = false
@@ -643,13 +654,6 @@ final class UsageStore {
         }
         // Provider-specific by design: Codex is the historical empty-enabled-set icon fallback.
         return .codex
-    }
-
-    var isStale: Bool {
-        for provider in self.enabledProviders() where self.errors[provider] != nil {
-            return true
-        }
-        return false
     }
 
     func enabledProviders() -> [ProviderInstanceID] {

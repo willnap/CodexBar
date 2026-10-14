@@ -21,13 +21,4 @@ struct NativeOrbitCountdown {
         let remaining = min(period, max(0, deadline.timeIntervalSince(now)))
         return ceil(remaining / (period / Double(self.segments))) / Double(self.segments)
     }
-
-    var description: String {
-        guard let countdown = self.window.countdown, countdown.secondsPerUnit.isFinite,
-              Double(countdown.units) * countdown.secondsPerUnit >= 3600
-        else { return "Countdown scale unavailable" }
-        let seconds = Double(countdown.units) * countdown.secondsPerUnit / Double(self.segments)
-        let unit = seconds >= 86400 ? "\((seconds / 86400).formatted()) day" : "\((seconds / 3600).formatted()) hour"
-        return "\(self.segments) segments · \(unit) per segment"
-    }
 }

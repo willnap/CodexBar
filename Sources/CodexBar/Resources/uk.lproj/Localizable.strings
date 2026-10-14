@@ -2576,11 +2576,17 @@
 
 "History begins with recorded usage. Missing time is left empty." = "Історія починається із записаних даних використання. Періоди без даних залишаються порожніми.";
 
-"native_orbit_range_help" = "Період історії, токенів і витрат для всіх облікових записів. Індикатори квот показують поточну доступність.";
+"native_orbit_range_help" = "Період для історії, токенів і витрат";
 
 "1d" = "1д";
 "<1m ago" = "<1хв тому";
 "Auto switch" = "Автоперемикання";
+
+"Switch" = "Змінити";
+
+"Switch accounts automatically" = "Автоматично перемикати облікові записи";
+
+"native_auto_switch_settings_detail" = "Коли ліміт активного облікового запису вичерпано, Codex CLI перемикається на запис із залишком квоти. Ручне перемикання призупиняє це на 10 хвилин.";
 "Now" = "Зараз";
 "Updating…" = "Оновлення…";
 
@@ -2611,6 +2617,9 @@
 "Local Kimi archive" = "Локальний архів Kimi";
 "Lines connect nearby observations. Gaps have no recorded data." = "Лінії з’єднують близькі в часі вимірювання. У проміжках немає записаних даних.";
 "native_refresh_timed_out" = "Оновлення триває довше, ніж очікувалося. Воно продовжується у фоновому режимі.";
+"native_refresh_claude_swap_paced" = "claude-swap оновлює цей обліковий запис раз на кілька хвилин, щоб не перевищувати ліміт запитів Anthropic.";
+"native_refresh_issue_stale" = "Застаріло";
+"native_refresh_issue_slow" = "Повільно";
 "native_orbit_range_day" = "Д";
 "native_orbit_range_week" = "Т";
 "native_orbit_range_month" = "М";

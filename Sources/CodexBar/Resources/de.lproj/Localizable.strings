@@ -2574,11 +2574,17 @@
 
 "History begins with recorded usage. Missing time is left empty." = "Der Verlauf beginnt mit aufgezeichneten Nutzungsdaten. Fehlende Zeiträume bleiben leer.";
 
-"native_orbit_range_help" = "Zeitraum für Verlauf, Tokens und Ausgaben aller Konten. Die Kontingentanzeigen zeigen die aktuelle Verfügbarkeit.";
+"native_orbit_range_help" = "Zeitraum für Verlauf, Tokens und Ausgaben";
 
 "1d" = "1d";
 "<1m ago" = "Vor <1Min";
 "Auto switch" = "Automatisch wechseln";
+
+"Switch" = "Wechseln";
+
+"Switch accounts automatically" = "Konten automatisch wechseln";
+
+"native_auto_switch_settings_detail" = "Wenn das aktive Konto aufgebraucht ist, wechselt die Codex CLI zu einem mit verbleibendem Kontingent. Ein manueller Wechsel pausiert dies für 10 Minuten.";
 "Now" = "Jetzt";
 "Updating…" = "Wird aktualisiert…";
 
@@ -2609,6 +2615,9 @@
 "Local Kimi archive" = "Lokales Kimi-Archiv";
 "Lines connect nearby observations. Gaps have no recorded data." = "Linien verbinden zeitlich nahe Messwerte. Für Lücken sind keine Daten aufgezeichnet.";
 "native_refresh_timed_out" = "Die Aktualisierung dauert länger als erwartet. Sie wird im Hintergrund fortgesetzt.";
+"native_refresh_claude_swap_paced" = "claude-swap aktualisiert dieses Konto alle paar Minuten, um das Ratenlimit von Anthropic einzuhalten.";
+"native_refresh_issue_stale" = "Veraltet";
+"native_refresh_issue_slow" = "Langsam";
 "native_orbit_range_day" = "T";
 "native_orbit_range_week" = "W";
 "native_orbit_range_month" = "M";

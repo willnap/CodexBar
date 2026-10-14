@@ -21,11 +21,10 @@ struct NativeOrbitClaudeComplicationTests {
         for days in [1, 7, 30] {
             let corners = self.corners(metrics, days: days)
             #expect(corners[.topLeading]?.value == "—")
-            #expect(corners[.topLeading]?.help.contains("Spend is not reported") == true)
+            #expect(corners[.topLeading]?.help.hasPrefix("No spend data for") == true)
             // The corner stays the additional-usage gauge: empty arc, state in its help.
             #expect(corners[.bottomTrailing]?.value == "gauge:empty")
-            #expect(corners[.bottomTrailing]?.help.contains("turned off") == true)
-            #expect(corners[.bottomTrailing]?.help.contains("Monthly") == true)
+            #expect(corners[.bottomTrailing]?.help == "Additional usage is off")
         }
     }
 
@@ -40,7 +39,7 @@ struct NativeOrbitClaudeComplicationTests {
         let corners = self.corners(metrics, days: 7)
         #expect(corners[.topLeading]?.value == "—")
         #expect(corners[.bottomTrailing]?.value == "gauge:empty")
-        #expect(corners[.bottomTrailing]?.help.contains("$4.50 used") == true)
+        #expect(corners[.bottomTrailing]?.help == "$4.50 of additional usage this month")
     }
 
     @Test func `organization estimate fills spend and tokens with local machine provenance`() {
@@ -55,17 +54,17 @@ struct NativeOrbitClaudeComplicationTests {
             localUsage: NativeOrbitLocalUsage(snapshot: report, scope: .localMachine, bucketTimeZoneIdentifier: "UTC"))
         let today = self.corners(metrics, days: 1)
         #expect(today[.topLeading]?.value.hasSuffix("3.00") == true)
-        #expect(today[.topLeading]?.help.contains("Local sessions on this Mac") == true)
-        #expect(today[.topLeading]?.help.contains("Estimated") == true)
+        #expect(today[.topLeading]?.help.contains("spent today on this Mac") == true)
+        #expect(today[.topLeading]?.help.hasSuffix(", at list prices") == true)
         #expect(today[.topTrailing]?.value == "3K")
         let week = self.corners(metrics, days: 7)
         #expect(week[.topLeading]?.value.hasSuffix("10.00") == true)
         #expect(week[.topTrailing]?.value == "10K")
-        #expect(week[.topLeading]?.help.contains("coverage incomplete") == false)
+        #expect(week[.topLeading]?.help.hasPrefix("At least") == false)
         // Attribution began nine days ago, so a 30-day total is a recorded subtotal.
         let month = self.corners(metrics, days: 30)
-        #expect(month[.topLeading]?.help.contains("coverage incomplete") == true)
-        #expect(month[.bottomTrailing]?.help.contains("turned off") == true)
+        #expect(month[.topLeading]?.help.hasPrefix("At least") == true)
+        #expect(month[.bottomTrailing]?.help == "Additional usage is off")
     }
 
     @Test func `idle covered organization day reads zero, not unknown`() {

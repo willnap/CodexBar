@@ -115,6 +115,16 @@ extension UsageStore {
             bucketTimeZoneIdentifier: configuration.bucketTimeZoneIdentifier)
     }
 
+    /// Owner digest of the ambient transcript report: Claude home, profile root, bucket zone and source mode.
+    func nativeClaudeAmbientLastKnownOwner() -> String? {
+        guard let configuration = self.nativeClaudeAmbientUsageConfiguration(),
+              configuration.selectedAccountID == nil else { return nil }
+        return NativeOrbitLastKnownUsageStore.ownerDigest([
+            "claude-ambient", configuration.homePath, configuration.profileRootPath,
+            configuration.bucketTimeZoneIdentifier, configuration.sourceMode.rawValue,
+        ])
+    }
+
     private func nativeClaudeAmbientUsageConfiguration() -> NativeClaudeAmbientUsageConfiguration? {
         guard self.settings.nativeDesignEnabled,
               // Provider-specific by design: local Claude transcripts require enablement without authentication.

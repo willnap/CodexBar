@@ -1,3 +1,4 @@
+import AppKit
 import CodexBarCore
 import Foundation
 
@@ -7,7 +8,9 @@ enum NativeOrbitHistoryInspectionProof {
     private static var buildMilliseconds: [String: Double] = [:]
 
     static func write(provider: UsageProvider, store: UsageStore, state: NativeOrbitPopupState) {
-        guard CommandLine.arguments.contains("--native-popup-preview-provider") else { return }
+        // A scrub audit times hover pacing, which these per-refresh dumps of every provider would dominate.
+        guard CommandLine.arguments.contains("--native-popup-preview-provider"),
+              ProcessInfo.processInfo.environment["CODEXBAR_PREVIEW_SCRUB"] == nil else { return }
         self.writeSnapshot(provider: provider, store: store, state: state)
         for other in UsageProvider.allCases where other != provider
             && store.settings.isProviderEnabledCached(provider: other, metadataByProvider: store.providerMetadata)
@@ -17,8 +20,62 @@ enum NativeOrbitHistoryInspectionProof {
             otherState.accounts = store.nativeOrbitAccounts(for: other)
             self.buildMilliseconds[other.rawValue] = Date().timeIntervalSince(started) * 1000
             otherState.now = state.now
+            otherState.isReady = store.nativePopupIsReady(for: other, accounts: otherState.accounts)
             self.writeSnapshot(provider: other, store: store, state: otherState)
         }
+    }
+
+    /// Rings as hovering shows them, past and ahead, from the same lanes and projection the column renders.
+    private static func ringReadings(
+        _ account: NativeOrbitAccountPresentation,
+        state: NativeOrbitPopupState) -> [[String: Any]]
+    {
+        [-20.0, -19, -18.8, -6, -1, -0.2, 1, 6, 20].map { hours in
+            let date = state.now.addingTimeInterval(hours * 3600)
+            // The past corners exactly as the column computes them while hovering.
+            let corners = date < state.now
+                ? account.metrics.at(date, observedAt: account.updatedAt, history: account.history)
+                .summary(days: state.days, now: date)
+                : nil
+            let windows = NativeOrbitHistoricalInspection.windows(
+                account: account,
+                date: date,
+                now: state.now,
+                days: state.days,
+                preparedLanes: state.renderLanes(for: account),
+                projection: state.projection(for: account),
+                isProjecting: state.isProjecting)
+            return [
+                "hours": hours,
+                "windows": windows.map(\.id),
+                "used": windows.map { $0.used.map { ($0 * 1000).rounded() / 1000 } as Any? ?? NSNull() },
+                "cost": corners?.cost as Any? ?? NSNull(),
+                "tokens": corners?.tokens as Any? ?? NSNull(),
+            ]
+        }
+    }
+
+    /// When each input of the popup's first frames became available, relative to launch.
+    private static func launchTimeline(
+        provider: UsageProvider,
+        store: UsageStore,
+        state: NativeOrbitPopupState) -> [String: Any]
+    {
+        let launched = NSRunningApplication.current.launchDate ?? Date()
+        return [
+            "secondsSinceLaunch": Date().timeIntervalSince(launched),
+            "launchDateKnown": NSRunningApplication.current.launchDate != nil,
+            "popupReady": state.isReady,
+            "readinessWaitRemaining": store.nativePopupReadinessWaitRemaining(),
+            "historyLoaded": store.planUtilizationHistoryLoaded,
+            "providerHistoryAvailable": store.nativeHistoryAvailable(provider),
+            "claudeSwapRows": store.claudeSwapAccountSnapshots.count,
+            "claudeSwapListTimeline": store.claudeSwapTransientState.listTimeline.map {
+                "\($0.0)@\(String(format: "%.2f", $0.1.timeIntervalSince(launched)))"
+            },
+            "claudeSwapListedSecondsSinceLaunch": store.claudeSwapLastRefreshAt.map { $0.timeIntervalSince(launched) }
+                as Any? ?? NSNull(),
+        ]
     }
 
     private static func writeSnapshot(provider: UsageProvider, store: UsageStore, state: NativeOrbitPopupState) {
@@ -102,6 +159,9 @@ enum NativeOrbitHistoryInspectionProof {
                     ]
                 }
             return [
+                "ringReadings": Self.ringReadings(account, state: state),
+                "liveWindows": account.gauge.resolvedWindows.map(\.id),
+                "lanes": state.renderLanes(for: account).map(\.history.name.rawValue),
                 "resetEvents": resetEvents,
                 "resetCorner": String(
                     describing: NativeOrbitResetCornerState.resolve(provider: provider, metrics: metrics)),
@@ -113,6 +173,8 @@ enum NativeOrbitHistoryInspectionProof {
                 "dailyReadings": dailyReadings,
                 "accountIndex": index,
                 "active": account.isActive,
+                // A remembered reading stands in for this column's local usage until the live one publishes.
+                "usageLastKnownAt": account.usageLastKnownAt?.timeIntervalSince1970 as Any? ?? NSNull(),
                 "updatedAt": account.updatedAt?.timeIntervalSince1970 as Any? ?? NSNull(),
                 "dailyTokenBuckets": metrics.usage?.daily.count ?? 0,
                 "datedUsageEvents": metrics.usage?.quotaSlices.count ?? 0,
@@ -137,7 +199,7 @@ enum NativeOrbitHistoryInspectionProof {
                 "historicalReadings": historicalReadings,
             ]
         }
-        let proof: [String: Any] = [
+        var proof: [String: Any] = [
             "provider": provider.rawValue,
             "capturedAt": state.now.timeIntervalSince1970,
             "costUsageEnabled": store.settings.isCostUsageEffectivelyEnabled(for: provider),
@@ -148,7 +210,11 @@ enum NativeOrbitHistoryInspectionProof {
                 ["provider": $0.provider?.rawValue ?? "unknown", "state": String(describing: $0.state)]
             },
             "accounts": rows,
+            // Provider-specific by design: only Codex splits shared local sessions between accounts.
+            "codexAttribution": provider == .codex ? store.nativeCodexSessionAttribution.diagnostics : [:],
             "accountsBuildMilliseconds": self.buildMilliseconds[provider.rawValue] as Any? ?? NSNull(),
+            "lastKnownRestoredAt": store.nativeLastKnownUsage.restoredAt?.timeIntervalSince1970 as Any? ?? NSNull(),
+            "lastKnownRestoredEntries": store.nativeLastKnownUsage.restoredCounts[provider] as Any? ?? NSNull(),
             // Provider-specific by design: the app's own Claude OAuth read is the ambient reset-inventory source.
             "ambientClaudeResets": provider == .claude
                 ? (store.snapshots[.claude]?.claudeResetCredits.map { credits -> [String: Any] in
@@ -160,6 +226,7 @@ enum NativeOrbitHistoryInspectionProof {
         ]
         let path = FileManager.default.temporaryDirectory
             .appendingPathComponent("codexbar-native-history-\(provider.rawValue).json")
+        proof.merge(Self.launchTimeline(provider: provider, store: store, state: state)) { current, _ in current }
         guard let data = try? JSONSerialization.data(withJSONObject: proof, options: [.prettyPrinted, .sortedKeys])
         else { return }
         try? data.write(to: path, options: .atomic)

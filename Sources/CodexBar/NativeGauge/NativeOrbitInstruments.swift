@@ -1,11 +1,13 @@
 import CodexBarCore
 import SwiftUI
 
-/// Which reading a corner shows: the live one, the live one before the account's first refresh, or a hovered instant.
+/// Which reading a corner shows: the live one, the live one before the account's first refresh, a hovered past
+/// instant, or a hovered instant ahead of now (a prediction).
 enum NativeOrbitReadingMoment: Equatable {
     case live
     case loading
     case inspecting
+    case projecting
 }
 
 /// Stable watch-face corners; absent measurements stay unknown and never borrow another metric's units.
@@ -15,15 +17,24 @@ struct NativeOrbitInstruments: View {
     let now: Date
     let accent: Color
     var inspectionDate: Date?
+    /// Predictions for instants after `liveNow`; without them a future instant has no readings.
+    var projection: NativeOrbitAccountProjection?
+    var liveNow: Date?
+
+    /// The prediction the corners show while the pointer is ahead of now.
+    private var future: (date: Date, now: Date, projection: NativeOrbitAccountProjection)? {
+        guard let date = self.inspectionDate, let now = self.liveNow, date > now, let projection else { return nil }
+        return (date, now, projection)
+    }
 
     /// Historical reconstruction is the costly step; evaluate it once per render, never once per corner.
     private var displayedMetrics: NativeOrbitAccountMetrics {
-        self.account.metrics.at(
+        if let future {
+            return future.projection.liveMetrics.projected(
+                at: future.date, inventory: future.projection.resetInventory)
+        }
+        return self.account.metrics.at(
             self.inspectionDate, observedAt: self.account.updatedAt, history: self.account.history)
-    }
-
-    private var period: String {
-        self.days == 1 ? "today" : "last \(self.days) days"
     }
 
     private var provider: UsageProvider? {
@@ -32,10 +43,11 @@ struct NativeOrbitInstruments: View {
 
     var body: some View {
         let displayed = self.displayedMetrics
-        let metrics = displayed.summary(days: self.days, now: self.now)
+        let projected = self.future.map { $0.projection.summary(days: self.days, at: $0.date) }
+        let metrics = projected?.summary ?? displayed.summary(days: self.days, now: self.now)
         ZStack {
-            self.monetaryReading(metrics, displayed: displayed)
-            self.activityReading(metrics, displayed: displayed)
+            self.monetaryReading(metrics, displayed: displayed, projected: projected)
+            self.activityReading(metrics, displayed: displayed, projected: projected)
             self.resetReading(displayed)
             self.extraUsageReading(displayed)
         }
@@ -44,27 +56,35 @@ struct NativeOrbitInstruments: View {
 
     private func activityReading(
         _ metrics: NativeOrbitMetricSummary,
-        displayed: NativeOrbitAccountMetrics) -> some View
+        displayed: NativeOrbitAccountMetrics,
+        projected: NativeOrbitProjectedSummary?) -> some View
     {
         let value: String
         let help: String
         let numericValue: Double?
-        if let tokens = metrics.tokens {
+        if let projected, let future {
+            value = metrics.tokens.map(Self.compact) ?? "—"
+            help = Self.projectedHelp(
+                projected.summary.tokens.map { "\($0.formatted()) tokens" },
+                rate: future.projection.tokenRate,
+                days: self.days,
+                date: future.date,
+                now: future.now)
+            numericValue = metrics.tokens.map(Double.init)
+        } else if let tokens = metrics.tokens {
             value = Self.compact(tokens)
-            help = "\(tokens.formatted()) tokens · \(self.calendarPeriod(scope: metrics.usageScope, displayed))"
-                + " · \(Self.scope(metrics.usageScope))"
-                + (metrics.isPartial ? " · Recorded subtotal; coverage incomplete" : "")
-                + (metrics.usageScope == .account
-                    ? (displayed.usage?.historyLabel.map { " · \($0)" } ?? "") : "")
+            help = (metrics.isPartial ? "At least " : "") + "\(tokens.formatted()) tokens "
+                + NativeOrbitTooltip.during(days: self.days) + NativeOrbitTooltip.scope(metrics.usageScope)
             numericValue = Double(tokens)
         } else if let reading = displayed.providerPeriodTokenReading(now: self.now) {
             value = Self.compact(reading.tokens)
-            help = "\(reading.tokens.formatted()) tokens · \(reading.period) · Account total"
-                + (reading.isPartial ? " · Recorded subtotal; coverage incomplete" : "")
+            help = (reading.isPartial ? "At least " : "") + "\(reading.tokens.formatted()) tokens (\(reading.period))"
             numericValue = Double(reading.tokens)
         } else {
             value = "—"
-            help = "Token total is not reported for \(self.period)"
+            help = metrics.zeroContradictedByQuota
+                ? "Used \(NativeOrbitTooltip.during(days: self.days)), but no token count has arrived yet"
+                : "No token count for \(NativeOrbitTooltip.range(days: self.days))"
             numericValue = nil
         }
         return NativeOrbitComplication(
@@ -85,48 +105,48 @@ struct NativeOrbitInstruments: View {
                 displayed: displayed,
                 redeemed: NativeOrbitResetEvent.redemptions(in: self.account.history, days: self.days, now: self.now),
                 provider: self.provider,
-                moment: self.moment))
+                moment: self.moment,
+                now: self.liveNow ?? self.now))
     }
 
     private var moment: NativeOrbitReadingMoment {
+        if self.future != nil { return .projecting }
         if self.inspectionDate != nil { return .inspecting }
         return self.account.updatedAt == nil ? .loading : .live
     }
 
-    /// Banked inventory as of the displayed instant, plus any banked reset redeemed in the selected period up to it.
-    /// Only redemptions count here; window and provider resets never change the banked inventory.
-    static func resetHelp(
+    /// The banked inventory as of the displayed instant, then one line on what changes it next: the latest
+    /// redemption in the range, else the next expiry. Window and provider resets never change the inventory.
+    static func resetHelp( // swiftlint:disable:this function_parameter_count
         _ state: NativeOrbitResetCornerState,
         displayed: NativeOrbitAccountMetrics,
         redeemed: [NativeOrbitResetEvent.Redemption],
         provider: UsageProvider?,
-        moment: NativeOrbitReadingMoment) -> String
+        moment: NativeOrbitReadingMoment,
+        now: Date) -> String
     {
-        let isInspecting = moment == .inspecting
         switch state {
         case .notApplicable:
             let name = provider.map { ProviderDescriptorRegistry.descriptor(for: $0).metadata.displayName }
-            return "Banked resets do not apply" + (name.map { " to \($0)" } ?? "")
+            return name.map { "\($0) has no banked resets" } ?? "No banked resets for this account"
         case .unknown:
-            return isInspecting ? "No banked-reset reading at this time" : "Banked resets are not reported"
+            return moment == .inspecting ? "No banked-reset reading for this moment" : "Banked resets unavailable"
         case let .inventory(available, used):
-            var parts = ["\(available) banked \(available == 1 ? "reset" : "resets") · \(used) used"]
-            if let expiry = displayed.nextResetCreditExpiry {
-                parts.append("Next expires \(expiry.formatted(date: .abbreviated, time: .shortened))")
+            let noun = available == 1 ? "banked reset" : "banked resets"
+            var count = switch (available, moment) {
+            case (0, .projecting): "No banked resets left by then"
+            case (0, _): "No banked resets left"
+            case (_, .projecting): "\(available) \(noun) left by then"
+            default: "\(available) \(noun) available"
             }
-            if isInspecting, let observed = displayed.resetInventoryObservedAt {
-                parts.append("Observed \(observed.formatted(date: .abbreviated, time: .shortened))")
-            }
+            if used > 0 { count += ", \(used) used" }
             if let latest = redeemed.max(by: { $0.date < $1.date }) {
-                let count = redeemed.reduce(0) { $0 + $1.quantity }
-                let time = latest.date.formatted(date: .abbreviated, time: .shortened)
-                let when = latest.earliest.map {
-                    "between \($0.formatted(date: .abbreviated, time: .shortened)) and \(time)"
-                } ?? time
-                parts.append(count == 1 ? "You used a banked reset \(when)"
-                    : "You used \(count) banked resets in this period, latest \(when)")
+                return count + "\nLast used " + NativeOrbitTooltip.at(latest.date, now: now)
             }
-            return parts.joined(separator: " · ")
+            if let expiry = displayed.nextResetCreditExpiry, expiry > now {
+                return count + "\nNext expires " + NativeOrbitTooltip.at(expiry, now: now)
+            }
+            return count
         }
     }
 
@@ -134,28 +154,43 @@ struct NativeOrbitInstruments: View {
     /// the bottom-trailing corner and is never relabeled as Day/7D/30D spend; without a period cost this reads "—".
     private func monetaryReading(
         _ metrics: NativeOrbitMetricSummary,
-        displayed: NativeOrbitAccountMetrics) -> some View
+        displayed: NativeOrbitAccountMetrics,
+        projected: NativeOrbitProjectedSummary?) -> some View
     {
+        if let projected, let future {
+            let currency = metrics.currencyCode
+            return NativeOrbitComplication(
+                value: metrics.cost.map { Self.money($0, currency: currency) } ?? "—",
+                corner: .topLeading,
+                help: Self.projectedHelp(
+                    projected.summary.cost.map { Self.money($0, currency: currency) },
+                    rate: future.projection.costRate,
+                    days: self.days,
+                    date: future.date,
+                    now: future.now),
+                numericValue: metrics.cost)
+        }
         let reading = displayed.providerPeriodSpendReading(now: self.now)
         let amount = metrics.cost ?? reading?.cost
         let currency = metrics.cost != nil ? metrics.currencyCode : (reading?.currency ?? metrics.currencyCode)
-        let period = metrics.cost != nil
-            ? self.calendarPeriod(scope: metrics.costUsageScope ?? metrics.usageScope, displayed)
-            : (reading?.period ?? self.period)
-        let usesPeriodReading = metrics.cost == nil && reading != nil
+        let help: String = if let amount {
+            Self.spendHelp(
+                Self.money(amount, currency: currency),
+                during: metrics.cost != nil
+                    ? NativeOrbitTooltip.during(days: self.days)
+                    + NativeOrbitTooltip.scope(metrics.costUsageScope ?? metrics.usageScope)
+                    : "(\(reading?.period ?? ""))",
+                estimated: metrics.cost != nil ? metrics.costIsEstimated : reading?.estimated == true,
+                partial: metrics.cost != nil ? metrics.costIsPartial : reading?.isPartial == true)
+        } else if metrics.zeroContradictedByQuota {
+            "Used \(NativeOrbitTooltip.during(days: self.days)), but no spend report has arrived yet"
+        } else {
+            "No spend data for \(NativeOrbitTooltip.range(days: self.days))"
+        }
         return NativeOrbitComplication(
             value: amount.map { Self.money($0, currency: currency) } ?? "—",
             corner: .topLeading,
-            help: amount.map {
-                "\(Self.money($0, currency: currency)) · \(period)"
-                    + (metrics.cost != nil ? " · \(Self.scope(metrics.costUsageScope ?? metrics.usageScope))" : "")
-                    + (metrics.cost != nil && metrics.costIsPartial
-                        ? " · Recorded subtotal; coverage incomplete" : "")
-                    + (metrics.cost != nil && metrics.costIsEstimated ? " · Estimated" : "")
-                    + (usesPeriodReading && reading?.estimated == true ? " · Estimated" : "")
-                    + (usesPeriodReading && reading?.isPartial == true
-                        ? " · Recorded subtotal; coverage incomplete" : "")
-            } ?? "Spend is not reported for \(self.period)",
+            help: help,
             numericValue: amount)
     }
 
@@ -170,7 +205,7 @@ struct NativeOrbitInstruments: View {
                 moment: self.moment,
                 history: self.account.history),
             accent: self.accent,
-            help: Self.extraUsageHelp(displayed, days: self.days, now: self.now, period: self.period))
+            help: Self.extraUsageHelp(displayed, days: self.days, now: self.now))
     }
 
     /// Additional usage applies while the provider reports a spend allowance, a balance or dated credit usage, even
@@ -195,43 +230,48 @@ struct NativeOrbitInstruments: View {
         return moment == .inspecting && recordsReadings ? .unknown : .notApplicable
     }
 
-    static func extraUsageHelp(_ displayed: NativeOrbitAccountMetrics, days: Int, now: Date, period: String) -> String {
-        var parts: [String] = []
+    /// What the additional-usage allowance stands at: used of limit in its cycle, then your share or a balance.
+    static func extraUsageHelp(_ displayed: NativeOrbitAccountMetrics, days: Int, now: Date) -> String {
+        var lines: [String] = []
         if let spend = displayed.reportedSpend {
-            if spend.isDisabled == true {
-                parts.append("Additional usage is turned off")
-                if spend.used > 0 { parts.append("\(Self.money(spend.used, currency: spend.currencyCode)) used") }
-            } else {
-                parts.append("Additional usage · \(Self.money(spend.used, currency: spend.currencyCode)) used"
-                    + (spend.limit > 0 ? " of \(Self.money(spend.limit, currency: spend.currencyCode))" : ""))
-                if let share = spend.personalUsed {
-                    parts.append("Your share \(Self.money(share, currency: spend.currencyCode))")
-                }
+            if spend.isDisabled == true { return "Additional usage is off" }
+            let used = Self.money(spend.used, currency: spend.currencyCode)
+            let cycle = spend.period?.localizedCaseInsensitiveContains("month") == true ? " this month" : ""
+            lines.append(spend.limit > 0
+                ? "\(used) of \(Self.money(spend.limit, currency: spend.currencyCode)) additional usage\(cycle)"
+                : "\(used) of additional usage\(cycle)")
+            if let share = spend.personalUsed {
+                lines.append("Your share: \(Self.money(share, currency: spend.currencyCode))")
             }
-            if let cycle = spend.period { parts.append(cycle) }
-        }
-        if displayed.reportedSpend == nil, let credits = displayed.recordedCreditUsage(days: days, now: now) {
-            parts.append("Recorded credit usage · \(Self.money(credits, currency: "Credits")) · \(period)"
-                + " · Recorded subtotal; coverage incomplete")
+        } else if let credits = displayed.recordedCreditUsage(days: days, now: now) {
+            let used = Self.money(credits, currency: "Credits")
+            lines.append("At least \(used) used \(NativeOrbitTooltip.during(days: days))")
         }
         if let balance = displayed.reportedBalance {
-            parts.append("\(balance.isWorkspace ? "Workspace" : "Account") balance "
-                + Self.money(balance.value, currency: balance.unit))
+            lines.append(Self.money(balance.value, currency: balance.unit)
+                + (balance.isWorkspace ? " workspace balance" : " balance"))
         }
-        return parts.isEmpty ? "Additional usage is not reported" : parts.joined(separator: " · ")
+        return lines.isEmpty ? "No additional usage on this account" : lines.joined(separator: "\n")
     }
 
-    private static func scope(_ scope: NativeOrbitUsageScope) -> String {
-        switch scope {
-        case .account: "Account total"
-        case .localProfile: "Local sessions in this profile"
-        case .localMachine: "Local sessions on this Mac"
+    /// A prediction for the hovered moment ahead: "About 1,234,567 tokens today by 6:00 PM, at the current pace".
+    static func projectedHelp(_ total: String?, rate: Double?, days: Int, date: Date, now: Date) -> String {
+        guard let total else { return "Not enough history to project" }
+        let when = NativeOrbitTooltip.moment(date, now: now)
+        let span = days == 1
+            ? (Calendar.current.isDate(date, inSameDayAs: now) ? "today by \(when)" : "that day by \(when)")
+            : "in the \(days) days to \(when)"
+        switch rate {
+        case let rate? where rate > 0: return "About \(total) \(span), at the current pace"
+        case 0?: return "\(total) \(span), with the account idle"
+        default: return "About \(total) \(span)"
         }
     }
 
-    private func calendarPeriod(scope: NativeOrbitUsageScope, _ displayed: NativeOrbitAccountMetrics) -> String {
-        let zone = scope == .account ? displayed.usage?.bucketTimeZoneIdentifier : nil
-        return self.period + (zone.map { " (\($0))" } ?? "")
+    /// "About $255.54 spent today on this Mac, at list prices"; a recorded subtotal reads "At least".
+    static func spendHelp(_ amount: String, during: String, estimated: Bool, partial: Bool) -> String {
+        (partial ? "At least " : estimated ? "About " : "") + "\(amount) spent \(during)"
+            + (estimated ? ", at list prices" : "")
     }
 
     static func money(_ value: Double, currency: String) -> String {

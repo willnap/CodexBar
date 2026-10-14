@@ -16,6 +16,14 @@ public struct NativeCodexSessionWindowTimeline: Sendable, Equatable {
         self.eventTimes.count
     }
 
+    /// The events at or after `start`, each with the weekly reset it reported; for diagnostics.
+    public func events(since start: Date) -> [(time: Date, weeklyReset: Date)] {
+        let threshold = start.timeIntervalSince1970
+        return zip(self.eventTimes, self.windowResets).filter { $0.0 >= threshold }.map {
+            (Date(timeIntervalSince1970: $0.0), Date(timeIntervalSince1970: $0.1))
+        }
+    }
+
     public init(observations: [NativeCodexQuotaSessionObservation], coverageStart: Date, coverageEnd: Date) {
         // Spark and other model-scoped limits use separate windows; only the main Codex limit names the account.
         let events = observations.compactMap { observation -> (Date, Date)? in

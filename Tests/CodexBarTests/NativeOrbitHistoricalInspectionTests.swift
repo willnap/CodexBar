@@ -36,6 +36,33 @@ struct NativeOrbitHistoricalInspectionTests {
         }
     }
 
+    @Test func `a projecting day reads the dials back to this time yesterday, not only to midnight`() throws {
+        // Projecting, the day chart spans now ± 24 h; a pointer 23 h back is before any midnight in between.
+        let earlier = self.now.addingTimeInterval(-23 * 3600)
+        let history = PlanUtilizationSeriesHistory(name: "nativeQuota:primary", windowMinutes: 300, entries: [
+            .init(
+                capturedAt: earlier.addingTimeInterval(-300),
+                usedPercent: 30,
+                resetsAt: earlier.addingTimeInterval(3600)),
+            .init(
+                capturedAt: earlier.addingTimeInterval(300),
+                usedPercent: 50,
+                resetsAt: earlier.addingTimeInterval(3600)),
+            .init(capturedAt: self.now, usedPercent: 10, resetsAt: self.now.addingTimeInterval(3600)),
+        ])
+        let account = self.account(histories: [history])
+        var widget = NativeOrbitHistoryWidget(histories: [history], now: self.now, days: 1)
+        widget.isProjecting = true
+        let window = try #require(NativeOrbitHistoricalInspection.windows(
+            account: account,
+            date: earlier,
+            now: self.now,
+            days: 1,
+            preparedLanes: widget.lanes,
+            isProjecting: true).first)
+        #expect(window.usedFraction == 0.4)
+    }
+
     @Test func `source cadence stays historical after a quota duration changes`() throws {
         let first = self.now.addingTimeInterval(-1200)
         let second = self.now.addingTimeInterval(-600)

@@ -110,6 +110,18 @@ extension StatusItemController {
         CodexBarLog.logger("native-gauges").info(
             "Native popup shown",
             metadata: ["provider": provider.rawValue, "milliseconds": String(format: "%.1f", milliseconds)])
+        // Whether the popup can take the next click directly: activation is asynchronous, so check after it settles.
+        Task { @MainActor [weak popover] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard let popover, popover.isShown else { return }
+            CodexBarLog.logger("native-gauges").info(
+                "Native popup focus",
+                metadata: [
+                    "provider": provider.rawValue,
+                    "appActive": NSApp.isActive ? "1" : "0",
+                    "popupKey": popover.contentViewController?.view.window?.isKeyWindow == true ? "1" : "0",
+                ])
+        }
         self.nativePopoverOpened(provider: provider, popover: popover)
     }
 

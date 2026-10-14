@@ -56,6 +56,9 @@ struct NativeOrbitMetricSummary {
     var isPartial = false
     var usageScope: NativeOrbitUsageScope = .account
     var costUsageScope: NativeOrbitUsageScope?
+    /// The token sources showed nothing for the period, but the account's quota readings rose in it: usage happened
+    /// where those sources can't see it yet (another machine, or the provider's lagging statistics).
+    var zeroContradictedByQuota = false
 }
 
 struct NativeOrbitPeriodSpendReading {
@@ -87,6 +90,8 @@ struct NativeOrbitAccountMetrics {
     var reportedQuotaUsage: [KimiRequestQuota] = []
     var reportedPlanExpiry: Date?
     var usedResets = 0
+    /// Instants where the account's own quota readings rose: measured consumption, wherever it happened.
+    var quotaConsumption: [Date] = []
     var bankedResets: Int?
     var nextResetCreditExpiry: Date?
     var resetInventoryObservedAt: Date?
@@ -121,6 +126,22 @@ struct NativeOrbitAccountMetrics {
     }
 
     func summary(days: Int, now: Date, calendar: Calendar = .current) -> NativeOrbitMetricSummary {
+        var result = self.measuredSummary(days: days, now: now, calendar: calendar)
+        // A zero contradicted by the account's own quota readings is not a measured zero: the account consumed quota
+        // in this period where the token sources can't see it yet. It reads as unknown until a report covers it.
+        guard result.tokens == 0 || result.cost == 0 else { return result }
+        let period = CostReportingPeriod.rolling(days: max(1, days)).bounds(now: now, calendar: calendar)
+        guard self.quotaConsumption.contains(where: { $0 >= period.lowerBound && $0 <= now }) else { return result }
+        if result.tokens == 0 {
+            result.tokens = nil
+            result.requests = nil
+        }
+        if result.cost == 0 { result.cost = nil }
+        result.zeroContradictedByQuota = true
+        return result
+    }
+
+    private func measuredSummary(days: Int, now: Date, calendar: Calendar) -> NativeOrbitMetricSummary {
         var result = self.usageSummary(days: days, now: now, calendar: calendar)
         if let primary = self.primaryLocalUsage,
            primary.isStale || primary.hasUnattributedActivity(days: days, now: now, calendar: calendar)
@@ -357,6 +378,36 @@ struct NativeOrbitAccountMetrics {
         return result
     }
 
+    /// The live readings (`at(nil, …)`) carried forward to a future instant. Banked resets that expire before the
+    /// instant are gone (and used ones whose grants ended no longer count); an additional-usage cycle that restarts
+    /// before it starts from zero; balances and allowances hold.
+    func projected(at date: Date, inventory: NativeOrbitResetObservation?) -> Self {
+        var result = self
+        if let inventory, result.bankedResets != nil {
+            let available = inventory.available(at: date)
+            result.bankedResets = available.count
+            result.usedResets = inventory.used(at: date)
+            result.nextResetCreditExpiry = available.compactMap(\.self).min()
+        }
+        if let spend = result.reportedSpend, spend.isDisabled != true, let reset = spend.resetsAt, reset <= date {
+            result.reportedSpend = ProviderCostSnapshot(
+                used: 0,
+                limit: spend.limit,
+                currencyCode: spend.currencyCode,
+                period: spend.period,
+                resetsAt: nil,
+                nextRegenAmount: spend.nextRegenAmount,
+                personalUsed: spend.personalUsed.map { _ in 0 },
+                balance: spend.balance,
+                balanceUpdatedAt: spend.balanceUpdatedAt,
+                balanceIsWorkspace: spend.balanceIsWorkspace,
+                usageIsUnavailable: spend.usageIsUnavailable,
+                isDisabled: spend.isDisabled,
+                updatedAt: spend.updatedAt)
+        }
+        return result
+    }
+
     /// A covered calendar period with no events is a measured zero: the data for it exists and shows no activity.
     /// An aggregate-only nonzero report cannot describe a shorter period, and incomplete scans cannot prove absence.
     private func emptyPeriodSummary(
@@ -443,9 +494,11 @@ struct NativeOrbitAccountMetrics {
         usage: CostUsageTokenSnapshot?,
         now: Date,
         credits: CreditsSnapshot? = nil,
-        localUsage: NativeOrbitLocalUsage? = nil) -> Self
+        localUsage: NativeOrbitLocalUsage? = nil,
+        quotaHistory: [PlanUtilizationSeriesHistory] = []) -> Self
     {
         var result = Self(usage: usage)
+        result.quotaConsumption = NativeOrbitActivity.consumptionDates(quotaHistory)
         result.resetInventoryObservedAt = snapshot?.updatedAt
         result.reportedPlanExpiry = snapshot?.subscriptionExpiresAt
         // Provider-specific by design: Kimi alone publishes typed request allowances; retain their request units.

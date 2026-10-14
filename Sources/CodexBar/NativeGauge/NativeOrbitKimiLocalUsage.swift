@@ -112,22 +112,50 @@ extension UsageStore {
     }
 
     func nativeOrbitKimiLocalUsage() -> NativeOrbitLocalUsage? {
+        self.nativeOrbitKimiResolvedLocalUsage()?.usage
+    }
+
+    /// The live wire report, or until the first scan of this launch publishes, the last known one for the same
+    /// sessions root, bucket zone and source configuration.
+    func nativeOrbitKimiResolvedLocalUsage() -> NativeOrbitResolvedLocalUsage? {
         guard let configuration = self.nativeKimiLocalUsageConfiguration()
         else { return nil }
-        return Self.nativeOrbitKimiLocalUsage(
+        let owner = Self.nativeKimiLastKnownOwner(configuration)
+        if let live = Self.nativeOrbitKimiLocalUsage(
             publication: self.nativeKimiLocalUsageReport,
             configuration: configuration)
+        {
+            // Provider-specific by design: Kimi wire reports are remembered only under their own configuration.
+            self.nativeLastKnownUsage.record(.kimi, owner: owner, usage: live)
+            return NativeOrbitResolvedLocalUsage(usage: live)
+        }
+        guard configuration.provider == .kimi, configuration.selectedAccountID == nil else { return nil }
+        return self.nativeLastKnownUsage.usage(.kimi, owner: owner)
+    }
+
+    nonisolated static func nativeKimiLastKnownOwner(_ configuration: NativeKimiLocalUsageConfiguration) -> String? {
+        guard configuration.selectedAccountID == nil else { return nil }
+        return NativeOrbitLastKnownUsageStore.ownerDigest([
+            "kimi-wire", configuration.provider.rawValue, configuration.sessionsRootPath,
+            configuration.bucketTimeZoneIdentifier, configuration.sourceMode.rawValue, configuration.region.rawValue,
+        ])
     }
 
     func nativeOrbitAmbientLocalUsage(
         for provider: UsageProvider) -> NativeOrbitLocalUsage?
     {
+        self.nativeOrbitAmbientResolvedLocalUsage(for: provider)?.usage
+    }
+
+    func nativeOrbitAmbientResolvedLocalUsage(
+        for provider: UsageProvider) -> NativeOrbitResolvedLocalUsage?
+    {
         // Provider-specific by design: an ambient local
         // report is never forwarded to another provider or
         // saved row.
         switch provider {
-        case .claude: self.nativeOrbitClaudeLocalUsage()
-        case .kimi: self.nativeOrbitKimiLocalUsage()
+        case .claude: self.nativeOrbitClaudeResolvedLocalUsage()
+        case .kimi: self.nativeOrbitKimiResolvedLocalUsage()
         default: nil
         }
     }

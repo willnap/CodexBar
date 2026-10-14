@@ -119,7 +119,9 @@ struct ProvidersPane: View {
                             Task { @MainActor in
                                 await self.addManagedCodexAccount()
                             }
-                        })
+                        },
+                        automaticSwitchingDefaults: self.settings.nativeDesignEnabled
+                            ? self.settings.userDefaults : nil)
                 }
             })
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in

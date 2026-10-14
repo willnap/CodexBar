@@ -2575,11 +2575,17 @@
 
 "History begins with recorded usage. Missing time is left empty." = "Historiken börjar med registrerad användning. Perioder utan data lämnas tomma.";
 
-"native_orbit_range_help" = "Tidsperiod för historik, token och kostnader för alla konton. Kvotmätarna visar aktuell tillgänglighet.";
+"native_orbit_range_help" = "Period för historik, tokens och utgifter";
 
 "1d" = "1 d";
 "<1m ago" = "<1min sedan";
 "Auto switch" = "Automatiskt byte";
+
+"Switch" = "Byt";
+
+"Switch accounts automatically" = "Byt konto automatiskt";
+
+"native_auto_switch_settings_detail" = "När det aktiva kontot tar slut byter Codex CLI till ett konto med kvot kvar. Ett manuellt byte pausar detta i 10 minuter.";
 "Now" = "Nu";
 "Updating…" = "Uppdaterar…";
 
@@ -2610,6 +2616,9 @@
 "Local Kimi archive" = "Lokalt Kimi-arkiv";
 "Lines connect nearby observations. Gaps have no recorded data." = "Linjer förbinder mätningar som ligger nära i tiden. Luckor saknar registrerade data.";
 "native_refresh_timed_out" = "Uppdateringen tar längre tid än väntat. Den fortsätter i bakgrunden.";
+"native_refresh_claude_swap_paced" = "claude-swap uppdaterar det här kontot med några minuters mellanrum för att hålla sig inom Anthropics hastighetsgräns.";
+"native_refresh_issue_stale" = "Inaktuell";
+"native_refresh_issue_slow" = "Långsam";
 "native_orbit_range_day" = "D";
 "native_orbit_range_week" = "V";
 "native_orbit_range_month" = "M";

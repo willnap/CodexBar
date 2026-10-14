@@ -1,3 +1,4 @@
+import AppKit
 import CodexBarCore
 import Foundation
 
@@ -44,6 +45,53 @@ extension UsageStore {
             provider: .claude,
             accountCount: self.claudeSwapAccountSnapshots.count,
             showSingleAccount: self.settings.nativeDesignEnabled || self.settings.claudeSwapShowSingleAccount)
+    }
+
+    /// The longest a popup waits after launch for its first complete frame before showing what it has.
+    static let nativePopupReadinessLimit: TimeInterval = 5
+
+    /// Whether a popup has everything its first frame shows: its history in memory, its account list (for Claude,
+    /// claude-swap's answer when it owns the columns), and a reading or a definite status for every column. After
+    /// `nativePopupReadinessLimit` from launch it is ready whatever it has.
+    func nativePopupIsReady(
+        for provider: UsageProvider,
+        accounts: [NativeOrbitAccountPresentation],
+        now: Date = Date()) -> Bool
+    {
+        // Provider-specific by design: claude-swap's list, once it answers, decides the Claude columns.
+        let awaitingAccountList = provider == .claude && self.shouldFetchClaudeSwapAccounts()
+            && self.claudeSwapLastRefreshAt == nil && self.claudeSwapLastError == nil
+        return Self.nativePopupIsReady(
+            waitRemaining: self.nativePopupReadinessWaitRemaining(now: now),
+            historyAvailable: self.nativeHistoryAvailable(provider),
+            awaitingAccountList: awaitingAccountList,
+            accounts: accounts)
+    }
+
+    nonisolated static func nativePopupIsReady(
+        waitRemaining: TimeInterval,
+        historyAvailable: Bool,
+        awaitingAccountList: Bool,
+        accounts: [NativeOrbitAccountPresentation]) -> Bool
+    {
+        if waitRemaining <= 0 { return true }
+        guard historyAvailable, !awaitingAccountList, !accounts.isEmpty else { return false }
+        return accounts.allSatisfy { $0.updatedAt != nil || $0.statusText != nil }
+    }
+
+    /// Seconds left of the launch wait (zero once it is over).
+    func nativePopupReadinessWaitRemaining(now: Date = Date()) -> TimeInterval {
+        guard let launched = NSRunningApplication.current.launchDate else { return 0 }
+        return max(0, Self.nativePopupReadinessLimit - now.timeIntervalSince(launched))
+    }
+
+    /// Builds the provider's account list from local account files when none exists yet, so a popup prepared at launch
+    /// shows its columns instead of an empty placeholder until the first background reconciliation lands.
+    func prepareNativeAccountInventory(for provider: UsageProvider) {
+        // Provider-specific by design: only Codex reconciles its account list from local files.
+        guard provider == .codex, self.settings.codexUsageDataSource != .pat,
+              self.settings.codexVisibleAccountProjectionForMenuDisplay == nil else { return }
+        _ = self.settings.codexAccountReconciliationSnapshot
     }
 
     var nativeCodexAccountProjection: CodexVisibleAccountProjection? {
