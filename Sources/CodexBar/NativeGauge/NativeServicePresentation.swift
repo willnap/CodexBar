@@ -229,7 +229,7 @@ extension UsageStore {
             gaugeOwnershipID: accountID ?? credentialScope)
     }
 
-    private func nativeGaugeCredentialScope(for provider: UsageProvider) -> String? {
+    func nativeGaugeCredentialScope(for provider: UsageProvider) -> String? {
         // Provider-specific by design: ClaudeSwap owns its errors; ambient Codex uses validated session ownership.
         if provider == .claude, self.nativeClaudeSwapOwnsPresentation { return nil }
         if let scope = Self

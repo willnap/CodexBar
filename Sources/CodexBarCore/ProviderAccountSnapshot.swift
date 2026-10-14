@@ -16,6 +16,19 @@ public struct ProviderAccountIdentity: Hashable, Sendable {
     }
 }
 
+/// What a multi-account source reports about one account's login and usage, for warning surfaces.
+public enum ProviderAccountCondition: Sendable, Equatable {
+    case ok
+    /// The saved login is expired, revoked, missing, unreadable or belongs to another account.
+    case credentialProblem
+    /// The source could not measure usage this time.
+    case usageUnavailable
+    /// The account has no subscription usage to measure (for example an API-key login).
+    case notApplicable
+    /// A status this build does not recognize.
+    case unrecognized
+}
+
 /// Provider-neutral projection of one account's usage, consumed by menus (and,
 /// later, per-account status items) without teaching UI code about any specific
 /// credential source.
@@ -45,6 +58,7 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
     public let snapshot: UsageSnapshot?
     public let error: String?
     public let sourceLabel: String?
+    public let condition: ProviderAccountCondition
 
     public init(
         id: ProviderAccountIdentity,
@@ -59,7 +73,8 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
         usesLastKnownUsage: Bool = false,
         snapshot: UsageSnapshot?,
         error: String?,
-        sourceLabel: String?)
+        sourceLabel: String?,
+        condition: ProviderAccountCondition = .ok)
     {
         self.id = id
         self.provider = provider
@@ -74,5 +89,6 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
         self.snapshot = snapshot
         self.error = error
         self.sourceLabel = sourceLabel
+        self.condition = condition
     }
 }

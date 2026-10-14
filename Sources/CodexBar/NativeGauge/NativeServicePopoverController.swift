@@ -22,8 +22,12 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         var activateLogin: ((NativeOrbitAccountSelection) async -> NativeAccountActivationResult)?
         var refreshForSwitch: (() async -> Void)?
         var switchingAllowed: (() -> Bool)?
+        var statusPage: () -> Void = {}
         var didClose: () -> Void = {}
     }
+
+    /// Whether this launch's bulb check has run; it runs once, in the first popup opened.
+    private static var bulbCheckDone = false
 
     static let contentSize = NSSize(width: 240, height: 513)
     private let provider: UsageProvider
@@ -48,6 +52,8 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     /// wait behind presentation rebuilds; an open popup follows them promptly.
     private var presentationDirty = false
     private var presentationRefreshTask: Task<Void, Never>?
+    private var pendingBulbCheck = false
+    private var switchingCheckedAt: Date?
 
     init(
         provider: UsageProvider,
@@ -101,7 +107,8 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
             activate: { [weak self] id in self?.activateAccount(id: id) },
             signIn: self.canSignIn ? self.actions.signIn : nil,
             refresh: { [weak self] in self?.refreshUsage() },
-            settings: { [weak self] in self?.openSettings() }))
+            settings: { [weak self] in self?.openSettings() },
+            lightAction: { [weak self] in self?.handleLight($0) }))
         self.view.frame = NSRect(origin: .zero, size: self.preferredContentSize)
         self.observePresentation()
         self.reloadClaudeLocalArchive()
@@ -165,6 +172,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
                 self.orbitState.accounts,
                 requestedAt: self.manualLoadStartedAt)
         }
+        self.updateSwitchingAvailability()
         let color = self.settings.accentColor(for: self.provider)
         self.orbitState.accent = Color(red: color.red, green: color.green, blue: color.blue)
         let badgeKey = NativeOrbitBadgeResolver.identityKey(self.orbitState.accounts)
@@ -211,6 +219,50 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         if self.orbitState.isReady != ready { self.orbitState.isReady = ready }
         let columns = ready ? shown : max(shown, defaults.integer(forKey: key))
         if self.orbitState.layoutColumns != columns { self.orbitState.layoutColumns = columns }
+        self.runBulbCheckIfReady()
+    }
+
+    /// The first popup after launch checks its bulbs once its columns are showing.
+    private func runBulbCheckIfReady() {
+        guard self.pendingBulbCheck, self.orbitState.isReady, self.popover?.isShown == true else { return }
+        self.pendingBulbCheck = false
+        Task { @MainActor [orbitState = self.orbitState] in
+            // After the popup's opening and the columns' fade-in.
+            try? await Task.sleep(for: .milliseconds(350))
+            await orbitState.runBulbCheck()
+        }
+    }
+
+    /// Why this setup cannot switch the provider's login, rechecked at most every half minute (it reads a config
+    /// file). Only providers whose logins CodexBar switches have a reason.
+    private func updateSwitchingAvailability() {
+        let now = Date()
+        if let checked = self.switchingCheckedAt, now.timeIntervalSince(checked) < 30 { return }
+        self.switchingCheckedAt = now
+        let environment = self.store.environmentBase
+        // Provider-specific by design: only Codex and Claude Code logins are switched, each with its own requirements.
+        let reason: String? = switch self.provider {
+        case .codex: NativeCodexActivationCapability.unavailabilityReason(environment: environment)
+        case .claude: NativeAccountActivationVerification.claudeEnvironmentAllowsActivation(environment) ? nil
+            : "Switching needs a Claude Code login without token or profile environment overrides."
+        default: nil
+        }
+        if self.orbitState.switchingUnavailable != reason { self.orbitState.switchingUnavailable = reason }
+    }
+
+    private func handleLight(_ action: NativeOrbitWarningLight.Action) {
+        switch action {
+        case .signIn:
+            // One account signs in from here; several re-authenticate the one that failed in Settings.
+            if self.canSignIn, self.orbitState.accounts.count == 1 {
+                self.actions.signIn()
+            } else {
+                self.openSettings()
+            }
+        case .statusPage: self.actions.statusPage()
+        case .refresh: self.refreshUsage()
+        case .settings: self.openSettings()
+        }
     }
 
     /// Every press of the toolbar's refresh lands here; `NativePopoverManualRefresh` decides whether it starts a
@@ -350,6 +402,11 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     }
 
     func popoverDidShow(_ notification: Notification) {
+        if !Self.bulbCheckDone {
+            Self.bulbCheckDone = true
+            self.pendingBulbCheck = true
+            self.runBulbCheckIfReady()
+        }
         self.presentationClockTask?.cancel()
         self.presentationClockTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {

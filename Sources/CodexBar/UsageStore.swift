@@ -160,6 +160,8 @@ final class UsageStore {
     var snapshots: [ProviderInstanceID: UsageSnapshot] = [:]
     var errors: [ProviderInstanceID: String] = [:]
     var nativeAuthenticationFailures: Set<CredentialNotificationKey> = []
+    /// The warning light each account's last failed fetch turned on, until a fresh reading turns it off.
+    var nativeFetchFaults: [CredentialNotificationKey: NativeOrbitWarningLight] = [:]
     var nativeClaudeCredentialPresentationScope: NativeClaudeCredentialPresentationScope?
     var diagnostics: [ProviderInstanceID: String] = [:]
     var geminiMigrationObservation: GeminiMigrationObservation = .none

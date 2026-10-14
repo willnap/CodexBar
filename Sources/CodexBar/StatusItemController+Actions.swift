@@ -495,6 +495,11 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
         self.openStatusPage(for: provider)
     }
 
+    /// The provider's status page, for the popup's provider warning lights.
+    func openProviderStatusPage(_ provider: UsageProvider) {
+        self.openStatusPage(for: provider)
+    }
+
     private func openStatusPage(for provider: UsageProvider) {
         let meta = self.store.metadata(for: provider)
         let urlString = meta.statusPageURL ?? meta.statusLinkURL

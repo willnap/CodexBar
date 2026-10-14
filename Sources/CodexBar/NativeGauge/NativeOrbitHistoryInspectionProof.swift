@@ -175,6 +175,8 @@ enum NativeOrbitHistoryInspectionProof {
                 "active": account.isActive,
                 // A remembered reading stands in for this column's local usage until the live one publishes.
                 "usageLastKnownAt": account.usageLastKnownAt?.timeIntervalSince1970 as Any? ?? NSNull(),
+                // The store's warning lights with their reasons (the popup adds fuel and steering itself).
+                "warningLights": account.warnings.map { "\($0.kind)/\($0.severity): \($0.detail)" },
                 "updatedAt": account.updatedAt?.timeIntervalSince1970 as Any? ?? NSNull(),
                 "dailyTokenBuckets": metrics.usage?.daily.count ?? 0,
                 "datedUsageEvents": metrics.usage?.quotaSlices.count ?? 0,

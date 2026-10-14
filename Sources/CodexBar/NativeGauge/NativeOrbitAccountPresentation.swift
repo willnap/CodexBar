@@ -42,6 +42,8 @@ struct NativeOrbitAccountPresentation: Identifiable {
     var historySourceLabel: String?
     /// The token and spend corners show a remembered reading measured at this time until the live one publishes.
     var usageLastKnownAt: Date?
+    /// The dial's lit warning lights the store can see (the popup adds its own: quota and switching).
+    var warnings: [NativeOrbitWarningLight] = []
 }
 
 extension UsageStore {
@@ -83,6 +85,7 @@ extension UsageStore {
                         provider: provider,
                         key: historyKey),
                     selection: .none,
+                    faultScope: Self.warningTokenAccountDiscriminator(account) ?? "default",
                     localUsage: self.nativeOrbitCachedUsageReport(for: provider, tokenAccount: account))
             }
             if self.settings.nativeTokenAccountOptions(for: provider).contains(where: { $0.id == "automatic" }) {
@@ -106,7 +109,8 @@ extension UsageStore {
                 snapshot: nil,
                 error: nil,
                 history: [],
-                selection: .none)]
+                selection: .none,
+                faultScope: "default")]
         }
         let accounts = Self.nativeOrbitCodexAccountsWithoutImportedCopies(projection.visibleAccounts)
         let labels = Self.nativeOrbitCodexLabels(accounts, hidePersonalInfo: self.settings.hidePersonalInfo)
@@ -182,6 +186,9 @@ extension UsageStore {
                 history: context.history,
                 // Provider-specific by design: only a reconciled Codex account can select its credential scope.
                 selection: .codex(account),
+                // Its own visible account's fetch outcomes (`handleCodexCredentialOutcome`).
+                faultScope: Self.nativeCodexFaultScope(account.id),
+                extraWarnings: account.authenticationHealthLabel == nil ? [] : [Self.nativeCodexMissingAuthLight],
                 autoSwitchEligible: !context.active && !account
                     .isLive && (account.storedAccountID != nil || context.verifiedProfileOwner)
                     && account.authenticationHealthLabel == nil && context.record?.snapshot != nil
@@ -230,6 +237,12 @@ extension UsageStore {
             labels[account.id] = "\(email) · \(distinct ? name ?? "" : number(account))"
         }
     }
+
+    private static let nativeCodexMissingAuthLight = NativeOrbitWarningLight(
+        .signIn,
+        .critical,
+        "This saved Codex login has no credentials. Re-authenticate it.",
+        action: .settings)
 
     private static func nativeOrbitCodexAccountsWithoutImportedCopies(
         _ accounts: [CodexVisibleAccount]) -> [CodexVisibleAccount]
@@ -281,6 +294,7 @@ extension UsageStore {
                 adapter: account.snapshot,
                 ambient: ambient)
             let localUsage = self.nativeOrbitClaudeResolvedLocalUsage(account)
+            let warnings = self.nativeOrbitClaudeSwapWarnings(account)
             let displayError = account.usesLastKnownUsage && ambient == nil
                 ? error ?? L(
                     "claude_showing_last_known_usage",
@@ -302,6 +316,10 @@ extension UsageStore {
                     account,
                     ambient: ambient),
                 selection: .claudeSwap(account),
+                // claude-swap owns this row's fetching; its own report lights the dial.
+                faultScope: nil,
+                extraWarnings: warnings.lights,
+                errorExplained: warnings.explained,
                 autoSwitchEligible: account.autoSwitchEligible && account.canActivate && !account.usesLastKnownUsage
                     && account.snapshot != nil && !switching && error == nil,
                 autoSwitchWindows: snapshot.map { [$0.primary, $0.secondary] } ?? [],
@@ -328,7 +346,8 @@ extension UsageStore {
             snapshot: nil,
             error: nil,
             history: [],
-            selection: .none)
+            selection: .none,
+            faultScope: nil)
     }
 
     private func nativeOrbitAmbientAccount(
@@ -354,6 +373,13 @@ extension UsageStore {
         let usageLastKnownAt = reports.local.flatMap { local in
             ambientLocal?.lastKnownAt.flatMap { local.snapshot.updatedAt == $0 ? $0 : nil }
         }
+        let ambientMetrics = NativeOrbitAccountMetrics.make(
+            provider: provider,
+            snapshot: snapshot,
+            usage: reports.usage,
+            now: Date(),
+            localUsage: reports.local,
+            quotaHistory: sourceHistory)
         let accountLabel = presentation.model.email.isEmpty
             ? self.metadata(for: provider).displayName
             : presentation.model.email
@@ -377,13 +403,7 @@ extension UsageStore {
                 in: self.userFacingError(for: provider),
                 isEnabled: self.settings.hidePersonalInfo),
             selection: .none,
-            metrics: .make(
-                provider: provider,
-                snapshot: snapshot,
-                usage: reports.usage,
-                now: Date(),
-                localUsage: reports.local,
-                quotaHistory: sourceHistory),
+            metrics: ambientMetrics,
             quotaLabels: Self.nativeOrbitQuotaLabels(
                 provider: provider,
                 snapshot: snapshot),
@@ -391,7 +411,16 @@ extension UsageStore {
                 provider: provider,
                 snapshot: snapshot),
             historySourceLabel: isAnonymousSource ? L("Account not recorded") : nil,
-            usageLastKnownAt: usageLastKnownAt)
+            usageLastKnownAt: usageLastKnownAt,
+            warnings: self.nativeOrbitWarnings(
+                provider: provider,
+                faultScope: self.nativeGaugeCredentialScope(for: provider) ?? "default",
+                updatedAt: snapshot?.updatedAt,
+                metrics: ambientMetrics,
+                error: self.userFacingError(for: provider),
+                extra: presentation.gauge.health == .authentication
+                    ? [NativeOrbitFetchFault.signInLight(self.metadata(for: provider).displayName)] : [],
+                errorExplained: false))
     }
 
     // swiftlint:disable:next function_parameter_count
@@ -407,6 +436,9 @@ extension UsageStore {
         credits: CreditsSnapshot? = nil,
         history: [PlanUtilizationSeriesHistory],
         selection: NativeOrbitAccountSelection,
+        faultScope: String?,
+        extraWarnings: [NativeOrbitWarningLight] = [],
+        errorExplained: Bool = false,
         autoSwitchEligible: Bool = false,
         autoSwitchWindows: [RateWindow?] = [],
         localUsage: NativeOrbitLocalUsage? = nil,
@@ -510,7 +542,15 @@ extension UsageStore {
             quotaWindows: Self.nativeOrbitQuotaWindowMap(
                 provider: provider,
                 snapshot: historySnapshot),
-            usageLastKnownAt: localUsage == nil ? nil : usageLastKnownAt)
+            usageLastKnownAt: localUsage == nil ? nil : usageLastKnownAt,
+            warnings: self.nativeOrbitWarnings(
+                provider: provider,
+                faultScope: faultScope,
+                updatedAt: snapshot?.updatedAt,
+                metrics: metrics,
+                error: error,
+                extra: extraWarnings,
+                errorExplained: errorExplained))
     }
 
     private func nativeOrbitHistory(

@@ -908,6 +908,23 @@ private struct RPCRateLimitsErrorBody: Decodable {
     }
 }
 
+/// What a failed Codex app-server request says about its cause, for callers that sort failures by cause.
+public enum CodexRPCFailure {
+    /// The HTTP status of the backend request the app-server reports ("GET … failed: 401 Unauthorized").
+    public static func httpStatus(of error: Error) -> Int? {
+        guard case let RPCWireError.requestFailed(message) = error,
+              let range = message.range(of: #"failed: [1-5][0-9]{2}\b"#, options: .regularExpression)
+        else { return nil }
+        return Int(message[range].suffix(3))
+    }
+
+    /// The Codex app-server could not be started.
+    public static func isStartFailure(_ error: Error) -> Bool {
+        if case RPCWireError.startFailed = error { return true }
+        return false
+    }
+}
+
 enum RPCWireError: Error, LocalizedError {
     case startFailed(String)
     case requestFailed(String)

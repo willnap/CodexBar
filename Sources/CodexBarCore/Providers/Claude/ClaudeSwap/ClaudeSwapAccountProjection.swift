@@ -52,7 +52,19 @@ public enum ClaudeSwapAccountProjection {
                 usesLastKnownUsage: projected.usesLastKnownUsage,
                 snapshot: snapshot,
                 error: self.errorText(for: row, usage: projected, now: now),
-                sourceLabel: self.sourceLabel)
+                sourceLabel: self.sourceLabel,
+                condition: self.condition(for: row.usageStatus))
+        }
+    }
+
+    public static func condition(for status: ClaudeSwapUsageStatus) -> ProviderAccountCondition {
+        switch status {
+        case .ok: .ok
+        case .tokenExpired, .reloginRequired, .keychainUnavailable, .noCredentials, .foreignCredential:
+            .credentialProblem
+        case .unavailable: .usageUnavailable
+        case .apiKey: .notApplicable
+        case .unknown: .unrecognized
         }
     }
 

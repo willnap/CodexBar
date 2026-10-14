@@ -844,6 +844,7 @@ extension UsageStore {
         self.handleCredentialOutcome(
             provider: provider,
             account: self.credentialAccount(provider: provider, context: context),
+            nativeFaultScope: self.nativeAmbientFaultScope(provider),
             result: .failure(error))
         self.bindCodexFailurePublicationOwner(
             provider: provider,

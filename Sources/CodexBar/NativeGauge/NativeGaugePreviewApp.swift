@@ -219,7 +219,7 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
                 updatedAt: self.now)
             metrics.bankedResets = 2
             metrics.usedResets = 1
-            return NativeOrbitAccountPresentation(
+            var presentation = NativeOrbitAccountPresentation(
                 id: "fixture-\(index)",
                 label: index == 0 ? "Personal · Preview" : "Work · Preview",
                 email: nil,
@@ -246,8 +246,15 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
                 metrics: metrics,
                 quotaLabels: UsageStore.nativeOrbitQuotaLabels(provider: provider, snapshot: snapshot),
                 quotaWindows: UsageStore.nativeOrbitQuotaWindowMap(provider: provider, snapshot: snapshot))
+            presentation.warnings = Self.fixtureLights(column: index)
+            return presentation
         }
         state.accounts = (0..<count).map { makeAccount($0, $0 == 0) }
+        // Every launch's first popup checks its bulbs, as the live one does.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            await state.runBulbCheck()
+        }
         // A fixture switch: a short wait, then the target becomes active, or with `CODEXBAR_PREVIEW_SWITCH_FAILS`
         // the failure a real switch reports. `CODEXBAR_PREVIEW_SWITCH_AFTER` (seconds) starts one unattended.
         var target: String?
@@ -308,6 +315,22 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
         self.recordPreview(popover)
+    }
+
+    /// `CODEXBAR_PREVIEW_LIGHTS`: "all" lights every kind in every dial (red where a kind can be), otherwise a comma
+    /// list of kind names (`signIn,quota`) lights those, amber.
+    private static func fixtureLights(column: Int) -> [NativeOrbitWarningLight] {
+        guard let value = ProcessInfo.processInfo.environment["CODEXBAR_PREVIEW_LIGHTS"] else { return [] }
+        let all = NativeOrbitWarningLight.Kind.allCases
+        let kinds: [NativeOrbitWarningLight.Kind] = value == "all"
+            ? all : value.split(separator: ",").compactMap { name in all.first { name == "\($0)" } }
+        return kinds.map { kind in
+            .init(
+                kind,
+                value == "all" && kind.canBeCritical && column == 0 ? .critical : .caution,
+                "Fixture: \(kind.name)",
+                action: .refresh)
+        }
     }
 
     private func recordPreview(_ popover: NSPopover) {

@@ -43,27 +43,45 @@ extension UsageStore {
                   allowProviderAccountAuthFingerprintMismatch: snapshot != nil) != nil else { return }
         let owner = Self.codexSessionQuotaOwnerKey(for: Self.codexScopedRefreshGuard(for: account))
         // Provider-specific by design: this helper validates Codex visible-account ownership before publication.
-        self.handleCredentialOutcome(provider: .codex, account: owner?.rawValue ?? account.id, result: outcome.result)
+        self.handleCredentialOutcome(
+            provider: .codex,
+            account: owner?.rawValue ?? account.id,
+            nativeFaultScope: Self.nativeCodexFaultScope(account.id),
+            result: outcome.result)
+    }
+
+    /// A Codex column's warning lights follow its own visible account. Copies of one login (an imported profile home
+    /// beside its saved account) share an owner, and a hidden copy's failure must not light the column shown.
+    nonisolated static func nativeCodexFaultScope(_ visibleAccountID: String) -> String {
+        "visible:\(visibleAccountID)"
     }
 
     /// Only accepted, fresh fetch outcomes can end an episode; cached/fallback usage cannot prove recovery.
     func handleCredentialOutcome(
         provider: UsageProvider,
         account: String = "default",
+        nativeFaultScope: String? = nil,
         result: Result<ProviderFetchResult, Error>,
         isCurrent: @escaping @MainActor () -> Bool = { true })
     {
         guard !self.credentialNotificationsStopped else { return }
         let key = CredentialNotificationKey(provider: provider, account: account)
+        let faultKey = CredentialNotificationKey(provider: provider, account: nativeFaultScope ?? account)
         switch result {
         case let .success(value):
             guard value.diagnostic == nil, value.strategyKind != .localProbe,
                   !value.sourceLabel.lowercased().contains("cache") else { return }
             self.nativeAuthenticationFailures.remove(key)
+            if self.nativeFetchFaults[faultKey] != nil { self.nativeFetchFaults.removeValue(forKey: faultKey) }
             self.removeCredentialNotification(for: key)
         case let .failure(error):
             if ProviderCredentialFailure.isAuthenticationFailure(error) {
                 self.nativeAuthenticationFailures.insert(key)
+            }
+            if let light = NativeOrbitFetchFault.light(for: error, provider: provider),
+               self.nativeFetchFaults[faultKey] != light
+            {
+                self.nativeFetchFaults[faultKey] = light
             }
             guard self.settings.credentialExpiryNotificationsEnabled,
                   ProviderCredentialFailure.isAuthenticationFailure(error),

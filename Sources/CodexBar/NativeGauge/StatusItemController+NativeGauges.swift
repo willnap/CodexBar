@@ -181,6 +181,7 @@ extension StatusItemController {
                         .isEnabled(provider) &&
                         !self.isNativeAccountActivationBlocked(provider: provider)
                 },
+                statusPage: { [weak self] in self?.openProviderStatusPage(provider) },
                 didClose: { [weak self] in
                     self?.nativePopoverRefreshScheduler.cancel()
                     // Hand activation back once nothing of ours is on screen (e.g. closed from its status item).

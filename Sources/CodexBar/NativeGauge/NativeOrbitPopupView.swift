@@ -38,6 +38,10 @@ final class NativeOrbitPopupState {
     /// Why the last refresh from the toolbar did not bring every column up to date; nil once one does.
     var refreshIssue: NativeOrbitRefreshIssue?
     var inspectionDate: Date?
+    /// Why this provider's logins cannot be switched in this setup, for the active dial's switching light.
+    var switchingUnavailable: String?
+    /// Whether every warning light is lit for the bulb check, once after launch.
+    var isBulbCheck = false
     var claudeLocalArchiveHistory: [PlanUtilizationSeriesHistory] = []
     var codexLocalArchiveHistory: [PlanUtilizationSeriesHistory] = []
     var kimiLocalArchiveHistory: [PlanUtilizationSeriesHistory] = []
@@ -170,6 +174,7 @@ struct NativeOrbitPopupView: View {
     let signIn: (() -> Void)?
     var refresh: () -> Void = {}
     var settings: () -> Void = {}
+    var lightAction: (NativeOrbitWarningLight.Action) -> Void = { _ in }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -252,7 +257,10 @@ struct NativeOrbitPopupView: View {
                     inspecting: self.state.inspectionDate,
                     now: self.state.now,
                     end: self.state.chartEnd,
-                    days: self.state.days))
+                    days: self.state.days),
+                lights: self.lights(account, projection: projection),
+                isBulbCheck: self.state.isBulbCheck,
+                lightAction: self.lightAction)
             Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.65)).frame(width: 166, height: 0.5)
                 .overlay { self.hoverPill(account) }
                 // The pill floats over the dial's foot and the chart's top, in front of both.
@@ -352,6 +360,46 @@ struct NativeOrbitPopupView: View {
         return date.formatted(style.year(.omitted))
     }
 
+    /// Everything the dial shows lit: the store's lights, the quota's fuel light and the switch controller's switching
+    /// light. They describe now, whatever moment the pointer reads.
+    private func lights(
+        _ account: NativeOrbitAccountPresentation,
+        projection: NativeOrbitAccountProjection) -> [NativeOrbitWarningLight]
+    {
+        var lights = account.warnings
+        let now = self.state.now
+        for window in account.gauge.resolvedWindows where window.usedFraction.map({ $0 >= 1 }) == true {
+            let name = NativeOrbitGaugeWidget.limitName(window)
+            let reset = window.countdown.flatMap { $0.isReliable ? $0.nextReset : nil }.flatMap { $0 > now ? $0 : nil }
+            lights.append(.init(
+                .quota,
+                .critical,
+                reset.map { "\(name) reached. It resets \(NativeOrbitTooltip.at($0, now: now))." }
+                    ?? "\(name) reached."))
+        }
+        for lane in projection.lanes where lane.originUsed < 100 {
+            guard let runsOut = lane.exhaustion, runsOut > now,
+                  let window = account.gauge.resolvedWindows.first(where: { lane.id == "nativeQuota:\($0.id)" })
+            else { continue }
+            let name = NativeOrbitGaugeWidget.limitName(window)
+            let reset = lane.nextReset(after: now)
+            lights.append(.init(
+                .quota,
+                .caution,
+                "\(name) runs out \(NativeOrbitTooltip.at(runsOut, now: now)) at this pace"
+                    + (reset.map { ", before it resets \(NativeOrbitTooltip.at($0, now: now))." } ?? ".")))
+        }
+        if let switching = self.state.accountSwitch, switching.errorAccountID == account.id,
+           let error = switching.error
+        {
+            lights.append(.init(.switching, .caution, error))
+        }
+        if account.isActive, self.state.accounts.count > 1, let reason = self.state.switchingUnavailable {
+            lights.append(.init(.switching, .caution, reason))
+        }
+        return NativeOrbitWarningLight.merged(lights)
+    }
+
     /// The account's bar: its name at the column's inset, and at the trailing end a checkmark on the active account or
     /// a Switch button on the others. Every column lays it out the same way, so the names line up.
     private func footer(_ account: NativeOrbitAccountPresentation) -> some View {
@@ -430,7 +478,7 @@ struct NativeOrbitPopupView: View {
     }
 }
 
-private struct NativeOrbitGaugeWidget: View {
+struct NativeOrbitGaugeWidget: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let account: NativeOrbitAccountPresentation
     let now: Date
@@ -445,6 +493,9 @@ private struct NativeOrbitGaugeWidget: View {
     var isProjecting = false
     /// Predicted readings soften with distance ahead, like the projection they come from.
     var futureBlur: CGFloat = 0
+    var lights: [NativeOrbitWarningLight] = []
+    var isBulbCheck = false
+    var lightAction: (NativeOrbitWarningLight.Action) -> Void = { _ in }
 
     private var windows: [UsageWindow] {
         NativeOrbitHistoricalInspection.windows(
@@ -489,6 +540,13 @@ private struct NativeOrbitGaugeWidget: View {
             // The face softens ahead of now, labels included; the marks in the middle show no data, so barely.
             self.identity(windows)
                 .blur(radius: self.futureBlur * 0.35)
+            // The warning lights describe now, so they step aside while the pointer reads another moment.
+            NativeOrbitWarningLightsView(
+                lights: self.lights,
+                lanes: min(3, max(1, windows.count)),
+                isBulbCheck: self.isBulbCheck,
+                action: self.lightAction)
+                .opacity(self.inspectionDate == nil ? 1 : 0)
             NativeOrbitInstruments(
                 account: self.account,
                 days: self.days,

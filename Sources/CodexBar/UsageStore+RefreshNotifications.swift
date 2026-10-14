@@ -83,6 +83,7 @@ extension UsageStore {
         self.handleCredentialOutcome(
             provider: provider,
             account: self.credentialAccount(provider: provider, context: context),
+            nativeFaultScope: self.nativeAmbientFaultScope(provider),
             result: .success(result))
         let warningAccounts = self.warningAccountDiscriminators(
             provider: provider,
