@@ -88,6 +88,92 @@ struct NativeOrbitAccountPresentationTests {
         #expect(store.planUtilizationHistory[.codex]?.unscoped.count == 1)
     }
 
+    @Test func `a live Codex refresh retains the cached quota before credits finish publishing`() throws {
+        let store = self.store()
+        let account = self.codexAccount(id: "live", email: "owner@example.com", active: true)
+        let cached = self.snapshot(used: 25)
+        store.codexAccountSnapshots = [CodexAccountUsageSnapshot(
+            account: account, snapshot: cached, error: nil, sourceLabel: "fixture")]
+        store.lastCodexUsagePublicationGuard = UsageStore.codexScopedRefreshGuard(for: account)
+        store.snapshots[.codex] = nil
+        store.credits = CreditsSnapshot(
+            remaining: 80,
+            events: [],
+            updatedAt: Date(),
+            codexCreditLimit: .init(used: 20, limit: 100, remainingPercent: 80, resetsAt: nil, updatedAt: Date()))
+        let projection = CodexVisibleAccountProjection(
+            visibleAccounts: [account],
+            activeVisibleAccountID: account.id,
+            liveVisibleAccountID: account.id,
+            hasUnreadableAddedAccountStore: false)
+        let row = try #require(store.nativeOrbitCodexAccounts(projection).first)
+        #expect(row.gauge.resolvedWindows.first?.id == "session")
+        #expect(row.gauge.resolvedWindows.first?.usedFraction == 0.25)
+        #expect(row.updatedAt == cached.updatedAt)
+        store.settings.cachedCodexAccountMenuProjection = .init(
+            activeSource: store.settings.codexActiveSource, loadedAt: Date(), projection: projection)
+        let service = store.nativeServicePresentation(for: .codex)
+        #expect(service.gauge.resolvedWindows.first?.id == "session")
+        #expect(service.gauge.resolvedWindows.first?.usedFraction == 0.25)
+    }
+
+    @Test func `Codex switch inventory survives invalidation and yields to verified removal`() {
+        let store = self.store()
+        let account = self.codexAccount(id: "live", email: "owner@example.com", active: true)
+        let projection = CodexVisibleAccountProjection(
+            visibleAccounts: [account],
+            activeVisibleAccountID: account.id,
+            liveVisibleAccountID: account.id,
+            hasUnreadableAddedAccountStore: false)
+        store.nativeCodexAccountSwitchPresentation = .init(projection: projection, snapshots: [])
+        store.settings.cachedCodexAccountMenuProjection = nil
+        #expect(store.nativeOrbitAccounts(for: .codex).map(\.id) == ["live"])
+        let removed = CodexVisibleAccountProjection(
+            visibleAccounts: [],
+            activeVisibleAccountID: nil,
+            liveVisibleAccountID: nil,
+            hasUnreadableAddedAccountStore: false)
+        store.settings.cachedCodexAccountMenuProjection = .init(
+            activeSource: store.settings.codexActiveSource, loadedAt: Date(), projection: removed)
+        #expect(!store.nativeOrbitAccounts(for: .codex).contains { $0.id == "live" })
+        store.settings.cachedCodexAccountMenuProjection = nil
+        store.nativeCodexAccountSwitchPresentation = nil
+        #expect(!store.nativeOrbitAccounts(for: .codex).contains { $0.id == "live" })
+    }
+
+    @Test func `Codex switch fills a partial owner receipt and releases absent windows afterward`() throws {
+        let store = self.store()
+        let account = self.codexAccount(id: "live", email: "owner@example.com", active: true)
+        let projection = CodexVisibleAccountProjection(
+            visibleAccounts: [account],
+            activeVisibleAccountID: account.id,
+            liveVisibleAccountID: account.id,
+            hasUnreadableAddedAccountStore: false)
+        let complete = UsageSnapshot(
+            primary: RateWindow(usedPercent: 25, windowMinutes: 300, resetsAt: nil, resetDescription: nil),
+            secondary: RateWindow(usedPercent: 60, windowMinutes: 10080, resetsAt: nil, resetDescription: nil),
+            updatedAt: Date().addingTimeInterval(-60),
+            identity: .init(
+                providerID: .codex,
+                accountEmail: account.email,
+                accountOrganization: nil,
+                loginMethod: "Pro"))
+        let partial = self.snapshot(used: 30)
+        let previous = CodexAccountUsageSnapshot(
+            account: account, snapshot: complete, error: nil, sourceLabel: "fixture")
+        store.nativeCodexAccountSwitchPresentation = .init(projection: projection, snapshots: [previous])
+        store.codexAccountSnapshots = [CodexAccountUsageSnapshot(
+            account: account, snapshot: partial, error: nil, sourceLabel: "fixture")]
+        store.snapshots[.codex] = partial
+        store.lastCodexUsagePublicationGuard = UsageStore.codexScopedRefreshGuard(for: account)
+        let during = try #require(store.nativeOrbitCodexAccounts(projection).first)
+        #expect(during.gauge.resolvedWindows.contains { $0.id == "session" && $0.usedFraction == 0.30 })
+        #expect(during.gauge.resolvedWindows.contains { $0.id == "weekly" && $0.usedFraction == 0.60 })
+        store.nativeCodexAccountSwitchPresentation = nil
+        let settled = try #require(store.nativeOrbitCodexAccounts(projection).first)
+        #expect(!settled.gauge.resolvedWindows.contains { $0.id == "weekly" })
+    }
+
     @Test func `ClaudeSwap missing and foreign provider readings stay unknown`() {
         let store = self.store()
         store.settings.claudeSwapEnabled = true

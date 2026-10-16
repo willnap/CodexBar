@@ -52,9 +52,10 @@ enum ProviderPluginSnapshotMapper {
         try self.object(
             value,
             allowed: [
-                "primary", "secondary", "tertiary", "extraWindows", "cost", "costUsage", "details",
+                "primary", "secondary", "tertiary", "extraWindows", "cost", "balance", "costUsage", "details",
                 "identity",
-                "subscriptionRenewsAt", "subscriptionExpiresAt", "dataConfidence", "empty",
+                "subscriptionRenewsAt", "subscriptionExpiresAt", "subscriptionStatus", "subscriptionIsActive",
+                "dataConfidence", "empty",
             ],
             path: "usage")
 
@@ -62,11 +63,19 @@ enum ProviderPluginSnapshotMapper {
         let secondary = try self.window(value, property: "secondary", percentPolicy: percentPolicy)
         let tertiary = try self.window(value, property: "tertiary", percentPolicy: percentPolicy)
         let extraRateWindows = try self.extraWindows(value, percentPolicy: percentPolicy)
-        let providerCost = try self.cost(value, now: now)
+        let cost = try self.cost(value, now: now)
+        let balance = try self.balance(value, now: now)
+        let queriedBalance = value.property("balance").map { !$0.isUndefined } ?? false
+        guard cost == nil || !queriedBalance else {
+            throw ProviderPluginError.invalidSnapshot("balance and cost cannot describe separate pools in one snapshot")
+        }
+        let providerCost = cost ?? balance
         let costUsage = try self.costUsage(value, now: now)
         let details = try self.details(value)
         let identity = try self.identity(value, provider: provider)
         let subscriptionRenewsAt = try self.optionalDate(value, property: "subscriptionRenewsAt")
+        let subscriptionStatus = try self.optionalString(value, property: "subscriptionStatus", path: "usage")
+        let subscriptionIsActive = try self.optionalBoolean(value, property: "subscriptionIsActive", path: "usage")
         let subscriptionExpiresAt = try self.optionalDate(value, property: "subscriptionExpiresAt")
         let dataConfidence = try self.dataConfidence(value)
         let empty = value.property("empty")
@@ -93,6 +102,8 @@ enum ProviderPluginSnapshotMapper {
             providerCost: providerCost,
             costUsage: costUsage,
             details: details,
+            subscriptionStatus: subscriptionStatus,
+            subscriptionIsActive: subscriptionIsActive,
             subscriptionExpiresAt: subscriptionExpiresAt,
             subscriptionRenewsAt: subscriptionRenewsAt,
             updatedAt: now,
@@ -322,7 +333,7 @@ enum ProviderPluginSnapshotMapper {
             resetsAt: resetsAt,
             nextRegenAmount: nextRegenAmount,
             balance: balance,
-            balanceUpdatedAt: balance == nil ? nil : balanceUpdatedAt ?? now,
+            balanceUpdatedAt: balanceUpdatedAt ?? (balance == nil ? nil : now),
             usageIsUnavailable: unavailable?.isBoolean == true ? unavailable?.boolValue() : nil,
             updatedAt: now)
     }
@@ -795,5 +806,49 @@ enum ProviderPluginSnapshotMapper {
             throw ProviderPluginError.invalidSnapshot("\(path).\(property) is not a valid ISO-8601 date")
         }
         return date
+    }
+}
+
+extension ProviderPluginSnapshotMapper {
+    /// A standalone wallet has an explicit unit but no measured spending or allowance. Do not parse display text,
+    /// assume credits are dollars, or turn its available balance into a fabricated used/limit pair.
+    fileprivate static func balance(_ root: any ProviderPluginValue, now: Date) throws -> ProviderCostSnapshot? {
+        guard let value = root.property("balance"), !value.isUndefined else { return nil }
+        if value.isNull {
+            // A successful unavailable wallet observation breaks continuity without asserting any denomination.
+            return ProviderCostSnapshot(
+                used: 0,
+                limit: 0,
+                currencyCode: "XXX",
+                balanceUpdatedAt: now,
+                usageIsUnavailable: true,
+                updatedAt: now)
+        }
+        guard value.isObject, !value.isArray else {
+            throw ProviderPluginError.invalidSnapshot("balance must be an object")
+        }
+        try self.object(value, allowed: ["value", "unit", "updatedAt", "isWorkspace"], path: "balance")
+        let amount = try self.requiredFiniteNumber(value, property: "value", path: "balance")
+        let unit = try self.requiredString(value, property: "unit", path: "balance")
+        guard !unit.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              unit.utf8.count <= 64,
+              unit.rangeOfCharacter(from: .controlCharacters) == nil
+        else {
+            throw ProviderPluginError.invalidSnapshot("balance.unit must be a nonempty unit without control characters")
+        }
+        let observedAt = try self.optionalDate(value, property: "updatedAt", path: "balance") ?? now
+        guard observedAt <= now else {
+            throw ProviderPluginError.invalidSnapshot("balance.updatedAt cannot be in the future")
+        }
+        let workspace = try self.optionalBoolean(value, property: "isWorkspace", path: "balance")
+        return ProviderCostSnapshot(
+            used: 0,
+            limit: 0,
+            currencyCode: unit,
+            balance: amount,
+            balanceUpdatedAt: observedAt,
+            balanceIsWorkspace: workspace,
+            usageIsUnavailable: true,
+            updatedAt: now)
     }
 }

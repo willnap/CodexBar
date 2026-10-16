@@ -88,6 +88,14 @@ struct MenuBarLayoutRenderData: Hashable {
     /// Numeric twins of the display strings above, for conditional predicates.
     let metrics: MenuBarLayoutRenderMetrics
 
+    /// Balance-only services retain their legacy automatic reset-token alias without a quota window.
+    var automaticBalanceResetAlias: String? {
+        guard self.automatic == nil,
+              ProviderDescriptorRegistry.descriptor(for: self.provider).metadata.balanceOnly
+        else { return nil }
+        return self.automaticText ?? self.balance
+    }
+
     func extraTitle(_ id: String) -> String? {
         ProviderDescriptorRegistry.descriptor(for: self.provider).menuBarMetrics.namedExtras[id].map { title in
             self.extraRateWindows.first { $0.id == id }?.title ?? L(title)
@@ -205,10 +213,16 @@ struct MenuBarLayoutResetText: Hashable {
     let countdown: String?
     let absolute: String?
 
-    init(window: MenuBarLayoutRenderWindow?, provider: UsageProvider, now: Date) {
+    init(
+        window: MenuBarLayoutRenderWindow?,
+        provider: UsageProvider,
+        now: Date,
+        balanceFallback: String? = nil)
+    {
         let metadata = ProviderDescriptorRegistry.descriptor(for: provider).metadata
         // Balance-only providers keep their documented legacy reset-token balance aliases.
-        let fallback = metadata.usesDetailBackedWindow && !metadata.balanceOnly ? nil : window?.resetDescription
+        let description = window?.resetDescription ?? (metadata.balanceOnly ? balanceFallback : nil)
+        let fallback = metadata.usesDetailBackedWindow && !metadata.balanceOnly ? nil : description
         self.countdown = window?.resetsAt
             .map { UsageFormatter.resetCountdownDescription(from: $0, now: now) } ?? fallback
         self.absolute = window?.resetsAt.map { UsageFormatter.resetDescription(from: $0, now: now) } ?? fallback
@@ -309,7 +323,11 @@ final class MenuBarLayoutRenderer {
         let resetText = PercentWindow.allCases
             .filter { $0 == .automatic || resetWindows.contains($0) }
             .map {
-                MenuBarLayoutResetText(window: Self.window($0, data: data), provider: data.provider, now: options.now)
+                MenuBarLayoutResetText(
+                    window: Self.window($0, data: data),
+                    provider: data.provider,
+                    now: options.now,
+                    balanceFallback: $0 == .automatic ? data.automaticBalanceResetAlias : nil)
             }
         // Evaluate each conditional exactly once per render: the outcome is both a cache-key component
         // and what the token resolver needs, so re-testing per placement would only duplicate work.
@@ -535,14 +553,18 @@ final class MenuBarLayoutRenderer {
     {
         // A balance fallback is not a second reset value when automatic percent already shows it.
         guard let balance = data.automaticText, data.automatic?.resetsAt == nil,
-              data.automatic?.resetDescription == balance,
+              data.automatic?.resetDescription == balance || data.automaticBalanceResetAlias == balance,
               lines.joined().contains(.percent(window: .automatic))
         else { return }
+        let resets: Set<MenuBarLayoutToken> = [
+            .resetCountdown, .resetAbsolute,
+            .windowResetCountdown(window: .automatic), .windowResetAbsolute(window: .automatic),
+        ]
         let separators: Set<MenuBarLayoutToken> = [.separatorDot, .space]
         lines = lines.map { line in
-            guard line.contains(.resetCountdown) || line.contains(.resetAbsolute) else { return line }
+            guard line.contains(where: resets.contains) else { return line }
             var tokens = line
-            while let index = tokens.firstIndex(where: { $0 == .resetCountdown || $0 == .resetAbsolute }) {
+            while let index = tokens.firstIndex(where: resets.contains) {
                 tokens.remove(at: index)
                 if tokens.prefix(index).allSatisfy(separators.contains) {
                     while let first = tokens.first, separators.contains(first) {
@@ -714,7 +736,11 @@ final class MenuBarLayoutRenderer {
                 accessibilityText: L("Usage bar, %d of 3 filled", filled),
                 attributes: style.attributes)
         case .resetCountdown, .resetAbsolute:
-            let text = MenuBarLayoutResetText(window: data.automatic, provider: data.provider, now: options.now)
+            let text = MenuBarLayoutResetText(
+                window: data.automatic,
+                provider: data.provider,
+                now: options.now,
+                balanceFallback: data.automaticBalanceResetAlias)
             return self.resetToken(
                 item.resetIsAbsolute ? text.absolute : text.countdown,
                 unavailableLabel: item.resetIsAbsolute ? L("Reset time unavailable") : L("Reset countdown unavailable"),
@@ -723,7 +749,8 @@ final class MenuBarLayoutRenderer {
             let text = MenuBarLayoutResetText(
                 window: Self.window(window, data: data),
                 provider: data.provider,
-                now: options.now)
+                now: options.now,
+                balanceFallback: window == .automatic ? data.automaticBalanceResetAlias : nil)
             let label = item.editorLabel(provider: data.provider)
             let value = item.resetIsAbsolute ? text.absolute : text.countdown
             return self.optionalTextToken(
@@ -975,9 +1002,40 @@ final class MenuBarLayoutRenderer {
         guard options.colorByProvider, !options.isHighlighted, !options.isStale, !options.highContrast,
               !options.appearanceName.localizedCaseInsensitiveContains("accessibility")
         else { return nil }
-        let accent = ProviderAccentPalette.color(for: provider)
-        guard self.meetsAppearanceContrast(accent: accent, appearanceName: options.appearanceName) else { return nil }
+        guard let accent = self.displayProviderAccent(
+            ProviderAccentPalette.color(for: provider), appearanceName: options.appearanceName) else { return nil }
         return NSColor(srgbRed: accent.red, green: accent.green, blue: accent.blue, alpha: 1)
+    }
+
+    /// Preserve the configured pigment; only the small menu bar marks receive the least contrast adjustment.
+    /// Mixing toward white/black preserves a chromatic accent's hue. An unreadable neutral still uses native ink.
+    static func displayProviderAccent(_ accent: ProviderColor, appearanceName: String) -> ProviderColor? {
+        if self.meetsAppearanceContrast(accent: accent, appearanceName: appearanceName) { return accent }
+        let isDark = appearanceName.localizedCaseInsensitiveContains("dark")
+        guard isDark || appearanceName.localizedCaseInsensitiveContains("aqua")
+            || appearanceName.localizedCaseInsensitiveContains("light") else { return nil }
+        let channels = [accent.red, accent.green, accent.blue]
+        guard channels.allSatisfy({ $0.isFinite && (0...1).contains($0) }),
+              let darkest = channels.min(), let lightest = channels.max(), lightest - darkest > 0.08
+        else { return nil }
+        let target = isDark ? 1.0 : 0.0
+        func mixed(_ amount: Double) -> ProviderColor {
+            ProviderColor(
+                red: accent.red + (target - accent.red) * amount,
+                green: accent.green + (target - accent.green) * amount,
+                blue: accent.blue + (target - accent.blue) * amount)
+        }
+        var lower = 0.0
+        var upper = 1.0
+        for _ in 0..<16 {
+            let amount = (lower + upper) / 2
+            if self.meetsAppearanceContrast(accent: mixed(amount), appearanceName: appearanceName) {
+                upper = amount
+            } else {
+                lower = amount
+            }
+        }
+        return mixed(upper)
     }
 
     static func meetsAppearanceContrast(accent: ProviderColor, appearanceName: String) -> Bool {

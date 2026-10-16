@@ -94,8 +94,10 @@ defineProvider({
       html,
     );
     const details = [];
+    let reportedBalance;
     const optional = response.optional;
     if (optional?.status === 200 && sameOrigin(optional)) {
+      reportedBalance = null;
       const payg = optional.bodyText;
       const amount = (value) => (value === undefined ? undefined : Number(value.replace(/,/g, "")));
       const balance = amount(
@@ -105,6 +107,7 @@ defineProvider({
         ),
       );
       if (Number.isFinite(balance)) {
+        reportedBalance = { value: balance, unit: "USD" };
         const usage = amount(
           capture(
             "<h2[^>]*>\\s*Usage\\s*</h2>\\s*<span[^>]*>\\s*Total(?:<!--\\s*-->)?:\\s*(?:<!--\\s*-->)?\\$?([0-9][0-9,]*(?:\\.[0-9]+)?)\\s*</span>",
@@ -129,6 +132,7 @@ defineProvider({
     return {
       primary,
       secondary,
+      balance: reportedBalance,
       details,
       identity: { loginMethod: [plan, price].filter(Boolean).join(" ") || undefined },
     };

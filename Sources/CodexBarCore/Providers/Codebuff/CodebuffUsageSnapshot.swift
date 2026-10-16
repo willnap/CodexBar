@@ -71,6 +71,7 @@ public struct CodebuffUsageSnapshot: Sendable {
                     usageIsUnavailable: true,
                     updatedAt: self.updatedAt)
             },
+            subscriptionStatus: self.subscriptionStatus,
             updatedAt: self.updatedAt,
             identity: identity)
     }
@@ -78,16 +79,15 @@ public struct CodebuffUsageSnapshot: Sendable {
     private func makeCreditsWindow() -> RateWindow? {
         let credits = CreditUsage(used: self.creditsUsed, total: self.creditsTotal, remaining: self.creditsRemaining)
         let total = credits.total
-        guard let total, total > 0 else {
+        guard let total, total.isFinite, total > 0, credits.used.isFinite else {
             if self.creditsRemaining != nil || self.creditsUsed != nil {
-                // Degenerate case: no usable quota in the payload. Surface the row as fully
-                // exhausted so missing quota data is visibly surfaced (matches Kilo's behaviour
-                // for zero/unknown totals) rather than rendering a misleading healthy bar.
+                // Keep the source-compatible descriptive slot without asserting a measured allowance.
                 return RateWindow(
                     usedPercent: 100,
                     windowMinutes: nil,
                     resetsAt: self.nextQuotaReset,
-                    resetDescription: nil)
+                    resetDescription: nil,
+                    isSyntheticPlaceholder: true)
             }
             return nil
         }
@@ -101,11 +101,12 @@ public struct CodebuffUsageSnapshot: Sendable {
             usedPercent: percent,
             windowMinutes: nil,
             resetsAt: self.nextQuotaReset,
-            resetDescription: nil)
+            resetDescription: nil,
+            isSyntheticPlaceholder: self.creditsUsed == nil && self.creditsRemaining == nil)
     }
 
     private func makeWeeklyWindow() -> RateWindow? {
-        guard let limit = self.weeklyLimit, limit > 0 else { return nil }
+        guard let limit = self.weeklyLimit, limit.isFinite, limit > 0 else { return nil }
         let used = max(0, self.weeklyUsed ?? 0)
         let percent = UsagePercent(used: used, limit: limit).displayClamped
         // Same reasoning as above: avoid encoding non-reset detail in `resetDescription`.
@@ -113,7 +114,8 @@ public struct CodebuffUsageSnapshot: Sendable {
             usedPercent: percent,
             windowMinutes: 7 * 24 * 60,
             resetsAt: self.weeklyResetsAt,
-            resetDescription: nil)
+            resetDescription: nil,
+            isSyntheticPlaceholder: self.weeklyUsed?.isFinite != true)
     }
 
     private func makeLoginMethod() -> String? {

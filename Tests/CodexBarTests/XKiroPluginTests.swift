@@ -47,7 +47,7 @@ struct XKiroPluginTests {
             let usage = try await Self.fetch(
                 #"{"object":"usage","free_tokens":{"used_today":\#(limit),"limit_per_day":\#(limit),"remaining":0}}"#,
                 engine: engine)
-            #expect(usage.primary?.usedPercent == 100)
+            #expect(usage.primary?.usedPercent == (limit > 0 ? 100 : nil))
             #expect(usage.details.first?.rows[2].value == "0")
         }
     }

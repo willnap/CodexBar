@@ -29,16 +29,21 @@ extension UsageStore {
             // publication retires earlier requests for this provider.
             self.providerStatusPublishedGenerations[provider.instanceID] = requestGeneration
             self.statuses[provider.instanceID] = status
-            // A component endpoint is best-effort. Preserve the last good list when the
-            // overall status succeeds but the component request or decoding fails.
+            self.nativeStatusFetchFailures.remove(provider.instanceID)
+            // A newer summary supersedes the old component evidence too. Retaining old rows here can
+            // assert a stale component outage indefinitely after the current summary reports recovery.
             if let components {
                 self.statusComponents[provider.instanceID] = components
+            } else {
+                self.statusComponents.removeValue(forKey: provider.instanceID)
             }
             self.emitProviderStatusHooks(provider: provider, indicator: status.indicator)
         } catch {
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { return }
             guard self.statusRefreshPublicationIsCurrent(
                 publicationRevision, requestGeneration: requestGeneration, for: provider) else { return }
             self.recordStartupConnectivityRetryableFailure(error)
+            self.nativeStatusFetchFailures.insert(provider.instanceID)
             // A failed fetch provides no new status information. Preserve a last good status
             // to avoid flapping, or leave it unset until the first successful fetch.
         }

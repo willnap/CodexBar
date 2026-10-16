@@ -1,5 +1,6 @@
 import AppKit
 import CodexBarCore
+import QuartzCore
 import SwiftUI
 
 /// Runs the production gauge host and popover content with fixtures, before any credential stores are initialized.
@@ -30,13 +31,16 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
     private var route = NativeServicePresentationRoute()
     private var popover: NSPopover?
     private var previewWindow: NSWindow?
+    private var startupTask: Task<Void, Never>?
     private var accountIndices: [UsageProvider: Int] = [:]
     private let now = Date()
 
     func applicationDidFinishLaunching(_: Notification) {
         print("Native fixture: creating three independent status items")
         // Provider-specific by design: Fixture services cover the two-window and three-window gauge layouts.
-        for provider in [UsageProvider.codex, .claude, .kimi] {
+        for provider in CommandLine.arguments.contains("--preview-monetary")
+            ? [UsageProvider.openrouter] : [UsageProvider.codex, .claude, .kimi]
+        {
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
             item.autosaveName = "native-preview-\(provider.rawValue)"
             guard let button = item.button else { continue }
@@ -57,7 +61,7 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
         let previewProvider = providerArgument.flatMap { index in
             CommandLine.arguments.indices.contains(index + 1)
                 ? UsageProvider(rawValue: CommandLine.arguments[index + 1]) : nil
-        } ?? .codex
+        } ?? (CommandLine.arguments.contains("--preview-monetary") ? .openrouter : .codex)
         if CommandLine.arguments.contains("--preview-open"), let button = self.items[previewProvider]?.button {
             Task { @MainActor in self.clicked(button) }
         }
@@ -154,6 +158,8 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
             window.title = "CodexBar Native · Preview"
             window.setContentSize(popover.contentSize)
             window.isReleasedWhenClosed = false
+            // The offline probe drives inspection itself; a real pointer must not change its workload.
+            window.ignoresMouseEvents = CommandLine.arguments.contains("--preview-performance")
             window.center()
             window.makeKeyAndOrderFront(nil)
             self.previewWindow = window
@@ -164,97 +170,24 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
 
     /// Production popup with deterministic account data, before any real credential or usage stores initialize.
     private func showOrbit(_ provider: UsageProvider, button: NSStatusBarButton) {
+        let preparationStart = CACurrentMediaTime()
         let state = NativeOrbitPopupState()
         state.now = .now
         // Provider-specific by design: Offline fixtures use the same accent families as their production providers.
-        state.accent = provider == .claude ? .orange : provider == .kimi ? .purple : .blue
+        let color = ProviderDescriptorRegistry.descriptor(for: provider).branding.color
+        state.accent = Color(red: color.red, green: color.green, blue: color.blue)
         let dayFormatter = DateFormatter()
         dayFormatter.locale = Locale(identifier: "en_US_POSIX")
         dayFormatter.dateFormat = "yyyy-MM-dd"
         let count = CommandLine.arguments.contains("--preview-single") ? 1 : 2
-        let makeAccount = { (index: Int, active: Bool) -> NativeOrbitAccountPresentation in
-            let snapshot = self.snapshot(for: provider)
-            let gauge = NativeUsageGaugeProjection.state(
-                provider: provider, snapshot: snapshot, includeModelScopedWeeklyUsage: true)
-            let entry = CostUsageDailyReport.Entry(
-                date: dayFormatter.string(from: self.now),
-                inputTokens: nil,
-                outputTokens: nil,
-                totalTokens: index == 0 ? 1_700_000 : 925_000,
-                costUSD: index == 0 ? 13.45 : 7.20,
-                modelsUsed: nil,
-                modelBreakdowns: nil)
-            let usage = CostUsageTokenSnapshot(
-                sessionTokens: nil,
-                sessionCostUSD: nil,
-                last30DaysTokens: nil,
-                last30DaysCostUSD: nil,
-                historyDays: 30,
-                daily: [
-                    entry,
-                    .init(
-                        date: dayFormatter.string(from: self.now.addingTimeInterval(-3 * 86400)),
-                        inputTokens: nil,
-                        outputTokens: nil,
-                        totalTokens: 2_400_000,
-                        costUSD: 19.60,
-                        modelsUsed: nil,
-                        modelBreakdowns: nil),
-                    .init(
-                        date: dayFormatter.string(from: self.now.addingTimeInterval(-15 * 86400)),
-                        inputTokens: nil,
-                        outputTokens: nil,
-                        totalTokens: 3_800_000,
-                        costUSD: 28.40,
-                        modelsUsed: nil,
-                        modelBreakdowns: nil),
-                ],
-                updatedAt: self.now)
-            var metrics = NativeOrbitAccountMetrics(usage: usage)
-            metrics.reportedSpend = ProviderCostSnapshot(
-                used: CommandLine.arguments.contains("--preview-empty-spend") ? 0 : 12.50,
-                limit: 50,
-                currencyCode: "USD",
-                period: "Monthly",
-                updatedAt: self.now)
-            metrics.bankedResets = 2
-            metrics.usedResets = 1
-            var presentation = NativeOrbitAccountPresentation(
-                id: "fixture-\(index)",
-                label: index == 0 ? "Personal · Preview" : "Work · Preview",
-                email: nil,
-                symbol: "person.crop.circle",
-                isActive: active,
-                canActivate: !active,
-                gauge: gauge,
-                updatedAt: self.now,
-                history: gauge.resolvedWindows.enumerated().map { lane, window in
-                    PlanUtilizationSeriesHistory(
-                        name: .init(rawValue: "nativeQuota:" + window.id),
-                        windowMinutes: Int(window.period / 60),
-                        entries: (0...120).map { step in
-                            .init(
-                                capturedAt: self.now.addingTimeInterval(Double(step - 120) * 21600),
-                                usedPercent: Double((step * (lane + 1) * 3 + index * 11) % 85),
-                                resetsAt: nil)
-                        })
-                },
-                odometer: nil,
-                odometerHelp: nil,
-                statusText: nil,
-                selection: .none,
-                metrics: metrics,
-                quotaLabels: UsageStore.nativeOrbitQuotaLabels(provider: provider, snapshot: snapshot),
-                quotaWindows: UsageStore.nativeOrbitQuotaWindowMap(provider: provider, snapshot: snapshot))
-            presentation.warnings = Self.fixtureLights(column: index)
-            return presentation
+        let makeAccount = { (index: Int, active: Bool) in
+            self.orbitAccount(provider, index: index, active: active, dayFormatter: dayFormatter)
         }
         state.accounts = (0..<count).map { makeAccount($0, $0 == 0) }
-        // Every launch's first popup checks its bulbs, as the live one does.
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(600))
-            await state.runBulbCheck()
-        }
+        state.armStartup(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        state.prepareStartupArtwork(
+            screen: button.window?.screen,
+            appearance: self.previewWindow?.contentView?.effectiveAppearance)
         // A fixture switch: a short wait, then the target becomes active, or with `CODEXBAR_PREVIEW_SWITCH_FAILS`
         // the failure a real switch reports. `CODEXBAR_PREVIEW_SWITCH_AFTER` (seconds) starts one unattended.
         var target: String?
@@ -270,6 +203,13 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
                 }
                 state.accounts = (0..<count).map { makeAccount($0, target == "fixture-\($0)") }
                     .sorted { $0.isActive && !$1.isActive }
+                state.armStartup(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+                state.prepareStartupArtwork(
+                    screen: button.window?.screen,
+                    appearance: self.previewWindow?.contentView?.effectiveAppearance)
+                if let view = self.previewWindow?.contentView ?? self.popover?.contentViewController?.view {
+                    self.startStartup(state: state, view: view)
+                }
                 return .activated
             },
             refresh: {},
@@ -287,21 +227,26 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
                 if let other = state.accounts.first(where: { !$0.isActive }) { activate(other.id) }
             }
         }
-        let content = NativeOrbitPopupView(state: state, activate: activate, signIn: nil, refresh: {
-            state.isRefreshing = true
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(5))
-                state.isRefreshing = false
-            }
-        })
+        let content = NativeOrbitPopupView(
+            state: state,
+            activate: activate,
+            signIn: nil,
+            refresh: {
+                state.isRefreshing = true
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(5))
+                    state.isRefreshing = false
+                }
+            },
+            acceptsHoverInspection: !CommandLine.arguments.contains("--preview-performance"))
         let hosting = NSHostingController(rootView: content)
         hosting.sizingOptions = []
         let popover = NSPopover()
         popover.behavior = .transient
         popover.contentViewController = hosting
         popover.contentSize = NSSize(
-            width: state.accounts.count == 1 ? 240 : 480,
-            height: state.accounts.count == 1 ? 513 : 541)
+            width: CGFloat(state.accounts.count * 240 + max(0, state.accounts.count - 1)),
+            height: NativeOrbitPopupView.contentHeight(showsFooter: state.accounts.count > 1))
         self.popover = popover
         if CommandLine.arguments.contains("--preview-window") {
             let window = NSWindow(contentViewController: hosting)
@@ -309,12 +254,127 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
             window.setContentSize(popover.contentSize)
             window.isReleasedWhenClosed = false
             window.center()
-            window.makeKeyAndOrderFront(nil)
+            if CommandLine.arguments.contains("--preview-performance") {
+                window.level = .floating
+                window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+                window.ignoresMouseEvents = true
+                window.orderFrontRegardless()
+            } else {
+                window.makeKeyAndOrderFront(nil)
+            }
             self.previewWindow = window
         } else {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
-        self.recordPreview(popover)
+        if CommandLine.arguments.contains("--preview-performance") {
+            let preparationMilliseconds = (CACurrentMediaTime() - preparationStart) * 1000
+            Task { @MainActor in
+                await NativeOrbitPerformanceProbe.startIfRequested(
+                    state: state,
+                    view: hosting.view,
+                    preparationMilliseconds: preparationMilliseconds,
+                    switchAccount: {
+                        if let other = state.accounts.first(where: { !$0.isActive }) { activate(other.id) }
+                    })
+                self.startStartup(state: state, view: hosting.view)
+                self.recordPreview(popover)
+            }
+        } else {
+            self.startStartup(state: state, view: hosting.view)
+            self.recordPreview(popover)
+        }
+    }
+
+    private func orbitAccount(
+        _ provider: UsageProvider,
+        index: Int,
+        active: Bool,
+        dayFormatter: DateFormatter) -> NativeOrbitAccountPresentation
+    {
+        let snapshot = self.orbitSnapshot(provider: provider, index: index)
+        let gauge = NativeUsageGaugeProjection.state(
+            provider: provider, snapshot: snapshot)
+        let entry = CostUsageDailyReport.Entry(
+            date: dayFormatter.string(from: self.now),
+            inputTokens: nil,
+            outputTokens: nil,
+            totalTokens: index == 0 ? 1_700_000 : 925_000,
+            costUSD: index == 0 ? 13.45 : 7.20,
+            modelsUsed: nil,
+            modelBreakdowns: nil)
+        let usage = CostUsageTokenSnapshot(
+            sessionTokens: nil,
+            sessionCostUSD: nil,
+            last30DaysTokens: nil,
+            last30DaysCostUSD: nil,
+            historyDays: 30,
+            daily: [
+                entry,
+                .init(
+                    date: dayFormatter.string(from: self.now.addingTimeInterval(-3 * 86400)),
+                    inputTokens: nil,
+                    outputTokens: nil,
+                    totalTokens: 2_400_000,
+                    costUSD: 19.60,
+                    modelsUsed: nil,
+                    modelBreakdowns: nil),
+                .init(
+                    date: dayFormatter.string(from: self.now.addingTimeInterval(-15 * 86400)),
+                    inputTokens: nil,
+                    outputTokens: nil,
+                    totalTokens: 3_800_000,
+                    costUSD: 28.40,
+                    modelsUsed: nil,
+                    modelBreakdowns: nil),
+            ],
+            updatedAt: self.now)
+        let metrics = self.orbitMetrics(usage: usage, snapshot: snapshot, index: index)
+        var presentation = NativeOrbitAccountPresentation(
+            id: "fixture-\(index)",
+            label: index == 0 ? "Personal · Preview" : "Work · Preview",
+            email: nil,
+            symbol: "person.crop.circle",
+            isActive: active,
+            canActivate: !active,
+            gauge: gauge,
+            updatedAt: self.now,
+            history: gauge.resolvedWindows.filter { $0.usedFraction != nil }.enumerated().map { lane, window in
+                PlanUtilizationSeriesHistory(
+                    name: .init(rawValue: "nativeQuota:" + window.id),
+                    windowMinutes: Int(window.period / 60),
+                    entries: (0...(CommandLine.arguments.contains("--preview-dense") ? 2400 : 120)).map { step in
+                        .init(
+                            capturedAt: self.now
+                                .addingTimeInterval(Double(step -
+                                        (CommandLine.arguments.contains("--preview-dense") ? 2400 : 120))
+                                    * (CommandLine.arguments.contains("--preview-dense") ? 1080 : 21600)),
+                            usedPercent: CommandLine.arguments.contains("--preview-monetary")
+                                ? Double(step) / 120 * 42.70
+                                : Double((step * (lane + 1) * 3 + index * 11) % 85),
+                            resetsAt: nil)
+                    })
+            },
+            odometer: nil,
+            odometerHelp: nil,
+            statusText: nil,
+            selection: .none,
+            metrics: metrics,
+            quotaLabels: UsageStore.nativeOrbitQuotaLabels(provider: provider, snapshot: snapshot),
+            quotaWindows: UsageStore.nativeOrbitQuotaWindowMap(provider: provider, snapshot: snapshot))
+        presentation.warnings = Self.fixtureLights(column: index)
+        return presentation
+    }
+
+    private func startStartup(state: NativeOrbitPopupState, view: NSView) {
+        self.startupTask?.cancel()
+        self.startupTask = Task { @MainActor in
+            view.layoutSubtreeIfNeeded()
+            view.window?.displayIfNeeded()
+            CATransaction.flush()
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            await state.runStartup()
+        }
     }
 
     /// `CODEXBAR_PREVIEW_LIGHTS`: "all" lights every kind in every dial (red where a kind can be), otherwise a comma
@@ -370,6 +430,44 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
                 print("Native fixture output failed: \(error.localizedDescription)")
             }
         }
+    }
+
+    private func orbitMetrics(
+        usage: CostUsageTokenSnapshot,
+        snapshot: UsageSnapshot,
+        index: Int) -> NativeOrbitAccountMetrics
+    {
+        var metrics = NativeOrbitAccountMetrics(usage: usage)
+        metrics.reportedSpend = ProviderCostSnapshot(
+            used: CommandLine.arguments.contains("--preview-empty-spend") ? 0 : 12.50,
+            limit: 50,
+            currencyCode: "USD",
+            period: "Monthly",
+            updatedAt: self.now)
+        if CommandLine.arguments.contains("--preview-monetary") {
+            metrics.reportedSpend = snapshot.providerCost
+            if index == 0 {
+                metrics.reportedBalance = .init(
+                    value: 48.30, unit: "USD", isWorkspace: false, updatedAt: self.now)
+            }
+        }
+        metrics.bankedResets = 2
+        metrics.usedResets = 1
+        return metrics
+    }
+
+    private func orbitSnapshot(provider: UsageProvider, index: Int) -> UsageSnapshot {
+        guard CommandLine.arguments.contains("--preview-monetary") else { return self.snapshot(for: provider) }
+        return UsageSnapshot(
+            primary: nil,
+            secondary: nil,
+            providerCost: ProviderCostSnapshot(
+                used: 42.70,
+                limit: index == 0 ? 0 : 100,
+                currencyCode: "USD",
+                period: "Monthly",
+                updatedAt: self.now),
+            updatedAt: self.now)
     }
 
     private func gauge(for provider: UsageProvider) -> ComputeGauge.State {

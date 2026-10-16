@@ -61,7 +61,8 @@ public struct WarpUsageSnapshot: Sendable {
             usedPercent: usedPercent,
             windowMinutes: nil,
             resetsAt: self.isUnlimited ? nil : self.nextRefreshTime,
-            resetDescription: resetDescription)
+            resetDescription: resetDescription,
+            isSyntheticPlaceholder: self.isUnlimited || self.requestLimit <= 0 || self.requestsUsed < 0)
 
         // Secondary: combined bonus/add-on credits (user + workspace)
         var bonusDetail: String?
@@ -90,7 +91,8 @@ public struct WarpUsageSnapshot: Sendable {
                 usedPercent: bonusUsedPercent,
                 windowMinutes: nil,
                 resetsAt: nil,
-                resetDescription: bonusDetail)
+                resetDescription: bonusDetail,
+                isSyntheticPlaceholder: self.bonusCreditsTotal <= 0 || self.bonusCreditsRemaining < 0)
         } else {
             secondary = nil
         }

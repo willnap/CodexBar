@@ -31,6 +31,7 @@ defineProvider({
       return fail();
     }
     return {
+      balance: { value: data.balance, unit: "USD" },
       details: [{ title: "Account balance", rows: [{ label: "Credit balance", value: ctx.format.usd(data.balance) }] }],
       identity: { loginMethod: "API" },
       dataConfidence: "exact",

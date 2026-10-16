@@ -25,29 +25,24 @@ public struct AzureOpenAIUsageSnapshot: Codable, Sendable, Equatable {
     }
 
     public func toUsageSnapshot() -> UsageSnapshot {
-        let detail = Self.detailText(deploymentName: self.deploymentName, model: self.model)
+        var rows: [ProviderDetailSection.Row] = [
+            .makeRow(label: "Deployment", value: self.deploymentName),
+        ]
+        if let model = self.model?.trimmingCharacters(in: .whitespacesAndNewlines), !model.isEmpty {
+            rows.append(.makeRow(label: "Model", value: model))
+        }
+        rows.append(.makeRow(label: "Endpoint", value: self.endpointHost))
+        rows.append(.makeRow(label: "API version", value: self.apiVersion))
         return UsageSnapshot(
-            primary: RateWindow(
-                usedPercent: 0,
-                windowMinutes: nil,
-                resetsAt: nil,
-                resetDescription: detail),
+            primary: nil,
             secondary: nil,
-            tertiary: nil,
+            details: [.makeSection(title: "Deployment", rows: rows)],
             updatedAt: self.updatedAt,
             identity: ProviderIdentitySnapshot(
                 providerID: .azureopenai,
                 accountEmail: nil,
                 accountOrganization: self.endpointHost,
                 loginMethod: "Deployment: \(self.deploymentName)"))
-    }
-
-    private static func detailText(deploymentName: String, model: String?) -> String {
-        let cleanedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let cleanedModel, !cleanedModel.isEmpty else {
-            return "Deployment: \(deploymentName)"
-        }
-        return "Deployment: \(deploymentName) · Model: \(cleanedModel)"
     }
 }
 

@@ -20,6 +20,7 @@ public struct ClaudeCloudCreditsSnapshot: Decodable, Equatable, Sendable {
     public let remainingDollars: Double
     public let expiresAt: Date?
     public let isLocked: Bool
+    public let lockedReason: String?
 
     private enum CodingKeys: String, CodingKey {
         case limitDollars = "limit_dollars"
@@ -58,7 +59,8 @@ public struct ClaudeCloudCreditsSnapshot: Decodable, Equatable, Sendable {
             self.expiresAt = nil
         }
         let reason = try container.decodeIfPresent(String.self, forKey: .lockedReason)
-        self.isLocked = reason?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        self.lockedReason = reason.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        self.isLocked = self.lockedReason != nil
     }
 
     /// Web JSON and OAuth decoding share exactly the same validation and unit handling.

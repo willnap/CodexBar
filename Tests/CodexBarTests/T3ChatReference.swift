@@ -74,19 +74,21 @@ public struct T3ChatUsageSnapshot: Sendable {
         // If subscription metadata is absent, leave the overage reset unknown instead of showing the base reset.
         let overageReset = Self.date(fromMilliseconds: self.customerData.subscription?.currentPeriodEnd)
 
-        let primary = RateWindow(
-            usedPercent: Self.percent(self.customerData.usageFourHourPercentage),
+        let primary = self.customerData.usageFourHourPercentage.map { percent in RateWindow(
+            usedPercent: Self.percent(percent),
             windowMinutes: 4 * 60,
             resetsAt: baseReset,
             resetDescription: Self.description(label: "Base", usageBand: self.customerData.usageBand))
+        }
 
         let secondaryPercent = self.customerData.usageMonthPercentage
             ?? self.customerData.usagePeriodPercentage
-        let secondary = RateWindow(
-            usedPercent: Self.percent(secondaryPercent),
+        let secondary = secondaryPercent.map { percent in RateWindow(
+            usedPercent: Self.percent(percent),
             windowMinutes: nil,
             resetsAt: overageReset,
             resetDescription: "Overage")
+        }
 
         let identity = ProviderIdentitySnapshot(
             providerID: .t3chat,

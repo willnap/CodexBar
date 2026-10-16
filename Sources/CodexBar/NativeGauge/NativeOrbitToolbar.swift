@@ -14,6 +14,9 @@ struct NativeOrbitToolbar: View {
     static let contentInset: CGFloat = 14
     static let glyphSpacing: CGFloat = 4
     static let rowHeight: CGFloat = 30
+    static let verticalPadding: CGFloat = 9
+    static let bottomInset: CGFloat = 0
+    static let height = Self.rowHeight + Self.verticalPadding * 2 + Self.bottomInset
     /// The arrow makes one quick turn on the click (about half a second at double speed); the spinner takes over
     /// only if loading outlasts that turn.
     static let spinnerDelay: Duration = .milliseconds(500)
@@ -37,7 +40,7 @@ struct NativeOrbitToolbar: View {
         .controlSize(.regular)
         .tint(self.state.accent)
         .padding(.horizontal, Self.contentInset)
-        .padding(.vertical, 9)
+        .padding(.vertical, Self.verticalPadding)
         .frame(maxWidth: .infinity)
         .glassEffect(.regular, in: ConcentricRectangle())
         .task(id: self.state.isRefreshing) {
@@ -82,6 +85,7 @@ struct NativeOrbitToolbar: View {
         Button(action: self.pressRefresh) {
             Image(systemName: self.issue == nil
                 ? "arrow.clockwise" : "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(self.issue == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange))
                 .contentTransition(.symbolEffect(.replace))
                 .symbolEffect(.rotate.clockwise, options: .nonRepeating.speed(2), value: self.refreshPresses)
@@ -96,7 +100,7 @@ struct NativeOrbitToolbar: View {
                         .opacity(self.showingSpinner ? 1 : 0)
                         .scaleEffect(self.showingSpinner ? 0.8 : 0.4)
                 }
-                .frame(height: Self.rowHeight)
+                .frame(width: 18, height: Self.rowHeight)
                 .contentShape(Rectangle())
         }
         .help(self.issue?.detail ?? L("Refresh"))
@@ -158,9 +162,9 @@ struct NativeOrbitToolbar: View {
         Button(action: self.pressSettings) {
             Image(systemName: "gear")
                 .symbolEffect(.rotate.clockwise, options: .nonRepeating.speed(2), value: self.settingsPresses)
-                // The gear's teeth sit half a point inside its symbol bounds; meet the arrow's measured inset.
-                .padding(.trailing, -0.5)
-                .frame(height: Self.rowHeight)
+                // The gear's native bounds are larger: 12pt gear and 13pt arrow have matching visible heights.
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 18, height: Self.rowHeight)
                 .contentShape(Rectangle())
         }
         .help(L("Settings"))

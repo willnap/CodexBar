@@ -787,6 +787,8 @@ struct ClaudeOAuthFetchStrategy: ProviderFetchStrategy {
             providerCost: usage.providerCost,
             details: details,
             claudeResetCredits: usage.resetCredits,
+            claudeCloudCredits: usage.cloudCredits,
+            claudeResetCreditsIneligibleReason: usage.resetCreditsIneligibleReason,
             updatedAt: usage.updatedAt,
             identity: identity,
             dataConfidence: dataConfidence)

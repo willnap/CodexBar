@@ -21,6 +21,13 @@ enum NativeSymbolSmoke {
                 }
             }
         }
+        // Parent-company marks are supplementary assets, distinct from the provider catalog's compact products.
+        for name in ["provider.openai", "provider.anthropic", "provider.codex", "provider.claudecode"] {
+            checked.insert(name)
+            if NSImage(named: name) == nil, Bundle.main.image(forResource: name) == nil {
+                missing.append(name)
+            }
+        }
         for name in [
             "gearshape.fill", "icloud.fill", "chart.xyaxis.line", "bell.badge.fill", "menubar.rectangle",
             "filemenu.and.selection", "slider.horizontal.3", "bolt.fill", "puzzlepiece.extension.fill", "ladybug.fill",

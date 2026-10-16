@@ -193,6 +193,7 @@ public enum ClaudeWebAPIFetcher {
         public let extraRateWindows: [NamedRateWindow]
         public fileprivate(set) var extraUsageCost: ProviderCostSnapshot?
         public let resetCredits: ClaudeRateLimitResetCreditsSnapshot?
+        public let resetCreditsIneligibleReason: String?
         public let cloudCredits: ClaudeCloudCreditsSnapshot?
         public fileprivate(set) var accountOrganization: String?
         public fileprivate(set) var accountOrganizationID: String?
@@ -219,6 +220,7 @@ public enum ClaudeWebAPIFetcher {
             loginMethod: String?,
             hasLiveSessionWindow: Bool = true,
             resetCredits: ClaudeRateLimitResetCreditsSnapshot? = nil,
+            resetCreditsIneligibleReason: String? = nil,
             cloudCredits: ClaudeCloudCreditsSnapshot? = nil)
         {
             self.sessionPercentUsed = sessionPercentUsed
@@ -234,6 +236,7 @@ public enum ClaudeWebAPIFetcher {
             self.loginMethod = loginMethod
             self.hasLiveSessionWindow = hasLiveSessionWindow
             self.resetCredits = resetCredits
+            self.resetCreditsIneligibleReason = resetCreditsIneligibleReason
             self.cloudCredits = cloudCredits
         }
     }
@@ -744,7 +747,7 @@ extension ClaudeWebAPIFetcher {
         }
         let extraUsageCost = ClaudeMonthlySpend.parse(json["spend"], updatedAt: Date())
             ?? ClaudeWebExtraUsageCost.parse(from: json["extra_usage"])
-        let resetCredits = Self.parseResetCredits(from: json["cedar_ember"])
+        let resetStatus = Self.parseResetStatus(from: json["cedar_ember"])
 
         return WebUsageData(
             sessionPercentUsed: resolvedSessionPercent,
@@ -758,19 +761,20 @@ extension ClaudeWebAPIFetcher {
             accountEmail: nil,
             loginMethod: nil,
             hasLiveSessionWindow: hasLiveSessionWindow,
-            resetCredits: resetCredits,
+            resetCredits: resetStatus?.snapshot(updatedAt: Date()),
+            resetCreditsIneligibleReason: resetStatus.flatMap { $0.eligible ? nil : $0.ineligibleReason },
             cloudCredits: ClaudeCloudCreditsSnapshot.parse(json["iguana_necktie"]))
     }
 
     /// Anything unreadable in the `cedar_ember` block yields no inventory and leaves the usage windows intact.
-    private static func parseResetCredits(from value: Any?) -> ClaudeRateLimitResetCreditsSnapshot? {
+    private static func parseResetStatus(from value: Any?) -> ClaudeLimitResetStatusResponse? {
         guard let block = value as? [String: Any],
               (block["grants"] as? [Any])?.count ?? 0 <= ClaudeLimitResetStatusResponse.maximumGrantRecords,
               JSONSerialization.isValidJSONObject(block),
               let data = try? JSONSerialization.data(withJSONObject: block),
               let status = try? JSONDecoder().decode(ClaudeLimitResetStatusResponse.self, from: data)
         else { return nil }
-        return status.snapshot(updatedAt: Date())
+        return status
     }
 
     private static func percentValue(from value: Any?) -> Double? {

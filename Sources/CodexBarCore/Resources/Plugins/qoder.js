@@ -49,8 +49,8 @@ defineProvider({
       const remaining = base.remaining + (shared?.remaining ?? 0);
       const provided = shared ? null : base.provided;
       if (total === 0 && (used !== 0 || remaining !== 0)) fail("zero total quota must have zero usage and remaining");
-      const percentage = provided ?? (total > 0 ? (used / total) * 100 : 100);
-      number(percentage);
+      const percentage = provided ?? (total > 0 ? (used / total) * 100 : undefined);
+      if (percentage !== undefined) number(percentage);
       const reset = field(root, "nextResetAt", "next_reset_at");
       let resetsAt;
       try {
@@ -62,11 +62,25 @@ defineProvider({
       }
       const format = (value) => ctx.format.number(value, { maximumFractionDigits: Number.isInteger(value) ? 0 : 2 });
       return {
-        primary: {
-          usedPercent: Math.max(0, Math.min(100, percentage)),
-          resetsAt,
-          resetDescription: `${format(used)} / ${format(total)} credits`,
-        },
+        primary:
+          percentage === undefined
+            ? undefined
+            : {
+                usedPercent: Math.max(0, Math.min(100, percentage)),
+                resetsAt,
+                resetDescription: `${format(used)} / ${format(total)} credits`,
+              },
+        details:
+          percentage === undefined
+            ? [
+                {
+                  title: "Credits",
+                  rows: [
+                    { label: "Credit usage", value: `${format(used)} / ${format(total)} credits`, usageValue: used },
+                  ],
+                },
+              ]
+            : [],
         identity: { loginMethod: source },
       };
     };

@@ -7,6 +7,24 @@ import Testing
 struct NativeOrbitWarningLightTests {
     typealias Kind = NativeOrbitWarningLight.Kind
 
+    @Test func `the native catalogue has all 51 independent lights`() {
+        #expect(Kind.allCases.count == 51)
+    }
+
+    @Test func `secure transport errors stay separate from an unreachable host`() {
+        #expect(self.kind(URLError(.secureConnectionFailed))?.name == "Secure connection failed")
+        #expect(self.kind(URLError(.serverCertificateUntrusted))?.name == "Secure connection failed")
+    }
+
+    @Test func `provider protocol failures and capacity failures have distinct lamps`() {
+        #expect(self.kind(ClaudeOAuthFetchError.invalidResponse)?.name == "Provider changed its data")
+        #expect(self.kind(ClaudeOAuthFetchError.serverError(529, nil))?.name == "Overloaded")
+        #expect(self.kind(ClaudeOAuthFetchError.serverError(503, "overloaded_error"))?.name == "Overloaded")
+        #expect(self.kind(ClaudeOAuthFetchError.serverError(502, nil))?.name == "Usage figures failing")
+        #expect(self.kind(ClaudeWebAPIFetcher.FetchError.cloudflareChallenge)?.name == "Blocked by a bot check")
+        #expect(self.kind(ClaudeOAuthCredentialsError.keychainAccessRevoked)?.name == "Keychain access blocked")
+    }
+
     private func kind(_ error: Error, _ provider: UsageProvider = .claude) -> Kind? {
         NativeOrbitFetchFault.light(for: error, provider: provider)?.kind
     }
@@ -17,16 +35,16 @@ struct NativeOrbitWarningLightTests {
         #expect(self.kind(KimiAPIError.invalidToken, .kimi) == .signIn)
         #expect(self.kind(ClaudeOAuthFetchError.rateLimited(retryAfter: nil)) == .rateLimited)
         #expect(self.kind(ClaudeOAuthFetchError.serverError(429, nil)) == .rateLimited)
-        #expect(self.kind(ClaudeOAuthFetchError.serverError(503, "Unavailable")) == .providerIncident)
-        #expect(self.kind(CodexOAuthFetchError.serverError(500, nil), .codex) == .providerIncident)
-        #expect(self.kind(CodexOAuthFetchError.serverError(403, nil), .codex) == .signIn)
-        #expect(self.kind(KimiAPIError.apiError("boom"), .kimi) == .providerIncident)
+        #expect(self.kind(ClaudeOAuthFetchError.serverError(503, "Unavailable")) == .usageFailing)
+        #expect(self.kind(CodexOAuthFetchError.serverError(500, nil), .codex) == .usageFailing)
+        #expect(self.kind(CodexOAuthFetchError.serverError(403, nil), .codex) == .permission)
+        #expect(self.kind(KimiAPIError.apiError("boom"), .kimi) == .usageFailing)
         #expect(self.kind(ClaudeOAuthFetchError.networkError(URLError(.notConnectedToInternet))) == .offline)
         #expect(self.kind(URLError(.timedOut)) == .offline)
         #expect(self.kind(KimiAPIError.networkError("offline"), .kimi) == .offline)
-        #expect(self.kind(CodexOAuthFetchError.invalidResponse, .codex) == .readFailed)
-        #expect(self.kind(KimiAPIError.parseFailed("bad"), .kimi) == .readFailed)
-        #expect(self.kind(DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "x"))) == .readFailed)
+        #expect(self.kind(CodexOAuthFetchError.invalidResponse, .codex) == .apiChanged)
+        #expect(self.kind(KimiAPIError.parseFailed("bad"), .kimi) == .apiChanged)
+        #expect(self.kind(DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "x"))) == .apiChanged)
         #expect(self.kind(ClaudeUsageError.claudeNotInstalled) == .helper)
         #expect(self.kind(ProviderFetchError.noAvailableStrategy(.kiro), .kiro) == .helper)
     }
@@ -38,17 +56,17 @@ struct NativeOrbitWarningLightTests {
         #expect(CodexRPCFailure.httpStatus(of: RPCWireError.requestFailed("socket closed")) == nil)
         #expect(self.kind(RPCWireError.requestFailed("GET … failed: 401 Unauthorized; body={"), .codex) == .signIn)
         #expect(self.kind(RPCWireError.requestFailed("GET … failed: 503 Service Unavailable"), .codex)
-            == .providerIncident)
+            == .usageFailing)
         #expect(self.kind(RPCWireError.requestFailed("GET … failed: 429 Too Many Requests"), .codex) == .rateLimited)
         #expect(self.kind(RPCWireError.startFailed("no codex binary"), .codex) == .helper)
-        #expect(self.kind(RPCWireError.timeout(method: "account/rateLimits/read"), .codex) == .readFailed)
+        #expect(self.kind(RPCWireError.timeout(method: "account/rateLimits/read"), .codex) == .helper)
     }
 
     @Test func `classified provider errors map every kind`() {
         let expected: [ProviderFetchClassifiedError.Kind: Kind] = [
             .authenticationExpired: .signIn, .missingCredential: .signIn,
-            .permissionDenied: .signIn, .rateLimited: .rateLimited, .providerUnavailable: .providerIncident,
-            .apiFailure: .providerIncident, .networkFailure: .offline, .parseFailure: .readFailed,
+            .permissionDenied: .permission, .rateLimited: .rateLimited, .providerUnavailable: .usageFailing,
+            .apiFailure: .usageFailing, .networkFailure: .offline, .parseFailure: .apiChanged,
         ]
         for errorKind in ProviderFetchClassifiedError.Kind.allCases {
             let error = ProviderFetchClassifiedError(kind: errorKind, message: "fixture")
@@ -80,34 +98,9 @@ struct NativeOrbitWarningLightTests {
         #expect(merged.first { $0.kind == .quota }?.detail == "reached")
     }
 
-    @Test(arguments: [1, 2, 3])
-    func `every light has its own spot, clear of the marks and inside the innermost ring`(lanes: Int) {
-        let size = NativeOrbitWarningLightsView.size(lanes: lanes)
-        let spots = Kind.allCases.map { NativeOrbitWarningLightsView.spot($0, lanes: lanes) }
-        #expect(Set(spots.map { "\($0.x),\($0.y)" }).count == Kind.allCases.count)
-        // The innermost ring's inner edge, in the 216 pt dial.
-        let scale: CGFloat = 216 / NativeOrbitSymbol.canvas
-        let free = (NativeOrbitSymbol.radii[lanes - 1] - NativeOrbitSymbol.stroke / 2) * scale
-        // The marks in the dial's middle (`NativeOrbitGaugeWidget.identity`): parent mark, product mark, badge.
-        let compact = lanes == 3
-        let marks = [
-            CGRect(x: -7.5, y: (compact ? -24 : -34) - 7.5, width: 15, height: 15),
-            CGRect(x: compact ? -14 : -21, y: compact ? -11 : -17, width: compact ? 28 : 42, height: compact ? 22 : 34),
-            CGRect(x: -8.5, y: (compact ? 24 : 44) - 8.5, width: 17, height: 17),
-        ]
-        for (kind, spot) in zip(Kind.allCases, spots) {
-            #expect(hypot(spot.x, spot.y) + size / 2 < free, "\(kind) leaves the dial's middle")
-            let lamp = CGRect(x: spot.x - size / 2, y: spot.y - size / 2, width: size, height: size)
-            #expect(!marks.contains { $0.intersects(lamp) }, "\(kind) covers a mark")
-            #expect((spot.x < 0) == (kind.rawValue < NativeOrbitWarningLightsView.perSide), "\(kind) on the wrong side")
-        }
-        // Neighbours down a side never overlap.
-        for side in 0..<2 {
-            let column = spots[(side * 6)..<(side * 6 + 6)]
-            for (upper, lower) in zip(column, column.dropFirst()) {
-                #expect(hypot(upper.x - lower.x, upper.y - lower.y) > size)
-            }
-        }
+    @Test func `each catalogue light has its own stable key and semantic symbol`() {
+        #expect(Set(Kind.allCases.map(\.catalogueKey)).count == 51)
+        #expect(Kind.allCases.allSatisfy { !$0.symbol.isEmpty && !$0.name.isEmpty && !$0.category.isEmpty })
     }
 
     @Test func `a failed fetch lights its account's light until a fresh reading turns it off`() {
@@ -128,6 +121,76 @@ struct NativeOrbitWarningLightTests {
         #expect(store.nativeFetchFaults[.init(provider: .kimi, account: "other")]?.kind == .signIn)
     }
 
+    @Test func `a retired request cannot introduce or clear account warning state`() {
+        let store = self.store()
+        let key = CredentialNotificationKey(provider: .kimi, account: "default")
+        store.handleCredentialOutcome(
+            provider: .kimi, result: .failure(KimiAPIError.invalidToken), isCurrent: { false })
+        #expect(store.nativeFetchFaults[key] == nil)
+        #expect(!store.nativeAuthenticationFailures.contains(key))
+        store.handleCredentialOutcome(provider: .kimi, result: .failure(KimiAPIError.invalidToken))
+        #expect(store.nativeFetchFaults[key]?.kind == .signIn)
+        store.handleCredentialOutcome(provider: .kimi, result: .success(self.result()), isCurrent: { false })
+        #expect(store.nativeFetchFaults[key]?.kind == .signIn)
+        #expect(store.nativeAuthenticationFailures.contains(key))
+    }
+
+    @Test func `each typed fetch fault is scoped and a verified fresh outcome clears it`() {
+        let errors: [(Kind, any Error)] = [
+            (.overloaded, ClaudeOAuthFetchError.serverError(529, nil)),
+            (.usageFailing, ClaudeOAuthFetchError.serverError(502, nil)),
+            (.rateLimited, ClaudeOAuthFetchError.rateLimited(retryAfter: nil)),
+            (.apiChanged, ClaudeOAuthFetchError.invalidResponse),
+            (.botCheck, ClaudeWebAPIFetcher.FetchError.cloudflareChallenge),
+            (.unreachable, URLError(.cannotFindHost)),
+            (.insecure, URLError(.serverCertificateUntrusted)),
+            (.signIn, ClaudeOAuthFetchError.unauthorized),
+            (.keychain, ClaudeOAuthCredentialsError.keychainAccessRevoked),
+            (.permission, ClaudeOAuthFetchError.serverError(403, nil)),
+            (.browserSession, ClaudeWebAPIFetcher.FetchError.noSessionKeyFound),
+            (.unknownError, NSError(domain: "fixture", code: 123)),
+            (.helper, ClaudeUsageError.claudeNotInstalled),
+            (.update, ClaudeSwapListParserError.unsupportedSchemaVersion(999)),
+            (.unavailableHere, ClaudeWebAPIFetcher.FetchError.notSupportedOnThisPlatform),
+        ]
+        let store = self.store()
+        let key = CredentialNotificationKey(provider: .claude, account: "fixture")
+        for (kind, error) in errors {
+            store.handleCredentialOutcome(provider: .claude, account: "fixture", result: .failure(error))
+            #expect(store.nativeFetchFaults[key]?.kind == kind)
+            #expect(store.nativeFetchFaults[.init(provider: .codex, account: "fixture")] == nil)
+            store.handleCredentialOutcome(provider: .claude, account: "fixture", result: .success(self.result()))
+            #expect(store.nativeFetchFaults[key] == nil)
+        }
+    }
+
+    @Test func `refresh activity records its deadline and clears on completion`() {
+        let store = self.store()
+        store.beginNativeWarningRefresh(.kimi)
+        #expect(store.nativeWarningRefreshStartedAt[.kimi] != nil)
+        store.nativeWarningRefreshStartedAt[.kimi] = Date().addingTimeInterval(-121)
+        #expect(store.nativeOrbitWarnings(
+            provider: .kimi,
+            faultScope: nil,
+            updatedAt: Date(),
+            metrics: .empty,
+            error: nil,
+            extra: [],
+            errorExplained: false)
+            .contains { $0.kind == .refreshStuck })
+        store.endNativeWarningRefresh(.kimi)
+        #expect(store.nativeWarningRefreshStartedAt[.kimi] == nil)
+        #expect(!store.nativeOrbitWarnings(
+            provider: .kimi,
+            faultScope: nil,
+            updatedAt: Date(),
+            metrics: .empty,
+            error: nil,
+            extra: [],
+            errorExplained: false)
+            .contains { $0.kind == .refreshStuck })
+    }
+
     @Test func `an error nothing else explains lights the reading-failed light`() {
         let store = self.store()
         let lights = store.nativeOrbitWarnings(
@@ -139,7 +202,9 @@ struct NativeOrbitWarningLightTests {
             extra: [],
             errorExplained: false)
         #expect(lights.map(\.kind) == [.readFailed])
-        #expect(lights.first?.detail == "Couldn’t read usage: Something odd happened.")
+        #expect(lights.first?.action == .refresh)
+        #expect(lights.first?.tooltip(account: nil).contains("Something odd happened") == false)
+        #expect(lights.first?.tooltip(account: nil).contains("Second line") == false)
         let explained = store.nativeOrbitWarnings(
             provider: .kimi,
             faultScope: nil,
@@ -188,6 +253,49 @@ struct NativeOrbitWarningLightTests {
         #expect(lights.map(\.kind) == [.maintenance])
     }
 
+    @Test func `disabling status checks clears a failed status light until checks resume`() {
+        let store = self.store()
+        store.nativeStatusFetchFailures.insert(UsageProvider.kimi.instanceID)
+        func kinds() -> Set<Kind> {
+            Set(store.nativeOrbitWarnings(
+                provider: .kimi,
+                faultScope: nil,
+                updatedAt: Date(),
+                metrics: .empty,
+                error: nil,
+                extra: [],
+                errorExplained: false).map(\.kind))
+        }
+        #expect(kinds().contains(.statusUnknown))
+        store.settings.statusChecksEnabled = false
+        #expect(!kinds().contains(.statusUnknown))
+        store.settings.statusChecksEnabled = true
+        #expect(kinds().contains(.statusUnknown))
+        store.nativeStatusFetchFailures.remove(UsageProvider.kimi.instanceID)
+        #expect(!kinds().contains(.statusUnknown))
+    }
+
+    @Test func `disabling extra usage clears its historical spend cap warning`() {
+        let store = self.store()
+        var metrics = NativeOrbitAccountMetrics.empty
+        func kinds() -> Set<Kind> {
+            Set(store.nativeOrbitWarnings(
+                provider: .kimi,
+                faultScope: nil,
+                updatedAt: Date(),
+                metrics: metrics,
+                error: nil,
+                extra: [],
+                errorExplained: false).map(\.kind))
+        }
+        metrics.reportedSpend = ProviderCostSnapshot(
+            used: 50, limit: 50, currencyCode: "USD", period: "Monthly", updatedAt: Date())
+        #expect(kinds().contains(.spendCap))
+        metrics.reportedSpend = ProviderCostSnapshot(
+            used: 50, limit: 50, currencyCode: "USD", period: "Monthly", isDisabled: true, updatedAt: Date())
+        #expect(!kinds().contains(.spendCap))
+    }
+
     @Test func `an old reading lights the clock unless refresh is manual`() {
         let store = self.store()
         store.settings.refreshFrequency = .fiveMinutes
@@ -216,7 +324,91 @@ struct NativeOrbitWarningLightTests {
             metrics: .empty,
             error: nil,
             extra: [],
-            errorExplained: false).isEmpty)
+            errorExplained: false).map(\.kind) == [.autoRefreshOff])
+        #expect(store.nativeOrbitWarnings(
+            provider: .kimi,
+            faultScope: nil,
+            updatedAt: old,
+            metrics: .empty,
+            error: nil,
+            extra: [],
+            errorExplained: false).first { $0.kind == .autoRefreshOff }?.severity == .opportunity)
+    }
+
+    @Test func `partial local log scans light until a complete rescan replaces them`() {
+        let store = self.store()
+        func metrics(partial: Bool) -> NativeOrbitAccountMetrics {
+            let report = CostUsageTokenSnapshot(
+                sessionTokens: nil,
+                sessionCostUSD: nil,
+                last30DaysTokens: 0,
+                last30DaysCostUSD: 0,
+                historyScanIsPartial: partial,
+                daily: [],
+                updatedAt: Date())
+            var metrics = NativeOrbitAccountMetrics.empty
+            metrics.localCostUsage = .init(snapshot: report, scope: .localMachine, bucketTimeZoneIdentifier: nil)
+            return metrics
+        }
+        func kinds(_ metrics: NativeOrbitAccountMetrics) -> Set<Kind> {
+            Set(store.nativeOrbitWarnings(
+                provider: .kimi,
+                faultScope: nil,
+                updatedAt: Date(),
+                metrics: metrics,
+                error: nil,
+                extra: [],
+                errorExplained: false).map(\.kind))
+        }
+        #expect(kinds(metrics(partial: true)).contains(.localLogs))
+        #expect(!kinds(metrics(partial: false)).contains(.localLogs))
+    }
+
+    @Test func `system callbacks reach native lights and recovery clears the same live store`() {
+        let store = self.store()
+        let system = NativeOrbitSystemSignals.shared
+        let now = Date()
+        let originalFailures = system.historyWriteFailures
+        let originalZone = TimeZone.autoupdatingCurrent.identifier
+        defer {
+            system.recordNetworkPath(isSatisfied: true)
+            system.recordNotificationAuthorization(isDenied: false)
+            system.recordHistoryWriteFailures(originalFailures)
+            system.recordTimeZone(identifier: originalZone, at: .distantPast)
+        }
+        func kinds(at date: Date = Date()) -> Set<Kind> {
+            Set(store.nativeOrbitWarnings(
+                provider: .kimi,
+                faultScope: nil,
+                updatedAt: date,
+                metrics: .empty,
+                error: nil,
+                extra: [],
+                errorExplained: false,
+                now: date).map(\.kind))
+        }
+        system.recordNetworkPath(isSatisfied: false)
+        system.recordHistoryWriteFailures([.kimi])
+        system.recordNotificationAuthorization(isDenied: true)
+        store.settings.quotaWarningNotificationsEnabled = true
+        let differentZone = originalZone == "Europe/London" ? "America/New_York" : "Europe/London"
+        system.recordTimeZone(identifier: differentZone, at: now)
+        #expect(kinds(at: now).isSuperset(of: [.macOffline, .storage, .notifications, .timeZone]))
+        let live = store.nativeOrbitWarnings(
+            provider: .kimi,
+            faultScope: nil,
+            updatedAt: now,
+            metrics: .empty,
+            error: nil,
+            extra: [],
+            errorExplained: false,
+            now: now)
+        #expect(live.first { $0.kind == .notifications }?.action == .notificationSettings)
+        system.recordNetworkPath(isSatisfied: true)
+        system.recordHistoryWriteFailures([])
+        system.recordNotificationAuthorization(isDenied: false)
+        #expect(kinds(at: now.addingTimeInterval(86401)).isDisjoint(with:
+            [.macOffline, .storage, .notifications, .timeZone]))
     }
 
     @Test func `extra usage near its cap lights the spend-cap light`() {
@@ -276,6 +468,27 @@ struct NativeOrbitWarningLightTests {
         #expect(store.nativeOrbitClaudeSwapWarnings(row(.notApplicable)).explained)
         store.claudeSwapLastError = "cswap: command not found"
         #expect(store.nativeOrbitClaudeSwapWarnings(row(.ok)).lights.map(\.kind) == [.helper])
+    }
+
+    @Test func `adapter foreign-login and Keychain faults clear when the account reports healthy`() throws {
+        let store = self.store()
+        func account(_ status: ClaudeSwapUsageStatus) throws -> ProviderAccountUsageSnapshot {
+            let list = ClaudeSwapAccountList(activeAccountNumber: 1, accounts: [
+                ClaudeSwapAccountRow(
+                    number: 1,
+                    email: "fixture@example.invalid",
+                    isActive: true,
+                    usageStatus: status,
+                    fiveHour: nil,
+                    sevenDay: nil),
+            ])
+            return try #require(ClaudeSwapAccountProjection.accountSnapshots(from: list).first)
+        }
+        #expect(try store.nativeOrbitClaudeSwapWarnings(account(.foreignCredential)).lights
+            .map(\.kind) == [.wrongAccount])
+        #expect(try store.nativeOrbitClaudeSwapWarnings(account(.keychainUnavailable)).lights
+            .map(\.kind) == [.keychain])
+        #expect(try store.nativeOrbitClaudeSwapWarnings(account(.ok)).lights.isEmpty)
     }
 
     @Test func `claude-swap statuses map to conditions`() {

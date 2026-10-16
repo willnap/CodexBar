@@ -293,12 +293,14 @@ defineProvider({
                 .filter((value) => value !== null && value * 1000 > ctx.date.now().getTime())
                 .sort((a, b) => a - b)
             : [];
-        const resetsAt = futureExpiries.length ? ctx.date.unixSeconds(futureExpiries[0]) : null;
-        const primary = {
-          usedPercent: granted > 0 ? ctx.pct(used, granted) : available > 0 ? 0 : 100,
-          resetDescription: `${usd(available)} available`,
-        };
-        if (resetsAt) primary.resetsAt = resetsAt;
+        const expiry = futureExpiries.length ? ctx.date.unixSeconds(futureExpiries[0]) : null;
+        const primary =
+          granted > 0
+            ? {
+                usedPercent: ctx.pct(used, granted),
+                resetDescription: `${usd(available)} available`,
+              }
+            : null;
         const cost = {
           used: Math.max(0, used),
           limit: Math.max(0, granted),
@@ -306,9 +308,15 @@ defineProvider({
           currency: "USD",
           period: "API credits",
         };
-        if (resetsAt) cost.resetsAt = resetsAt;
         return {
-          usage: { primary, cost, identity: { loginMethod: `API balance: ${usd(available)}` } },
+          usage: {
+            primary,
+            cost,
+            details: expiry
+              ? [{ title: "API credits", rows: [{ label: "Credit expiry", value: expiry.toISOString() }] }]
+              : [],
+            identity: { loginMethod: `API balance: ${usd(available)}` },
+          },
           sourceLabel: "billing-api",
         };
       } catch (balanceError) {

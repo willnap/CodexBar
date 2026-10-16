@@ -29,6 +29,8 @@ struct ZedPluginLinuxTests {
             secrets: ["EDITOR_AUTH": "42 fixture-token"],
             now: now,
             sourceMode: .api)
-        #expect(snapshot.secondary?.resetDescription == "Cycle ends in 1d 0h")
+        #expect(snapshot.secondary == nil)
+        #expect(snapshot.details.flatMap(\.rows).first { $0.label == "Billing cycle" }?.value == "Cycle ends in 1d 0h")
+        #expect(snapshot.subscriptionRenewsAt == now.addingTimeInterval(86400))
     }
 }

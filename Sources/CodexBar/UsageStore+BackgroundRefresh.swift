@@ -28,6 +28,10 @@ extension UsageStore {
         self.invalidateGenericWidgetUsage(for: provider)
         self.providerCleanupRevisions[provider.instanceID, default: 0] &+= 1
         self.refreshingProviders.remove(provider.instanceID)
+        self.endNativeWarningRefresh(provider)
+        self.nativeStatusFetchFailures.remove(provider.instanceID)
+        self.nativeFetchFaults = self.nativeFetchFaults.filter { $0.key.provider != provider }
+        self.nativeAuthenticationFailures = self.nativeAuthenticationFailures.filter { $0.provider != provider }
         self.snapshots.removeValue(forKey: provider.instanceID)
         self.lastKnownResetSnapshots.removeValue(forKey: provider.instanceID)
         self.errors[provider.instanceID] = nil

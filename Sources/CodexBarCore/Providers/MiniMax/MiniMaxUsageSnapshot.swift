@@ -142,13 +142,15 @@ extension MiniMaxUsageSnapshot {
         }
 
         // Fallback to single-service mode for backward compatibility
-        let used = max(0, min(100, self.usedPercent ?? 0))
+        let measured = self.usedPercent.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
+        let used = max(0, min(100, measured ?? 0))
         let resetDescription = self.limitDescription()
         let primary = RateWindow(
             usedPercent: used,
             windowMinutes: self.windowMinutes,
             resetsAt: self.resetsAt,
-            resetDescription: resetDescription)
+            resetDescription: resetDescription,
+            isSyntheticPlaceholder: measured == nil)
 
         let planName = self.planName?.trimmingCharacters(in: .whitespacesAndNewlines)
         let loginMethod = (planName?.isEmpty ?? true) ? nil : planName
@@ -253,7 +255,8 @@ extension MiniMaxUsageSnapshot {
             usedPercent: max(0, min(100, service.percent)),
             windowMinutes: windowMinutes,
             resetsAt: service.resetsAt,
-            resetDescription: service.resetDescription)
+            resetDescription: service.resetDescription,
+            isSyntheticPlaceholder: service.isUnlimited || !service.percent.isFinite || service.percent < 0)
     }
 
     private func limitDescription() -> String? {

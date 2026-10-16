@@ -649,7 +649,7 @@ public struct ProviderUsagePresentation: Sendable {
             case .secondary: snapshot.secondary
             case .tertiary: snapshot.tertiary
             }
-            if let window {
+            if let window = window?.measured {
                 return window
             }
         }
@@ -657,11 +657,11 @@ public struct ProviderUsagePresentation: Sendable {
     }
 
     public static func mostConstrained(_ windows: RateWindow?...) -> RateWindow? {
-        windows.compactMap(\.self).max(by: { $0.usedPercent < $1.usedPercent })
+        windows.compactMap { $0?.measured }.max(by: { $0.usedPercent < $1.usedPercent })
     }
 
     public static func exhausted(_ windows: RateWindow?...) -> RateWindow? {
-        windows.compactMap(\.self).first(where: { $0.remainingPercent <= 0 })
+        windows.compactMap { $0?.measured }.first(where: { $0.remainingPercent <= 0 })
     }
 
     public static func standardSemanticWindows(snapshot: UsageSnapshot) -> ProviderSemanticWindows {

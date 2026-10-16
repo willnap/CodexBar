@@ -62,6 +62,7 @@ cp "$BIN/CodexBarClaudeWatchdog" "$STAGE/Contents/Helpers/CodexBarClaudeWatchdog
 cp "$ROOT/Icon.icns" "$STAGE/Contents/Resources/Icon.icns"
 cp "$ROOT/LICENSE" "$STAGE/Contents/Resources/CodexBar-LICENSE.txt"
 cp "$GAUGE_SOURCE/Provider-LICENSE.txt" "$STAGE/Contents/Resources/Provider-LICENSE.txt"
+cp "$GAUGE_SOURCE/AccountIdentity-LICENSE.txt" "$STAGE/Contents/Resources/AccountIdentity-LICENSE.txt"
 cp "$GAUGE_SOURCE/gauge-calibration.json" "$STAGE/Contents/Resources/"
 
 shopt -s nullglob

@@ -10,6 +10,7 @@ public struct ClaudeSubscriptionMetadata: Equatable, Sendable {
         public let isDateOnly: Bool
     }
 
+    public let status: String
     public let renews: BillingDate?
     public let expires: BillingDate?
 
@@ -18,16 +19,18 @@ public struct ClaudeSubscriptionMetadata: Equatable, Sendable {
             expiresAt: self.expires?.date,
             renewsAt: self.renews?.date,
             expiresAtIsDateOnly: self.expires?.isDateOnly ?? false,
-            renewsAtIsDateOnly: self.renews?.isDateOnly ?? false)
+            renewsAtIsDateOnly: self.renews?.isDateOnly ?? false,
+            status: self.status)
     }
 
     public static func parse(_ data: Data) throws -> Self {
         let object = try JSONSerialization.jsonObject(with: data)
         guard let fields = object as? [String: Any], let status = fields["status"] as? String,
-              ["active", "trialing", "canceled"].contains(status),
-              fields.keys.contains("next_charge_at"), fields.keys.contains("next_charge_date"),
-              fields.keys.contains("plan_ending_at"), fields.keys.contains("plan_ending_before")
+              ["active", "trialing", "canceled", "past_due", "unpaid", "suspended"].contains(status)
         else { throw ParseError.unrecognized }
+        let billingProblem = ["past_due", "unpaid", "suspended"].contains(status)
+        guard billingProblem || ["next_charge_at", "next_charge_date", "plan_ending_at", "plan_ending_before"]
+            .allSatisfy({ fields.keys.contains($0) }) else { throw ParseError.unrecognized }
         func date(_ key: String) throws -> BillingDate? {
             guard let value = fields[key], !(value is NSNull) else { return nil }
             guard let string = value as? String else { throw ParseError.unrecognized }
@@ -51,7 +54,7 @@ public struct ClaudeSubscriptionMetadata: Equatable, Sendable {
         // A scheduled ending takes precedence over a next-charge value left in the same response.
         let renewal = end == nil && ["active", "trialing"].contains(status)
             ? try date("next_charge_at") ?? date("next_charge_date") : nil
-        return Self(renews: renewal, expires: end)
+        return Self(status: status, renews: renewal, expires: end)
     }
 
     public enum ParseError: Error { case unrecognized }

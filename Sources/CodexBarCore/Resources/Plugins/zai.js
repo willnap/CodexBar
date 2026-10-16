@@ -229,14 +229,17 @@ defineProvider({
         const response = await ctx.http.getJSON(balanceEndpoint, { timeoutSeconds: 5 });
         const body = response.json;
         if (response.status === 200 && body && typeof body === "object" && body.success === true) {
+          result.balance = null;
           const data = body.data && typeof body.data === "object" ? body.data : {};
           // Number(null) is 0, which would silently defeat the fallback below and
           // render misleading ¥0.00 rows — only actual numeric values participate.
-          const numeric = (value) => (value === null || value === undefined ? undefined : Number(value));
+          const numeric = (value) =>
+            typeof value === "number" || (typeof value === "string" && value.trim()) ? Number(value) : undefined;
           const available = numeric(data.availableBalance);
           const current = numeric(data.balance);
           const value = Number.isFinite(available) ? available : current;
           if (Number.isFinite(value)) {
+            result.balance = { value, unit: "CNY" };
             const recharged = numeric(data.rechargeAmount);
             const granted = numeric(data.giveAmount);
             const spent = numeric(data.totalSpendAmount);

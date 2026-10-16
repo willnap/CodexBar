@@ -1086,7 +1086,7 @@ struct KimiUsageResponseParsingTests {
         #expect(KimiUsageFetcher.codeAPIError(statusCode: 401) == .invalidAPIKey)
         #expect(
             KimiUsageFetcher.codeAPIError(statusCode: 403)
-                == .apiError("HTTP 403 (permission or quota denied)"))
+                == .httpError(403))
     }
 
     @Test

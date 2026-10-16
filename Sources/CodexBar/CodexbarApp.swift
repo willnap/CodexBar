@@ -465,6 +465,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         MenuBarStatusItemWindowProbe.trace("did-finish-launching")
+        NativeOrbitSystemSignals.shared.start()
         self.dockIconController.start()
         self.memoryPressureMonitor.start()
         #if DEBUG
@@ -545,6 +546,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        NativeOrbitSystemSignals.shared.stop()
         self.cloudSyncCoordinator?.stop()
         self.memoryPressureMonitor.stop()
         #if DEBUG
@@ -558,6 +560,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         self.cloudSyncCoordinator?.applicationDidBecomeActive()
+        NativeOrbitSystemSignals.shared.refreshNotificationAuthorization()
     }
 
     func runProviderLoginFlow(_ provider: UsageProvider) async {

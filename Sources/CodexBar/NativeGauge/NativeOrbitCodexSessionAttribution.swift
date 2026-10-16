@@ -211,18 +211,28 @@ extension UsageStore {
         let live = self.nativeOrbitCodexLiveLocalUsages(contexts)
         let zone = self.settings.costUsageBucketTimeZoneIdentifier
         var owners: [String: String] = [:]
+        var legacyOwners: [String: String] = [:]
         for context in contexts {
-            owners[context.account.id] = Self.nativeCodexLocalUsageOwner(
+            owners[context.account.id] = Self.nativeCodexLastKnownUsageOwner(
+                account: context.account, bucketTimeZoneIdentifier: zone)
+            legacyOwners[context.account.id] = Self.nativeCodexLocalUsageOwner(
                 account: context.account,
                 homePath: self.nativeCodexHomePath(context.account),
                 bucketTimeZoneIdentifier: zone)
         }
-        // Attribution splits shared homes between exactly these accounts; another account set is another owner.
-        let cohort = NativeOrbitLastKnownUsageStore.ownerDigest(contexts.map {
-            owners[$0.account.id] ?? "unowned:\($0.account.id)"
-        }.sorted())
+        /// Attribution splits shared homes between exactly these accounts; another account set is another owner.
+        func cohort(_ owners: [String: String]) -> String {
+            NativeOrbitLastKnownUsageStore.ownerDigest(contexts.map {
+                owners[$0.account.id] ?? "unowned:\($0.account.id)"
+            }.sorted())
+        }
+        let cohortKey = cohort(owners)
+        let legacyCohort = cohort(legacyOwners)
         func key(_ id: String) -> String? {
-            owners[id].map { NativeOrbitLastKnownUsageStore.ownerDigest(["codex-dial", cohort, $0]) }
+            owners[id].map { NativeOrbitLastKnownUsageStore.ownerDigest(["codex-dial", cohortKey, $0]) }
+        }
+        func legacyKey(_ id: String) -> String? {
+            legacyOwners[id].map { NativeOrbitLastKnownUsageStore.ownerDigest(["codex-dial", legacyCohort, $0]) }
         }
         var resolved: [String: NativeOrbitResolvedLocalUsage] = [:]
         for (id, usage) in live.usages {
@@ -230,9 +240,23 @@ extension UsageStore {
             self.nativeLastKnownUsage.record(.codex, owner: key(id), usage: usage)
             resolved[id] = NativeOrbitResolvedLocalUsage(usage: usage)
         }
-        guard !live.isSettled, self.settings.isCostUsageEffectivelyEnabled(for: .codex) else { return resolved }
+        let publishedSourceIDs = Set(self.spendDashboardPublication.sources.filter {
+            $0.provider == .codex && $0.role == .subscription
+        }.map(\.id))
+        let awaitingSwitchSources = self.nativeCodexAccountSwitchPresentation != nil
+            && !Set(contexts.map { "codex:\($0.account.id)" }).isSubset(of: publishedSourceIDs)
+        guard !live.isSettled || awaitingSwitchSources,
+              self.settings.isCostUsageEffectivelyEnabled(for: .codex) else { return resolved }
         for context in contexts where resolved[context.account.id] == nil {
-            resolved[context.account.id] = self.nativeLastKnownUsage.usage(.codex, owner: key(context.account.id))
+            let id = context.account.id
+            let remembered = self.nativeLastKnownUsage.usage(.codex, owner: key(id))
+                ?? self.nativeLastKnownUsage.usage(.codex, owner: legacyKey(id))
+                ?? self.nativeCodexSwitchRetainedLocalUsage(for: context.account)
+            resolved[id] = remembered
+            if let remembered {
+                // Existing files remain readable for the same exact scan scope; adopt their durable owner once.
+                self.nativeLastKnownUsage.record(.codex, owner: key(id), usage: remembered.usage)
+            }
         }
         return resolved
     }

@@ -38,23 +38,17 @@ public struct DoubaoUsageSnapshot: Sendable {
         }
 
         let primary: RateWindow?
-        if self.limitRequests > 0, self.requestLimitsReliable {
+        if self.limitRequests > 0, self.remainingRequests >= 0, self.requestLimitsReliable {
             let used = max(0, self.limitRequests - self.remainingRequests)
             primary = RateWindow(
                 usedPercent: min(100, max(0, Double(used) / Double(self.limitRequests) * 100)),
                 windowMinutes: nil,
                 resetsAt: self.resetTime,
                 resetDescription: "\(used)/\(self.limitRequests) requests")
-        } else if self.apiKeyValid {
-            // Ark can return successful requests without a trustworthy request-limit window.
+        } else {
+            // Responses without a trustworthy allocation do not establish request capacity.
             // Omitting the window prevents the UI from presenting unknown usage as 100% left.
             primary = nil
-        } else {
-            primary = RateWindow(
-                usedPercent: 0,
-                windowMinutes: nil,
-                resetsAt: self.resetTime,
-                resetDescription: "No usage data")
         }
 
         let identity = ProviderIdentitySnapshot(

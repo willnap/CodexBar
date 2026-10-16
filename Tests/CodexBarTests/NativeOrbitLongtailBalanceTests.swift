@@ -119,7 +119,8 @@ struct NativeOrbitLongtailBalanceTests {
         let usd = try await Self.veniceAPI("""
         {"canConsume": true, "consumptionCurrency": "USD", "balances": {"diem": null, "usd": 25.75}}
         """)
-        #expect(usd.primary?.resetDescription == "$25.75 USD remaining")
+        #expect(usd.primary == nil)
+        #expect(usd.details.flatMap(\.rows).contains { $0.label == "Balance" && $0.value == "$25.75 USD remaining" })
         #expect(usd.providerCost?.balance == 25.75)
         #expect(usd.providerCost?.currencyCode == "USD")
         #expect(usd.providerCost?.usageIsUnavailable == true)

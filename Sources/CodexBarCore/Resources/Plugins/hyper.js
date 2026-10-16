@@ -110,6 +110,7 @@ defineProvider({
       throw ctx.fail.parseFailure("Charm Hyper balance must be a non-negative number.");
     }
     return {
+      balance: { value: balance, unit: "HC" },
       details: [
         {
           title: "Hypercredits",

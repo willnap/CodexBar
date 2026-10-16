@@ -193,12 +193,18 @@ public struct DeepSeekUsageSnapshot: Sendable {
                 usedPercent: usedPercent,
                 windowMinutes: nil,
                 resetsAt: nil,
-                resetDescription: balanceDetail)
+                resetDescription: balanceDetail,
+                isSyntheticPlaceholder: true)
         } else {
             nil
         }
 
-        let details = self.usageSummary.map(Self.detailSections) ?? []
+        var details = self.usageSummary.map(Self.detailSections) ?? []
+        if self.hasBalance, !self.isAvailable {
+            details.append(.makeSection(title: "Account", rows: [
+                .makeRow(label: "Status", value: "Unavailable"),
+            ]))
+        }
         return UsageSnapshot(
             primary: balanceWindow,
             secondary: nil,

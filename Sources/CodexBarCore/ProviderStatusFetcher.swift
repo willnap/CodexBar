@@ -42,7 +42,22 @@ private enum StatusFeedDateParser {
     }
 }
 
+package enum ProviderStatusFetchError: Error, Equatable, Sendable {
+    case httpStatus(Int)
+}
+
 package enum ProviderStatusFetcher {
+    private static func statusData(
+        for request: URLRequest,
+        transport: any ProviderHTTPTransport) async throws -> Data
+    {
+        let (data, response) = try await transport.data(for: request)
+        if let response = response as? HTTPURLResponse, !(200..<300).contains(response.statusCode) {
+            throw ProviderStatusFetchError.httpStatus(response.statusCode)
+        }
+        return data
+    }
+
     /// Status feeds decode off the main actor: the Google Workspace incidents payload alone
     /// can be hundreds of kilobytes and cost 150-340ms to decode (#1399), and these helpers
     /// touch no store state.
@@ -56,7 +71,7 @@ package enum ProviderStatusFetcher {
         var request = URLRequest(url: apiURL)
         request.timeoutInterval = 10
 
-        let (data, _) = try await transport.data(for: request)
+        let data = try await Self.statusData(for: request, transport: transport)
 
         return try Self.parseStatuspageStatus(data: data)
     }
@@ -80,17 +95,26 @@ package enum ProviderStatusFetcher {
         {
             var proxyRequest = URLRequest(url: proxyURL)
             proxyRequest.timeoutInterval = 10
-            if let (data, _) = try? await transport.data(for: proxyRequest),
+            if let data = try? await Self.statusData(for: proxyRequest, transport: transport),
                let parsed = try? Self.parseIncidentIOSummary(data: data)
             {
                 // The proxy feed derives the indicator from component leaves but carries no
                 // top-level description or timestamp; fetch the summary endpoint so callers
                 // get the full status banner.
-                let overlay = try? await Self.fetchStatus(from: baseURL, transport: transport)
+                var incidentRequest = URLRequest(url: baseURL.appendingPathComponent("api/v2/summary.json"))
+                incidentRequest.timeoutInterval = 10
+                var overlay: ProviderStatus?
+                if let summaryData = try? await Self.statusData(for: incidentRequest, transport: transport) {
+                    overlay = try? Self.parseStatuspageStatus(data: summaryData)
+                }
+                if overlay == nil {
+                    overlay = try? await Self.fetchStatus(from: baseURL, transport: transport)
+                }
                 let status = ProviderStatus(
                     indicator: parsed.status.indicator,
                     description: overlay?.description,
-                    updatedAt: overlay?.updatedAt)
+                    updatedAt: overlay?.updatedAt,
+                    incidents: overlay?.incidents)
                 return (status, parsed.components)
             }
         }
@@ -101,10 +125,10 @@ package enum ProviderStatusFetcher {
         var componentsRequest = URLRequest(url: baseURL.appendingPathComponent("api/v2/components.json"))
         componentsRequest.timeoutInterval = 10
 
-        let (summaryData, _) = try await transport.data(for: summaryRequest)
+        let summaryData = try await Self.statusData(for: summaryRequest, transport: transport)
         let status = try Self.parseStatuspageStatus(data: summaryData)
-        let components: [ProviderStatusComponent]? = if let (componentsData, _) = try? await transport
-            .data(for: componentsRequest)
+        let components: [ProviderStatusComponent]? = if let componentsData = try? await Self
+            .statusData(for: componentsRequest, transport: transport)
         {
             try? Self.parseStatuspageComponents(data: componentsData)
         } else {
@@ -240,6 +264,37 @@ package enum ProviderStatusFetcher {
 
     package static func parseStatuspageStatus(data: Data) throws -> ProviderStatus {
         struct Response: Decodable {
+            struct Incident: Decodable {
+                struct Component: Decodable { let id: String }
+                let id: String
+                let name: String
+                let status: String
+                let impact: String?
+                let components: [Component]?
+                let updatedAt: Date?
+                let scheduledFor: Date?
+                let scheduledUntil: Date?
+
+                private enum CodingKeys: String, CodingKey {
+                    case id, name, status, impact, components
+                    case updatedAt = "updated_at"
+                    case scheduledFor = "scheduled_for"
+                    case scheduledUntil = "scheduled_until"
+                }
+
+                var value: ProviderStatusIncident {
+                    ProviderStatusIncident(
+                        id: self.id,
+                        title: self.name,
+                        phase: self.status,
+                        impact: self.impact ?? "unknown",
+                        componentIDs: Set(self.components?.map(\.id) ?? []),
+                        updatedAt: self.updatedAt,
+                        scheduledFor: self.scheduledFor,
+                        scheduledUntil: self.scheduledUntil)
+                }
+            }
+
             struct Status: Decodable {
                 let indicator: String
                 let description: String?
@@ -255,6 +310,13 @@ package enum ProviderStatusFetcher {
 
             let page: Page?
             let status: Status
+            let incidents: [Incident]?
+            let scheduledMaintenances: [Incident]?
+
+            private enum CodingKeys: String, CodingKey {
+                case page, status, incidents
+                case scheduledMaintenances = "scheduled_maintenances"
+            }
         }
 
         let decoder = JSONDecoder()
@@ -264,7 +326,9 @@ package enum ProviderStatusFetcher {
         return ProviderStatus(
             indicator: indicator,
             description: response.status.description,
-            updatedAt: response.page?.updatedAt)
+            updatedAt: response.page?.updatedAt,
+            incidents: response.incidents == nil && response.scheduledMaintenances == nil ? nil :
+                ((response.incidents ?? []) + (response.scheduledMaintenances ?? [])).map(\.value))
     }
 
     package static func parseStatuspageComponents(data: Data) throws -> [ProviderStatusComponent] {
@@ -338,7 +402,7 @@ package enum ProviderStatusFetcher {
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
-        let (data, _) = try await transport.data(for: request)
+        let data = try await Self.statusData(for: request, transport: transport)
         beforeDecoding?()
         return try Self.parseGoogleWorkspaceStatus(data: data, productID: productID)
     }

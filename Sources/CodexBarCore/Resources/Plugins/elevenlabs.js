@@ -107,14 +107,36 @@ defineProvider({
           .replace(/\b\w/g, (letter) => letter.toUpperCase()) + suffix
       : data.status;
     return {
-      primary: {
-        usedPercent: data.character_limit > 0 ? ctx.pct(data.character_count, data.character_limit) : 0,
-        resetsAt:
-          data.next_character_count_reset_unix == null
-            ? null
-            : ctx.date.unixSeconds(data.next_character_count_reset_unix),
-        resetDescription: `${ctx.format.number(data.character_count, { maximumFractionDigits: 0 })} / ${ctx.format.number(data.character_limit, { maximumFractionDigits: 0 })} credits`,
-      },
+      primary:
+        data.character_limit > 0
+          ? {
+              usedPercent: ctx.pct(data.character_count, data.character_limit),
+              resetsAt:
+                data.next_character_count_reset_unix == null
+                  ? null
+                  : ctx.date.unixSeconds(data.next_character_count_reset_unix),
+              resetDescription: `${ctx.format.number(data.character_count, { maximumFractionDigits: 0 })} / ${ctx.format.number(data.character_limit, { maximumFractionDigits: 0 })} credits`,
+            }
+          : null,
+      details: [
+        {
+          title: "Credits",
+          rows: [
+            {
+              label: "Used",
+              value: ctx.format.number(data.character_count, { maximumFractionDigits: 0 }),
+              usageValue: data.character_count,
+            },
+            {
+              label: "Allowance",
+              value:
+                data.character_limit > 0
+                  ? ctx.format.number(data.character_limit, { maximumFractionDigits: 0 })
+                  : "Not reported",
+            },
+          ],
+        },
+      ],
       extraWindows: extraWindows.length ? extraWindows : null,
       identity: { loginMethod },
     };

@@ -266,6 +266,12 @@ extension StatusItemController {
               current.selectionSource == target.selectionSource,
               UsageStore.codexPriorSnapshotAccountMatches(target, account: current)
         else { return .unavailable("Account ownership changed. Refresh and try again.") }
+        let presentation = NativeCodexAccountSwitchPresentation(
+            projection: projection,
+            snapshots: self.store.codexAccountSnapshots,
+            localUsages: self.store.nativeCodexSwitchLocalUsages(for: projection))
+        self.store.nativeCodexAccountSwitchPresentation = presentation
+        defer { self.store.finishNativeCodexAccountSwitchPresentation(token: presentation.token) }
         var promotionTarget = current
         var desktop = NativeCodexDesktopHandoff.DesktopResult.notRunning
         if current.isLive {
@@ -294,6 +300,7 @@ extension StatusItemController {
                     guard importedRows.count == 1, let importedRow = importedRows.first,
                           NativeAccountActivationVerification.codexOwnerEvidenceMatches(current, account: importedRow)
                     else { return .failed("The saved profile login could not be verified. Refresh the accounts.") }
+                    self.store.nativeCodexAccountSwitchPresentation?.importedAccounts[current.id] = importedRow
                     promotionTarget = importedRow
                 } catch {
                     return .failed(error.localizedDescription)

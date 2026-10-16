@@ -29,6 +29,12 @@ public enum ProviderAccountCondition: Sendable, Equatable {
     case unrecognized
 }
 
+public enum ProviderAccountCredentialIssue: Sendable, Equatable {
+    case signIn
+    case keychain
+    case wrongAccount
+}
+
 /// Provider-neutral projection of one account's usage, consumed by menus (and,
 /// later, per-account status items) without teaching UI code about any specific
 /// credential source.
@@ -59,6 +65,7 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
     public let error: String?
     public let sourceLabel: String?
     public let condition: ProviderAccountCondition
+    public let credentialIssue: ProviderAccountCredentialIssue?
 
     public init(
         id: ProviderAccountIdentity,
@@ -74,7 +81,8 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
         snapshot: UsageSnapshot?,
         error: String?,
         sourceLabel: String?,
-        condition: ProviderAccountCondition = .ok)
+        condition: ProviderAccountCondition = .ok,
+        credentialIssue: ProviderAccountCredentialIssue? = nil)
     {
         self.id = id
         self.provider = provider
@@ -90,5 +98,6 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
         self.error = error
         self.sourceLabel = sourceLabel
         self.condition = condition
+        self.credentialIssue = credentialIssue
     }
 }

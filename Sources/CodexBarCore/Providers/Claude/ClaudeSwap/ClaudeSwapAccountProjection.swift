@@ -53,7 +53,17 @@ public enum ClaudeSwapAccountProjection {
                 snapshot: snapshot,
                 error: self.errorText(for: row, usage: projected, now: now),
                 sourceLabel: self.sourceLabel,
-                condition: self.condition(for: row.usageStatus))
+                condition: self.condition(for: row.usageStatus),
+                credentialIssue: self.credentialIssue(for: row.usageStatus))
+        }
+    }
+
+    private static func credentialIssue(for status: ClaudeSwapUsageStatus) -> ProviderAccountCredentialIssue? {
+        switch status {
+        case .foreignCredential: .wrongAccount
+        case .keychainUnavailable: .keychain
+        case .tokenExpired, .reloginRequired, .noCredentials: .signIn
+        default: nil
         }
     }
 
@@ -252,6 +262,10 @@ public enum ClaudeSwapAccountProjection {
             providerCost: snapshot.providerCost,
             costUsage: snapshot.costUsage,
             claudeResetCredits: snapshot.claudeResetCredits,
+            claudeCloudCredits: snapshot.claudeCloudCredits,
+            claudeResetCreditsIneligibleReason: snapshot.claudeResetCreditsIneligibleReason,
+            subscriptionStatus: snapshot.subscriptionStatus,
+            subscriptionIsActive: snapshot.subscriptionIsActive,
             updatedAt: snapshot.updatedAt,
             identity: identity,
             dataConfidence: snapshot.dataConfidence)

@@ -214,9 +214,25 @@ extension UsageStore {
 }
 
 extension NativeOrbitAccountMetrics {
-    mutating func includeRecordedUsage(from history: [PlanUtilizationSeriesHistory], at date: Date? = nil) {
+    mutating func includeRecordedUsage(
+        from history: [PlanUtilizationSeriesHistory], at date: Date? = nil, cutoff: Date? = nil)
+    {
         guard date != nil || self.usage == nil else { return }
+        if let prepared = self.preparedHistory, prepared.matches(history) {
+            if let report = prepared.usageSnapshot(at: date, cutoff: cutoff) {
+                self.usage = report
+                self.usageScope = .account
+                self.usageCostPartialDays = Set(report.daily.filter { $0.costIsPartial == true }.map(\.date))
+            } else if date != nil, prepared.hasUsageReceipts,
+                      cutoff.map({ prepared.usageReceiptCount(through: $0) > 0 }) ?? true
+            {
+                self.usage = nil
+                self.usageCostPartialDays = []
+            }
+            return
+        }
         let receipts = history.filter { $0.name.rawValue == "nativeMetric:usage" }.flatMap(\.entries)
+            .filter { entry in cutoff.map { entry.capturedAt <= $0 } ?? true }
         let entries = receipts
             .filter { entry in date.map { $0 >= entry.capturedAt } ?? true }
         // Each receipt belongs to the already verified account history bucket. Select an actual reading,
@@ -234,9 +250,21 @@ extension NativeOrbitAccountMetrics {
         }
     }
 
-    mutating func includeRecordedCreditEvents(from history: [PlanUtilizationSeriesHistory]) {
+    mutating func includeRecordedCreditEvents(from history: [PlanUtilizationSeriesHistory], cutoff: Date? = nil) {
+        if let prepared = self.preparedHistory, prepared.matches(history) {
+            if let cutoff {
+                self.creditUsageEvents = NativeOrbitCreditUsageEvent.merging([
+                    self.creditUsageEvents, prepared.creditEvents(through: cutoff),
+                ])
+            } else {
+                self.creditUsageEvents = self.preparedCreditEvents
+                    ?? NativeOrbitCreditUsageEvent.merging([self.creditUsageEvents, prepared.creditEvents])
+            }
+            return
+        }
         let observations = history.filter { $0.name.rawValue == "nativeMetric:creditEvents" }
-            .flatMap(\.entries).compactMap { $0.nativeMetrics?.creditEvents }
+            .flatMap(\.entries).filter { entry in cutoff.map { entry.capturedAt <= $0 } ?? true }
+            .compactMap { $0.nativeMetrics?.creditEvents }
         self.creditUsageEvents = NativeOrbitCreditUsageEvent.merging([self.creditUsageEvents] + observations)
     }
 
@@ -276,12 +304,18 @@ extension NativeOrbitAccountMetrics {
         return min(5400, max(900, cadence * 3))
     }
 
-    mutating func restoreHistoricalMetrics(from history: [PlanUtilizationSeriesHistory], at date: Date) {
+    mutating func restoreHistoricalMetrics(
+        from history: [PlanUtilizationSeriesHistory], at date: Date, cutoff: Date? = nil)
+    {
         /// Each lane restores its own reading with that observation's timestamp; a newer empty reading (for
         /// example an unavailable spend) is the latest observation and therefore clears the older value.
         func observation(_ name: String) -> PlanUtilizationHistoryEntry? {
-            Self.latestObservation(
-                in: history.filter { $0.name.rawValue == "nativeMetric:" + name }.flatMap(\.entries),
+            if let prepared = self.preparedHistory, prepared.matches(history) {
+                return prepared.observation(name, at: date, cutoff: cutoff)
+            }
+            return Self.latestObservation(
+                in: history.filter { $0.name.rawValue == "nativeMetric:" + name }.flatMap(\.entries)
+                    .filter { entry in cutoff.map { entry.capturedAt <= $0 } ?? true },
                 at: date)
         }
         if let entry = observation("spend"), let spend = entry.nativeMetrics?.spend(at: entry.capturedAt) {

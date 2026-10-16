@@ -57,6 +57,9 @@ defineProvider({
     }
     const currency = origin === "https://api.moonshot.cn" ? "CNY" : "USD";
     const deficit = cash < 0 ? ` · ${ctx.format.currency(Math.abs(cash), currency)} in deficit` : "";
-    return { identity: { loginMethod: `Balance: ${ctx.format.currency(balance, currency)}${deficit}` } };
+    return {
+      balance: { value: balance, unit: currency },
+      identity: { loginMethod: `Balance: ${ctx.format.currency(balance, currency)}${deficit}` },
+    };
   },
 });

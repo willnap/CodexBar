@@ -212,6 +212,7 @@ defineProvider({
       primary,
       secondary,
       tertiary,
+      balance: balance === null ? null : { value: balance, unit },
       extraWindows,
       subscriptionExpiresAt: expiresAt,
       identity: { organization: planName, loginMethod: planName },

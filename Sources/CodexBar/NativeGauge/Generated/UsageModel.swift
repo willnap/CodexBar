@@ -109,13 +109,30 @@ public enum UsageProduct {
  public static func canonicalID(_ id:String)->String {
   switch id {
    case "chatgpt":return "openai"
-   case "claude","anthropic":return "claudecode"
+   case "claude":return "claudecode"
    case "geminicli":return "gemini"
    default:return id
   }
  }
  public static func name(_ id:String)->String {
-  ServiceIdentity.find(canonicalID(id))?.name ?? id
+  if id == "chatgpt" { return "ChatGPT" }
+  if id == "anthropic" { return "Anthropic" }
+  return ServiceIdentity.find(canonicalID(id))?.name ?? id
+ }
+ public static func companyName(_ id:String)->String { // Provider-specific by design: a company mark names OpenAI independently of its API product.
+  switch id {
+   case "openai":return "OpenAI"
+   case "anthropic":return "Anthropic"
+   default:return name(id)
+  }
+ }
+ /// Parent marks appear only when the displayed product is distinct from its company.
+ public static func companyID(_ id:String)->String? { // Provider-specific by design: Codex and Claude Code retain their distinct parent-company identities.
+  switch canonicalID(id) {
+   case "codex":return "openai"
+   case "claudecode":return "anthropic"
+   default:return nil
+  }
  }
 
 }

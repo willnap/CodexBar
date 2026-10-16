@@ -279,6 +279,10 @@ final class NativeOrbitLastKnownUsageStore {
     /// Bumped only when restored entries land, so a presentation built before the disk read refreshes once.
     private(set) var revision: UInt64 = 0
     @ObservationIgnored private var entries: [UsageProvider: [String: Entry]] = [:]
+    /// In-memory account adjuncts retain their verified owner through a switch; identities never enter disk files.
+    @ObservationIgnored private var accountSnapshots: [UsageProvider: [String: UsageSnapshot]] = [:]
+    /// Explicit transaction-only account inventory alongside its retained readings, never persisted.
+    @ObservationIgnored var codexSwitchPresentation: NativeCodexAccountSwitchPresentation?
     @ObservationIgnored private let directory: URL?
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     @ObservationIgnored private var saveTasks: [UsageProvider: Task<Void, Never>] = [:]
@@ -346,6 +350,24 @@ final class NativeOrbitLastKnownUsageStore {
         var usage = entry.usage
         usage.isStale = true
         return NativeOrbitResolvedLocalUsage(usage: usage, lastKnownAt: entry.usage.snapshot.updatedAt)
+    }
+
+    func accountSnapshot(_ provider: UsageProvider, owner: String?) -> UsageSnapshot? {
+        guard let owner else { return nil }
+        return self.accountSnapshots[provider]?[owner]
+    }
+
+    /// Called while rendering, like local-report retention: no observed mutation and no disk access.
+    func recordAccountSnapshot(_ provider: UsageProvider, owner: String?, snapshot: UsageSnapshot) {
+        guard let owner else { return }
+        var snapshots = self.accountSnapshots[provider] ?? [:]
+        snapshots[owner] = snapshot
+        if snapshots.count > Self.maximumEntriesPerProvider {
+            let keep = Set(snapshots.sorted { $0.value.updatedAt > $1.value.updatedAt }
+                .prefix(Self.maximumEntriesPerProvider).map(\.key))
+            snapshots = snapshots.filter { keep.contains($0.key) }
+        }
+        self.accountSnapshots[provider] = snapshots
     }
 
     /// Every remembered reading for `provider`, as it would be written to disk.

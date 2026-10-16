@@ -65,13 +65,14 @@ public enum CodexProviderDescriptor {
             branding: ProviderBranding(
                 iconStyle: .init(provider: .codex),
                 iconResourceName: "ProviderIcon-codex",
-                color: ProviderColor(red: 73 / 255, green: 163 / 255, blue: 176 / 255),
+                // Sampled from the shipped Codex app icon: violet body, periwinkle and lilac highlights.
+                color: ProviderColor(hex: 0x3935F5),
                 confettiPalette: [
-                    ProviderColor(hex: 0x736BD4),
-                    ProviderColor(hex: 0x97A9F7),
-                    ProviderColor(hex: 0xCFD4F7),
+                    ProviderColor(hex: 0x3935F5),
+                    ProviderColor(hex: 0x7E9BF8),
+                    ProviderColor(hex: 0xBFADF9),
                 ],
-                burnDownWidgetColor: ProviderColor(red: 0.120, green: 0.780, blue: 0.598)),
+                burnDownWidgetColor: ProviderColor(hex: 0x3935F5)),
             tokenCost: ProviderTokenCostConfig(
                 supportsTokenCost: true,
                 noDataMessage: self.noDataMessage,

@@ -6,6 +6,7 @@ public struct QoderUsageSnapshot: Sendable {
     public let totalCredits: Double
     public let remainingCredits: Double
     public let usagePercentage: Double
+    public let percentageIsKnown: Bool
     public let unit: String?
     public let resetsAt: Date?
     public let updatedAt: Date
@@ -17,12 +18,14 @@ public struct QoderUsageSnapshot: Sendable {
         usagePercentage: Double,
         unit: String?,
         resetsAt: Date? = nil,
-        updatedAt: Date = Date())
+        updatedAt: Date = Date(),
+        percentageIsKnown: Bool = true)
     {
         self.usedCredits = usedCredits
         self.totalCredits = totalCredits
         self.remainingCredits = remainingCredits
         self.usagePercentage = usagePercentage
+        self.percentageIsKnown = percentageIsKnown
         self.unit = unit
         self.resetsAt = resetsAt
         self.updatedAt = updatedAt
@@ -43,7 +46,7 @@ public struct QoderUsageSnapshot: Sendable {
             loginMethod: nil)
 
         return UsageSnapshot(
-            primary: primary,
+            primary: self.percentageIsKnown ? primary : nil,
             secondary: nil,
             tertiary: nil,
             providerCost: nil,

@@ -5,6 +5,55 @@ import Testing
 
 @MainActor
 struct ProviderStatusRefreshPublicationTests {
+    @Test func `fresh healthy summary without components retires stale component outages`() async {
+        let store = Self.makeStore()
+        store.statusComponents[.codex] = [
+            .init(id: "codex", name: "Codex", indicator: .critical, status: "major_outage"),
+        ]
+        store.nativeStatusFetchFailures.insert(.codex)
+        // A summary-only publication follows the same nil-components path as a failed components request.
+        store._test_providerStatusFetchOverride = { _ in Self.status(.none, description: "Recovered") }
+        await store.refreshProviderStatus(.codex)
+        #expect(store.statusComponents[.codex] == nil)
+        let lamps = NativeOrbitStatusWarningSignals.lights(
+            provider: .codex,
+            status: store.status(for: .codex),
+            components: store.statusComponents(for: .codex),
+            fetchFailed: store.nativeStatusFetchFailures.contains(.codex))
+        #expect(lamps.isEmpty)
+    }
+
+    @Test func `fresh shared status issue without components reports unknown instead of stale outage`() async {
+        let store = Self.makeStore()
+        store.statusComponents[.codex] = [
+            .init(id: "codex", name: "Codex", indicator: .critical, status: "major_outage"),
+        ]
+        store._test_providerStatusFetchOverride = { _ in Self.status(.major, description: "Some products affected") }
+        await store.refreshProviderStatus(.codex)
+        let lamps = NativeOrbitStatusWarningSignals.lights(
+            provider: .codex,
+            status: store.status(for: .codex),
+            components: store.statusComponents(for: .codex))
+        #expect(lamps.map(\.kind) == [.statusUnknown])
+    }
+
+    @Test func `failed status requests light unknown and a successful fresh request clears it`() async {
+        let store = Self.makeStore()
+        store._test_providerStatusFetchOverride = { _ in throw URLError(.timedOut) }
+        await store.refreshProviderStatus(.codex)
+        #expect(store.nativeStatusFetchFailures.contains(.codex))
+        store._test_providerStatusFetchOverride = { _ in Self.status(.none, description: "Operational") }
+        await store.refreshProviderStatus(.codex)
+        #expect(!store.nativeStatusFetchFailures.contains(.codex))
+    }
+
+    @Test func `cancelled status requests do not invent a status failure`() async {
+        let store = Self.makeStore()
+        store._test_providerStatusFetchOverride = { _ in throw CancellationError() }
+        await store.refreshProviderStatus(.codex)
+        #expect(store.nativeStatusFetchFailures.isEmpty)
+    }
+
     @Test
     func `late scoped status cannot replace a newer background status`() async {
         let store = Self.makeStore()

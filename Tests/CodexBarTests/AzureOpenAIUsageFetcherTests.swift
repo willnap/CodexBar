@@ -124,7 +124,8 @@ struct AzureOpenAIUsageFetcherTests {
         #expect(usage.identity?.providerID == .azureopenai)
         #expect(usage.identity?.accountOrganization == "example-resource.openai.azure.com")
         #expect(usage.identity?.loginMethod == "Deployment: chat-prod")
-        #expect(usage.primary?.resetDescription == "Deployment: chat-prod · Model: gpt-4o-mini")
+        #expect(usage.primary == nil)
+        #expect(usage.details.first?.rows.prefix(2).map(\.value) == ["chat-prod", "gpt-4o-mini"])
     }
 
     @Test
@@ -282,7 +283,8 @@ struct AzureOpenAIMenuDescriptorTests {
             }
 
         #expect(lines.contains("Azure OpenAI"))
-        #expect(lines.contains("Deployment: chat-prod · Model: gpt-4o-mini"))
+        #expect(lines.contains("Deployment: chat-prod"))
+        #expect(lines.contains("Model: gpt-4o-mini"))
     }
 }
 

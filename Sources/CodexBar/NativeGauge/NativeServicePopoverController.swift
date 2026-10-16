@@ -1,6 +1,7 @@
 import AppKit
 import CodexBarCore
 import Observation
+import QuartzCore
 import SwiftUI
 
 /// Prepared once; the native host observes cached, account-owned readings independently of menu
@@ -23,13 +24,13 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         var refreshForSwitch: (() async -> Void)?
         var switchingAllowed: (() -> Bool)?
         var statusPage: () -> Void = {}
+        var availableUpdate: () -> String? = { nil }
+        var checkForUpdates: (() -> Void)?
+        var canLaunchLogin: () -> Bool = { false }
         var didClose: () -> Void = {}
     }
 
-    /// Whether this launch's bulb check has run; it runs once, in the first popup opened.
-    private static var bulbCheckDone = false
-
-    static let contentSize = NSSize(width: 240, height: 513)
+    static let contentSize = NSSize(width: 240, height: NativeOrbitPopupView.contentHeight(showsFooter: false))
     private let provider: UsageProvider
     private let store: UsageStore
     private let settings: SettingsStore
@@ -37,6 +38,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     private weak var statusButton: NSStatusBarButton?
     private weak var popover: NSPopover?
     private let canSignIn: Bool
+    private let hasDashboard: () -> Bool
     private let claudeArchiveReader: NativeClaudeLocalArchive
     let orbitState = NativeOrbitPopupState()
     let manualRefresh = NativePopoverManualRefresh()
@@ -52,7 +54,10 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     /// wait behind presentation rebuilds; an open popup follows them promptly.
     private var presentationDirty = false
     private var presentationRefreshTask: Task<Void, Never>?
-    private var pendingBulbCheck = false
+    private let startupOwner = UUID()
+    private let startupLaunch: NativeOrbitStartupLaunch
+    private var startupTask: Task<Void, Never>?
+    private var startupSelection = NativeOrbitStartupSelection()
     private var switchingCheckedAt: Date?
 
     init(
@@ -64,8 +69,10 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         canSignIn: Bool,
         signInTitle: String,
         hasDashboard: @escaping () -> Bool,
-        claudeArchiveReader: NativeClaudeLocalArchive = .shared)
+        claudeArchiveReader: NativeClaudeLocalArchive = .shared,
+        startupLaunch: NativeOrbitStartupLaunch = .shared)
     {
+        self.startupLaunch = startupLaunch
         self.provider = provider
         self.store = store
         self.settings = settings
@@ -74,7 +81,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         self.canSignIn = canSignIn
         self.claudeArchiveReader = claudeArchiveReader
         _ = signInTitle
-        _ = hasDashboard
+        self.hasDashboard = hasDashboard
         super.init(nibName: nil, bundle: nil)
         if let activate = actions.activateLogin, let refresh = actions.refreshForSwitch,
            let allowed = actions.switchingAllowed
@@ -94,6 +101,8 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         self.presentationClockTask?.cancel()
         self.badgeTask?.cancel()
         self.claudeArchiveTask?.cancel()
+        self.readinessCheckTask?.cancel()
+        self.startupTask?.cancel()
     }
 
     @available(*, unavailable)
@@ -108,7 +117,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
             signIn: self.canSignIn ? self.actions.signIn : nil,
             refresh: { [weak self] in self?.refreshUsage() },
             settings: { [weak self] in self?.openSettings() },
-            lightAction: { [weak self] in self?.handleLight($0) }))
+            lightAction: { [weak self] accountID, action in self?.handleLight(action, accountID: accountID) }))
         self.view.frame = NSRect(origin: .zero, size: self.preferredContentSize)
         self.observePresentation()
         self.reloadClaudeLocalArchive()
@@ -118,9 +127,16 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         _ = self.view
         self.reloadClaudeLocalArchive()
         self.view.layoutSubtreeIfNeeded()
+        self.orbitState.prepareStartupArtwork(
+            screen: self.statusButton?.window?.screen,
+            appearance: self.isViewLoaded ? self.view.effectiveAppearance : nil)
     }
 
     private func observePresentation() {
+        guard !self.orbitState.startup.isActive else {
+            self.presentationDirty = true
+            return
+        }
         self.presentationDirty = false
         withObservationTracking {
             self.refreshPresentation()
@@ -147,7 +163,34 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     }
 
     private func refreshPresentation() {
-        self.orbitState.accounts = self.store.nativeOrbitAccounts(for: self.provider)
+        // Account receipts and archive scans can publish several times during a sweep. Keep the prepared
+        // chart and glass trees stable until it ends, then apply the latest complete presentation once.
+        guard !self.orbitState.startup.isActive else {
+            self.presentationDirty = true
+            return
+        }
+        let update = self.actions.availableUpdate()
+        let accounts = self.store.nativeOrbitAccounts(for: self.provider)
+        let metadata = self.store.metadata(for: self.provider)
+        let statusURL = metadata.statusPageURL ?? metadata.statusLinkURL
+        let hasStatusPage = statusURL.flatMap(URL.init(string:)) != nil
+        self.orbitState.accounts = accounts.map { account in
+            var row = account
+            if let version = update {
+                row.warnings = NativeOrbitWarningLight.merged(row.warnings + [
+                    .init(.update, .opportunity, "CodexBar \(version) is available.", action: .checkForUpdates),
+                ])
+            }
+            row.warnings = row.warnings.map {
+                $0.resolvingAction(
+                    hasStatusPage: hasStatusPage,
+                    hasDashboard: self.hasDashboard(),
+                    canSignIn: self.canSignIn && self.actions.canLaunchLogin() && accounts.count == 1)
+            }
+            return row
+        }
+        let switched = self.startupSelection.receive(
+            activeID: self.startupAccountOwner)
         // Provider-specific by design: Claude excludes only the exact owners already shown by ClaudeSwap rows.
         self.orbitState.claudeLocalArchiveHistory = NativeOrbitClaudeLocalArchive.mergedHistories(
             fileHistories: self.claudeFileArchiveHistory,
@@ -176,7 +219,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         let color = self.settings.accentColor(for: self.provider)
         self.orbitState.accent = Color(red: color.red, green: color.green, blue: color.blue)
         let badgeKey = NativeOrbitBadgeResolver.identityKey(self.orbitState.accounts)
-        if badgeKey != self.badgeIdentityKey {
+        if NativeOrbitBadgeResolver.shouldResolve(self.orbitState.accounts, previousKey: self.badgeIdentityKey) {
             self.badgeIdentityKey = badgeKey
             self.orbitState.badges = NativeOrbitBadgeResolver.initialBadges(self.orbitState.accounts)
             self.badgeTask = Task { [weak self] in
@@ -184,16 +227,41 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
                 await NativeOrbitBadgeResolver.resolve(self.orbitState)
             }
         }
+        self.orbitState.startupHistoryReady = self.store.nativeHistoryAvailable(self.provider)
+        self.orbitState.startupStatusReady = !self.settings.statusChecksEnabled
+            || (metadata.statusPageURL == nil && metadata.statusWorkspaceProductID == nil)
+            || self.store.statuses[self.provider.instanceID] != nil
+            || self.store.nativeStatusFetchFailures.contains(self.provider.instanceID)
         self.updateReadiness()
         let count = self.orbitState.layoutColumns
         let availableWidth = self.statusButton?.window?.screen?.visibleFrame.width ?? 1200
-        let footerHeight = count > 1
-            || (self.orbitState.accounts.first?.updatedAt == nil && self.canSignIn) ? 28 : 0
+        let showsFooter = count > 1 || (self.orbitState.accounts.first?.updatedAt == nil && self.canSignIn)
         self.preferredContentSize = NSSize(
             width: min(CGFloat(count * 240 + (count - 1)), availableWidth - 40),
-            height: CGFloat(513 + footerHeight))
+            height: NativeOrbitPopupView.contentHeight(showsFooter: showsFooter))
         self.popover?.contentSize = self.preferredContentSize
+        if !self.startupLaunch.hasShown, self.popover?.isShown != true {
+            self.orbitState.prepareStartupArtwork(
+                screen: self.statusButton?.window?.screen,
+                appearance: self.isViewLoaded ? self.view.effectiveAppearance : nil)
+        }
         NativeOrbitHistoryInspectionProof.write(provider: self.provider, store: self.store, state: self.orbitState)
+        if switched, self.popover?.isShown == true {
+            self.orbitState.armStartup(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+            self.orbitState.prepareStartupArtwork(
+                screen: self.statusButton?.window?.screen,
+                appearance: self.isViewLoaded ? self.view.effectiveAppearance : nil)
+            self.startStartup()
+        }
+    }
+
+    private var startupAccountOwner: String? {
+        guard let account = self.orbitState.accounts.first(where: \.isActive) else { return nil }
+        switch account.selection {
+        case let .codex(owner): return UsageStore.widgetCodexAccountID(owner) ?? account.id
+        case let .claudeSwap(owner): return UsageStore.nativeOrbitClaudeHistoryKey(owner)
+        default: return account.id
+        }
     }
 
     /// Readiness and the layout's column count. Ready, the popup remembers how many columns it showed, so the next
@@ -219,18 +287,6 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         if self.orbitState.isReady != ready { self.orbitState.isReady = ready }
         let columns = ready ? shown : max(shown, defaults.integer(forKey: key))
         if self.orbitState.layoutColumns != columns { self.orbitState.layoutColumns = columns }
-        self.runBulbCheckIfReady()
-    }
-
-    /// The first popup after launch checks its bulbs once its columns are showing.
-    private func runBulbCheckIfReady() {
-        guard self.pendingBulbCheck, self.orbitState.isReady, self.popover?.isShown == true else { return }
-        self.pendingBulbCheck = false
-        Task { @MainActor [orbitState = self.orbitState] in
-            // After the popup's opening and the columns' fade-in.
-            try? await Task.sleep(for: .milliseconds(350))
-            await orbitState.runBulbCheck()
-        }
     }
 
     /// Why this setup cannot switch the provider's login, rechecked at most every half minute (it reads a config
@@ -250,11 +306,12 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         if self.orbitState.switchingUnavailable != reason { self.orbitState.switchingUnavailable = reason }
     }
 
-    private func handleLight(_ action: NativeOrbitWarningLight.Action) {
+    func handleLight(_ action: NativeOrbitWarningLight.Action, accountID: String) {
+        guard self.orbitState.accounts.contains(where: { $0.id == accountID }) else { return }
         switch action {
         case .signIn:
             // One account signs in from here; several re-authenticate the one that failed in Settings.
-            if self.canSignIn, self.orbitState.accounts.count == 1 {
+            if self.canSignIn, self.actions.canLaunchLogin(), self.orbitState.accounts.count == 1 {
                 self.actions.signIn()
             } else {
                 self.openSettings()
@@ -262,6 +319,21 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         case .statusPage: self.actions.statusPage()
         case .refresh: self.refreshUsage()
         case .settings: self.openSettings()
+        case .dashboard: self.actions.dashboard()
+        case .details: self.openSettings()
+        case .checkForUpdates:
+            if let check = self.actions.checkForUpdates {
+                check()
+            } else {
+                self.openSettings()
+            }
+        case .networkSettings, .notificationSettings, .timeZoneSettings:
+            let pane = switch action {
+            case .networkSettings: "Network"
+            case .notificationSettings: "Notifications"
+            default: "DateAndTime"
+            }
+            NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Library/PreferencePanes/\(pane).prefPane"))
         }
     }
 
@@ -295,7 +367,8 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         self.presentationRefreshTask = nil
         self.observePresentation()
         self.orbitState.refreshIssue = switch outcome {
-        case .finished: Self.refreshIssue(self.orbitState.accounts, requestedAt: self.manualLoadStartedAt)
+        case .finished: Self.refreshIssue(
+                self.store.nativeOrbitAccounts(for: self.provider), requestedAt: self.manualLoadStartedAt)
         case .timedOut: NativeOrbitRefreshIssue(kind: .slow, detail: L("native_refresh_timed_out"))
         }
         self.orbitState.isRefreshing = false
@@ -366,6 +439,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     }
 
     func activateAccount(id: String) {
+        self.cancelStartup()
         guard let account = self.orbitState.accounts.first(where: { $0.id == id }),
               account.canActivate else { return }
         if let switching = self.orbitState.accountSwitch {
@@ -386,6 +460,9 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         // Appear at once with the prepared columns; a pending background change is applied right after showing,
         // so the click never waits behind a presentation rebuild.
         self.orbitState.now = Date()
+        if notification.object is NSPopover, self.startupLaunch.reserve(self.startupOwner) {
+            self.orbitState.armStartup(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        }
         if self.presentationDirty {
             self.presentationRefreshTask?.cancel()
             self.presentationRefreshTask = Task { @MainActor [weak self] in
@@ -402,10 +479,8 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     }
 
     func popoverDidShow(_ notification: Notification) {
-        if !Self.bulbCheckDone {
-            Self.bulbCheckDone = true
-            self.pendingBulbCheck = true
-            self.runBulbCheckIfReady()
+        if notification.object is NSPopover, self.startupLaunch.shown(self.startupOwner) {
+            self.startStartup()
         }
         self.presentationClockTask?.cancel()
         self.presentationClockTask = Task { @MainActor [weak self] in
@@ -418,7 +493,38 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         }
     }
 
+    /// Commit the armed, fully laid-out face before starting its interpolation. Otherwise first-use layout
+    /// and native glass setup spend the sweep's first frames preparing the view instead of showing it.
+    private func startStartup() {
+        self.startupTask?.cancel()
+        self.startupTask = Task { @MainActor [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            self.view.layoutSubtreeIfNeeded()
+            self.view.window?.displayIfNeeded()
+            CATransaction.flush()
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            await self.orbitState.runStartup()
+            guard !Task.isCancelled else { return }
+            self.startupTask = nil
+            if self.presentationDirty { self.observePresentation() }
+        }
+    }
+
+    func popoverWillClose(_ notification: Notification) {
+        self.cancelStartup()
+    }
+
+    private func cancelStartup() {
+        self.startupTask?.cancel()
+        self.startupTask = nil
+        self.startupLaunch.cancel(self.startupOwner)
+        self.orbitState.finishStartup()
+        if self.presentationDirty { self.schedulePresentationRefresh() }
+    }
+
     func popoverDidClose(_ notification: Notification) {
+        self.cancelStartup()
         self.presentationClockTask?.cancel()
         self.presentationClockTask = nil
         self.claudeArchiveTask?.cancel()

@@ -15,15 +15,24 @@ struct AbacusPluginTests {
                 let now = Date(timeIntervalSince1970: 1_700_000_000)
                 let timeZone = try #require(TimeZone(identifier: zone))
                 let usage = try await runtime.fetchUsage(now: now, timeZone: timeZone, cookieResolver: Self.cookie)
-                let primary = try #require(usage.primary)
-                #expect(primary.usedPercent == (total > 0 ? min(100, max(0, (total - left) / total * 100)) : 0))
-                #expect(primary.resetDescription == "\(Self.credits(total - left)) / \(Self.credits(total)) credits")
-                let date = try #require(ISO8601DateParser.parse(reset))
-                var calendar = Calendar(identifier: .gregorian)
-                calendar.timeZone = timeZone
-                let start = try #require(calendar.date(byAdding: .month, value: -1, to: date))
-                #expect(primary.resetsAt == date)
-                #expect(primary.windowMinutes == Int(date.timeIntervalSince(start) / 60))
+                if total > 0 {
+                    let primary = try #require(usage.primary)
+                    #expect(primary.usedPercent == min(100, max(0, (total - left) / total * 100)))
+                    #expect(primary
+                        .resetDescription == "\(Self.credits(total - left)) / \(Self.credits(total)) credits")
+                    let date = try #require(ISO8601DateParser.parse(reset))
+                    var calendar = Calendar(identifier: .gregorian)
+                    calendar.timeZone = timeZone
+                    let start = try #require(calendar.date(byAdding: .month, value: -1, to: date))
+                    #expect(primary.resetsAt == date)
+                    #expect(primary.windowMinutes == Int(date.timeIntervalSince(start) / 60))
+                } else {
+                    #expect(usage.primary == nil)
+                    #expect(usage.detailRow(label: "Used")?.usageValue == total - left)
+                }
+                #expect(usage.providerCost?.balance == left)
+                #expect(usage.providerCost?.currencyCode == "credits")
+                #expect(usage.providerCost?.usageIsUnavailable == true)
                 #expect(usage.identity?.providerID == .abacus)
                 #expect(usage.identity?.loginMethod == "Pro")
                 #expect(usage.identity?.accountEmail == nil)

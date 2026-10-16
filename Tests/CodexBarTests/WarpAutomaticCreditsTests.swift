@@ -13,7 +13,7 @@ struct WarpAutomaticCreditsTests {
         (1500, 0, 1000, false, 0.0),
         (1500, 0, 0, false, 0.0),
         (375, 770, 1000, false, 75.0),
-        (1500, 770, 1000, true, 100.0),
+        (1500, 770, 1000, true, 77.0),
     ])
     func `automatic follows monthly then add-on credits`(
         used: Int, bonus: Int, bonusTotal: Int, unlimited: Bool, remaining: Double) throws
@@ -30,7 +30,8 @@ struct WarpAutomaticCreditsTests {
             preference: .automatic, provider: .warp, snapshot: snapshot, supportsAverage: false))
         #expect(abs(automatic.remainingPercent - remaining) < 0.001)
         for (preference, expected): (MenuBarMetricPreference, RateWindow?) in [
-            (.primary, snapshot.primary), (.secondary, snapshot.secondary ?? snapshot.primary),
+            (.primary, snapshot.primary?.measured ?? snapshot.secondary?.measured),
+            (.secondary, snapshot.secondary?.measured ?? snapshot.primary?.measured),
         ] {
             let selected = MenuBarMetricWindowResolver.rateWindow(
                 preference: preference, provider: .warp, snapshot: snapshot, supportsAverage: false)
@@ -127,5 +128,19 @@ struct WarpAutomaticCreditsTests {
             provider: .warp,
             snapshot: snapshot,
             supportsAverage: false)?.remainingPercent == 77)
+    }
+
+    @Test
+    func `unlimited monthly access without a finite add-on pool has no automatic percentage`() {
+        let snapshot = WarpUsageSnapshot(
+            requestLimit: 1500,
+            requestsUsed: 0,
+            nextRefreshTime: nil,
+            isUnlimited: true,
+            updatedAt: .now).toUsageSnapshot()
+        #expect(snapshot.primary?.resetDescription == "Unlimited")
+        #expect(snapshot.primary?.isSyntheticPlaceholder == true)
+        #expect(MenuBarMetricWindowResolver.rateWindow(
+            preference: .automatic, provider: .warp, snapshot: snapshot, supportsAverage: false) == nil)
     }
 }

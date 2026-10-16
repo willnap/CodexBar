@@ -66,17 +66,20 @@ struct ClaudeLimitResetStatusResponse: Decodable {
     static let maximumGrantRecords = 200
 
     let eligible: Bool
+    let ineligibleReason: String?
     let grants: [ClaudeLimitResetGrantResponse]
     let grantsReceived: Bool
 
     private enum CodingKeys: String, CodingKey {
         case eligible
+        case ineligibleReason = "ineligible_reason"
         case grants
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.eligible = try container.decode(Bool.self, forKey: .eligible)
+        self.ineligibleReason = try container.decodeIfPresent(String.self, forKey: .ineligibleReason)
         var grants: [ClaudeLimitResetGrantResponse] = []
         guard container.contains(.grants), try !container.decodeNil(forKey: .grants) else {
             self.grants = grants

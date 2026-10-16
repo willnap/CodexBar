@@ -22,7 +22,7 @@ struct NativeAccountPresentationTests {
         #expect(defaults.gauge.resolvedWindows.count == 2)
         #expect(!defaults.gauge.resolvedWindows.contains { $0.id == fableID })
         #expect(store.nativeOrbitAccounts(for: .claude).first?.gauge.resolvedWindows.map(\.id)
-            == ["secondary", fableID, "primary"])
+            == ["secondary", "primary"])
         store.snapshots[.claude] = UsageSnapshot(
             primary: RateWindow(usedPercent: 62, windowMinutes: 300, resetsAt: nil, resetDescription: nil),
             secondary: RateWindow(usedPercent: 44, windowMinutes: 10080, resetsAt: nil, resetDescription: nil),
@@ -32,6 +32,8 @@ struct NativeAccountPresentationTests {
         let optedIn = store.nativeServicePresentation(for: .claude)
         #expect(optedIn.gauge.resolvedWindows.count == 3)
         #expect(optedIn.gauge.resolvedWindows.map(\.id) == ["secondary", fableID, "primary"])
+        #expect(store.nativeOrbitAccounts(for: .claude).first?.gauge.resolvedWindows.map(\.id)
+            == ["secondary", fableID, "primary"])
         #expect(defaults.iconSignature != optedIn.iconSignature)
     }
 
@@ -115,7 +117,7 @@ struct NativeAccountPresentationTests {
         let pending = store.nativeServicePresentation(for: .claude)
         #expect(pending.accountID == "1")
         #expect(pending.model.email == "Personal")
-        #expect(pending.gauge.resolvedWindows[0].usedFraction == nil)
+        #expect(pending.gauge.resolvedWindows[0].usedFraction == 0.12)
         store.claudeSwapTransientState.switchingAccountID = nil
         store.claudeSwapTransientState.lastErrorAccountID = second
         store.claudeSwapTransientState.lastError = "Fixture activation failed"

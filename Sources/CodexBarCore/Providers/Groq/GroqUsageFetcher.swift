@@ -61,21 +61,13 @@ public struct GroqUsageSnapshot: Codable, Sendable, Equatable {
 
     public func toUsageSnapshot() -> UsageSnapshot {
         UsageSnapshot(
-            primary: RateWindow(
-                usedPercent: 0,
-                windowMinutes: 5,
-                resetsAt: nil,
-                resetDescription: "\(Self.formatDecimal(self.requestsPerMinute)) req/min"),
-            secondary: RateWindow(
-                usedPercent: 0,
-                windowMinutes: 5,
-                resetsAt: nil,
-                resetDescription: "\(Self.formatDecimal(self.tokensPerMinute)) tok/min"),
-            tertiary: self.promptCacheHitRatePerSecond > 0 ? RateWindow(
-                usedPercent: 0,
-                windowMinutes: 5,
-                resetsAt: nil,
-                resetDescription: "\(Self.formatDecimal(self.cacheHitsPerMinute)) cache/min") : nil,
+            primary: nil,
+            secondary: nil,
+            details: [.makeSection(title: "Usage", rows: [
+                .makeRow(label: "Requests", value: "\(Self.formatDecimal(self.requestsPerMinute)) req/min"),
+                .makeRow(label: "Tokens", value: "\(Self.formatDecimal(self.tokensPerMinute)) tok/min"),
+                .makeRow(label: "Cache hits", value: "\(Self.formatDecimal(self.cacheHitsPerMinute)) cache/min"),
+            ])],
             updatedAt: self.updatedAt,
             identity: ProviderIdentitySnapshot(
                 providerID: .groq,

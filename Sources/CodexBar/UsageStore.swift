@@ -36,6 +36,13 @@ extension UsageStore {
         _ = self.refreshingProviders
         _ = self.pathDebugInfo
         _ = self.statuses
+        _ = self.nativeFetchFaults
+        _ = self.nativeWarningSlowRefreshProviders
+        _ = self.nativeStatusFetchFailures
+        _ = NativeOrbitSystemSignals.shared.isOffline
+        _ = NativeOrbitSystemSignals.shared.timeZoneChange
+        _ = NativeOrbitSystemSignals.shared.notificationsDenied
+        _ = NativeOrbitSystemSignals.shared.historyWriteFailures
         _ = self.probeLogs
         _ = self.historicalPaceRevision
         _ = self.planUtilizationHistoryRevision
@@ -159,9 +166,9 @@ final class UsageStore {
 
     var snapshots: [ProviderInstanceID: UsageSnapshot] = [:]
     var errors: [ProviderInstanceID: String] = [:]
-    var nativeAuthenticationFailures: Set<CredentialNotificationKey> = []
-    /// The warning light each account's last failed fetch turned on, until a fresh reading turns it off.
-    var nativeFetchFaults: [CredentialNotificationKey: NativeOrbitWarningLight] = [:]
+    /// Per-account warning faults and provider refresh telemetry share this observable store lifetime.
+    var nativeWarningRuntime = NativeOrbitWarningRuntime()
+    @ObservationIgnored var nativeWarningRefreshTimeoutTasks: [ProviderInstanceID: Task<Void, Never>] = [:]
     var nativeClaudeCredentialPresentationScope: NativeClaudeCredentialPresentationScope?
     var diagnostics: [ProviderInstanceID: String] = [:]
     var geminiMigrationObservation: GeminiMigrationObservation = .none
@@ -989,6 +996,9 @@ final class UsageStore {
     }
 
     deinit {
+        for task in self.nativeWarningRefreshTimeoutTasks.values {
+            task.cancel()
+        }
         self.timerTask?.cancel()
         self.tokenRefreshSequenceTask?.cancel()
         self.codexCostCatchUpTask?.cancel()

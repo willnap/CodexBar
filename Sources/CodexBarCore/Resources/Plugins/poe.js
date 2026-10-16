@@ -172,7 +172,11 @@ defineProvider({
         points: days.map((item) => ({ label: item[0], value: item[1] })),
       };
     }
-    const result = { details: [section], identity: {} };
+    const result = {
+      details: [section],
+      identity: {},
+      balance: balance === null ? null : { value: balance, unit: "points" },
+    };
     if (balance !== null) result.identity.loginMethod = `Balance: ${compact(balance)} points`;
     return result;
   },

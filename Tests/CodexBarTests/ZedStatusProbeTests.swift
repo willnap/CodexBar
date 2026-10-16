@@ -63,8 +63,8 @@ struct ZedStatusProbeTests {
             sourceMode: .api)
         let label = plan.split(separator: "_").map(\.capitalized).joined(separator: " ")
         #expect(snapshot.identity?.loginMethod == label)
-        #expect(snapshot.primary?.resetDescription == "Unlimited")
-        #expect(snapshot.primary?.usedPercent == 0)
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.details.flatMap(\.rows).contains { $0.value == "Unlimited" })
         #expect(snapshot.extraRateWindows == nil)
     }
 

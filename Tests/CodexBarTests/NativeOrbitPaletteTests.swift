@@ -6,6 +6,17 @@ import Testing
 @MainActor
 struct NativeOrbitPaletteTests {
     @Test
+    func `unchanged quota tints retain identity across inspection updates and aliases`() {
+        let accent = Color(red: 0.13, green: 0.37, blue: 0.61)
+        let first = NativeOrbitPalette.color(accent: accent, id: "session", period: 18000)
+        for _ in 0..<120 {
+            #expect(NativeOrbitPalette.color(accent: accent, id: "primary", period: 18000) == first)
+            #expect(NativeOrbitPalette.color(accent: accent, id: "nativeQuota:session5h", period: 0) == first)
+        }
+        #expect(NativeOrbitPalette.color(accent: accent, id: "weekly", period: 604_800) != first)
+    }
+
+    @Test
     func `native observation aliases match the same gauge quota tone`() {
         for id in ["primary", "secondary", "tertiary", "session", "weekly", "session5h", "kimi-monthly"] {
             for period in [0.0, 18000, 86400, 604_800, 2_592_000] {
@@ -46,5 +57,26 @@ struct NativeOrbitPaletteTests {
             #expect(abs(rgb.redComponent - rgb.greenComponent) < 0.001)
             #expect(abs(rgb.greenComponent - rgb.blueComponent) < 0.001)
         }
+    }
+
+    @Test
+    func `dark appearance lifts every quota tone while preserving provider hue`() throws {
+        let accent = Color(.sRGB, red: 0.12, green: 0.42, blue: 0.50, opacity: 1)
+        for id in ["weekly", "session", "daily", "monthly", "tertiary"] {
+            let color = NativeOrbitPalette.color(accent: accent, id: id, period: 18000)
+            let light = try Self.resolve(color, appearance: .aqua)
+            let dark = try Self.resolve(color, appearance: .darkAqua)
+            #expect(dark.brightnessComponent > light.brightnessComponent)
+            #expect(abs(dark.hueComponent - light.hueComponent) < 0.01)
+        }
+    }
+
+    private static func resolve(_ color: Color, appearance: NSAppearance.Name) throws -> NSColor {
+        let appearance = try #require(NSAppearance(named: appearance))
+        var resolved: NSColor?
+        appearance.performAsCurrentDrawingAppearance {
+            resolved = NSColor(color).usingColorSpace(.sRGB)
+        }
+        return try #require(resolved)
     }
 }

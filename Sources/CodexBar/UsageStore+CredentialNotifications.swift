@@ -64,7 +64,7 @@ extension UsageStore {
         result: Result<ProviderFetchResult, Error>,
         isCurrent: @escaping @MainActor () -> Bool = { true })
     {
-        guard !self.credentialNotificationsStopped else { return }
+        guard !self.credentialNotificationsStopped, isCurrent() else { return }
         let key = CredentialNotificationKey(provider: provider, account: account)
         let faultKey = CredentialNotificationKey(provider: provider, account: nativeFaultScope ?? account)
         switch result {

@@ -78,14 +78,14 @@ defineProvider({
           .join(" "),
       },
       dataConfidence: "exact",
-      primary: unlimited
-        ? { usedPercent: 0, resetDescription: "Unlimited" }
-        : limit > 0
+      primary:
+        !unlimited && limit > 0
           ? {
               usedPercent: ctx.pct(used, limit),
               resetDescription: `${Math.min(used, limit)} / ${limit} predictions`,
             }
           : null,
+      details: unlimited ? [{ title: "Predictions", rows: [{ label: "Edit predictions", value: "Unlimited" }] }] : [],
     };
     if (web) {
       const spend = object(usage.token_spend);
@@ -99,7 +99,7 @@ defineProvider({
         { label: "Spend limit", value: cap === null ? "Not reported" : ctx.format.usd(cap) },
       ];
       if (cap !== null) rows.push({ label: "Remaining budget", value: ctx.format.usd(Math.max(0, cap - spent)) });
-      snapshot.details = [{ title: "Token spend", rows }];
+      snapshot.details.unshift({ title: "Token spend", rows });
       return snapshot;
     }
     const user = object(root.user);
@@ -111,19 +111,14 @@ defineProvider({
       if (user.name.trim()) snapshot.identity.organization = user.name;
     }
     if (typeof root.plan.has_overdue_invoices !== "boolean") return fail();
+    const billingRows = [];
     if (root.plan.has_overdue_invoices) {
-      snapshot.extraWindows = [
-        {
-          id: "zed.overdue-invoices",
-          title: "Billing",
-          usageKnown: false,
-          window: { usedPercent: 100, resetDescription: "Overdue invoices" },
-        },
-      ];
+      snapshot.subscriptionStatus = "past_due";
+      billingRows.push({ label: "Payment status", value: "Overdue invoices" });
     }
     if (root.plan.subscription_period != null) {
       const period = object(root.plan.subscription_period);
-      const start = ctx.date.iso(text(period.started_at));
+      ctx.date.iso(text(period.started_at));
       const end = ctx.date.iso(text(period.ended_at));
       const now = ctx.date.now();
       const remaining = (end - now) / 1000;
@@ -137,13 +132,14 @@ defineProvider({
             : hours > 0
               ? `Cycle ends in ${hours}h ${minutes}m`
               : `Cycle ends in ${minutes}m`;
-      snapshot.secondary = {
-        usedPercent: end > start ? ctx.pct(now - start, end - start) : 0,
-        resetsAt: end,
-        resetDescription,
-      };
+      billingRows.push({
+        label: "Billing cycle",
+        value: resetDescription,
+        secondaryValue: `${period.started_at} → ${period.ended_at}`,
+      });
       snapshot.subscriptionRenewsAt = end;
     }
+    if (billingRows.length) snapshot.details.push({ title: "Billing", rows: billingRows });
     return snapshot;
   },
 });

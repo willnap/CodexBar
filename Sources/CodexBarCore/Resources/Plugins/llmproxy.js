@@ -173,18 +173,27 @@ defineProvider({
             resetsAt: resets[0],
           }
         : null,
-      secondary: { usedPercent: 0, resetDescription: `${integer(requests)} requests` },
-      tertiary: { usedPercent: 0, resetDescription: `${integer(tokens)} tokens` },
-      extraWindows: providers.slice(0, 3).map((p) => ({
-        id: p.name,
-        title: p.name,
-        usedPercent: 0,
-        resetDescription: [
-          `${integer(p.requests)} req`,
-          `${integer(p.tokens)} tok`,
-          ...(p.cost === undefined ? [] : [ctx.format.usd(p.cost)]),
-        ].join(" · "),
-      })),
+      details: [
+        {
+          title: "Usage",
+          rows: [
+            { label: "Requests", value: `${integer(requests)} requests`, usageValue: requests },
+            { label: "Tokens", value: `${integer(tokens)} tokens`, usageValue: tokens },
+            ...providers
+              .filter((p) => ctx.isDetailLabel(p.name))
+              .slice(0, 3)
+              .map((p) => ({
+                label: p.name,
+                value: [
+                  `${integer(p.requests)} req`,
+                  `${integer(p.tokens)} tok`,
+                  ...(p.cost === undefined ? [] : [ctx.format.usd(p.cost)]),
+                ].join(" · "),
+                usageValue: p.requests,
+              })),
+          ],
+        },
+      ],
       costUsage,
       cost: cost === undefined ? null : { used: cost, limit: 0, currency: "USD", period: "Approx. spend" },
       identity: { organization: `${active}/${credentials} active keys`, loginMethod: "quota-stats" },

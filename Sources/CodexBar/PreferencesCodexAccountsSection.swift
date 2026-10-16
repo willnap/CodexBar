@@ -285,6 +285,7 @@ private struct CodexAutomaticSwitchingToggle: View {
     @AppStorage private var enabled: Bool
 
     init(defaults: UserDefaults) {
+        // Provider-specific by design: this setting controls the Codex account switch controller only.
         self._enabled = AppStorage(
             wrappedValue: false,
             NativeAccountSwitchController.automaticKey(.codex),

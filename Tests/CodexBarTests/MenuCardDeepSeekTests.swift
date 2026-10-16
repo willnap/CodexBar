@@ -247,8 +247,17 @@ struct MenuCardDeepSeekTests {
                 now: now))
         }
 
-        let balance = try #require(model.metrics.first)
-        #expect(balance.statusText == "$9.32（付费：$9.32 / 赠送：$0.00）")
+        #expect(model.metrics.isEmpty)
+        let balance = try #require(model.providerCost)
+        #expect(balance.spendLine == "余额: $9.32")
+        #expect(balance.percentUsed == nil)
+        #expect(snapshot.providerCost?.balance == 9.32)
+        #expect(snapshot.providerCost?.currencyCode == "USD")
+        let components = try #require(snapshot.primary?.resetDescription)
+        let localizedComponents = CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hans") {
+            UsageMenuCardView.Model.localizedDeepSeekBalanceDescription(components)
+        }
+        #expect(localizedComponents == "$9.32（付费：$9.32 / 赠送：$0.00）")
     }
 
     @Test
@@ -321,9 +330,13 @@ struct MenuCardDeepSeekTests {
 
         #expect(model.inlineUsageDashboard == nil)
         #expect(model.usageNotes.isEmpty)
-        let balance = try #require(model.metrics.first)
-        #expect(balance.title == "Balance")
-        #expect(balance.statusText == "$9.32 (Paid: $9.32 / Granted: $0.00)")
+        #expect(model.metrics.isEmpty)
+        let balance = try #require(model.providerCost)
+        #expect(balance.spendLine == "Balance: $9.32")
+        #expect(balance.percentUsed == nil)
+        #expect(snapshot.providerCost?.balance == 9.32)
+        #expect(snapshot.providerCost?.currencyCode == "USD")
+        #expect(snapshot.primary?.resetDescription == "$9.32 (Paid: $9.32 / Granted: $0.00)")
     }
 
     @Test

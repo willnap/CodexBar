@@ -99,6 +99,19 @@ extension UsageStore {
             publication: self.spendDashboardPublication)
     }
 
+    /// A remembered attributed reading follows its durable account when activation swaps managed/live homes.
+    /// The live scanner still requires the stricter home/source key below before accepting a new report.
+    static func nativeCodexLastKnownUsageOwner(
+        account: CodexVisibleAccount,
+        bucketTimeZoneIdentifier: String) -> String?
+    {
+        guard let accountID = widgetCodexAccountID(account),
+              let fingerprint = CodexAuthFingerprint.normalize(account.authFingerprint) else { return nil }
+        return NativeOrbitLastKnownUsageStore.ownerDigest([
+            "codex-remembered-account", accountID, fingerprint, bucketTimeZoneIdentifier,
+        ])
+    }
+
     /// SpendDashboardSource's cache ownership for one Codex home: the reconciled account, its selection source,
     /// session home, credential fingerprint and bucket zone.
     nonisolated static func nativeCodexLocalUsageOwner(

@@ -69,7 +69,7 @@ struct PerplexityUsageFetcherTests {
         let usage = try await CookiePluginFixtures.perplexity(Data(json.utf8), now: Self.now)
             .toUsageSnapshot()
 
-        #expect(usage.primary != nil)
+        #expect(usage.primary == nil)
         #expect(usage.primary?.resetDescription == nil)
     }
 
@@ -203,7 +203,7 @@ struct PerplexityUsageFetcherTests {
     // MARK: - toUsageSnapshot
 
     @Test
-    func `to usage snapshot always has secondary and tertiary`() async throws {
+    func `to usage snapshot omits unallocated secondary and tertiary`() async throws {
         let json = """
         {
           "balance_cents": 0,
@@ -218,13 +218,12 @@ struct PerplexityUsageFetcherTests {
         let snapshot = try await CookiePluginFixtures.perplexity(Data(json.utf8), now: Self.now)
             .toUsageSnapshot()
 
-        // secondary and tertiary always present even when no promo/purchased credits
-        #expect(snapshot.secondary != nil)
-        #expect(snapshot.tertiary != nil)
+        #expect(snapshot.secondary == nil)
+        #expect(snapshot.tertiary == nil)
     }
 
     @Test
-    func `to usage snapshot zero recurring bar is fully depleted`() async throws {
+    func `to usage snapshot zero recurring pool has no measured quota`() async throws {
         let json = """
         {
           "balance_cents": 0,
@@ -236,10 +235,7 @@ struct PerplexityUsageFetcherTests {
         """
         let snapshot = try await CookiePluginFixtures.perplexity(Data(json.utf8), now: Self.now)
             .toUsageSnapshot()
-        let primary = try #require(snapshot.primary)
-
-        // No recurring credits → bar renders as empty (100% used), not full (0% used)
-        #expect(primary.usedPercent == 100.0)
+        #expect(snapshot.primary == nil)
     }
 
     @Test
@@ -264,7 +260,7 @@ struct PerplexityUsageFetcherTests {
     }
 
     @Test
-    func `to usage snapshot empty pools bars are fully depleted`() async throws {
+    func `to usage snapshot unallocated pools have no measured quota`() async throws {
         let json = """
         {
           "balance_cents": 0,
@@ -278,12 +274,8 @@ struct PerplexityUsageFetcherTests {
         """
         let snapshot = try await CookiePluginFixtures.perplexity(Data(json.utf8), now: Self.now)
             .toUsageSnapshot()
-        let secondary = try #require(snapshot.secondary)
-        let tertiary = try #require(snapshot.tertiary)
-
-        // Empty pools render as 100% used (empty bar) not 0% used (full bar)
-        #expect(secondary.usedPercent == 100.0)
-        #expect(tertiary.usedPercent == 100.0)
+        #expect(snapshot.secondary == nil)
+        #expect(snapshot.tertiary == nil)
     }
 
     // MARK: - Purchased credits from credit_grants

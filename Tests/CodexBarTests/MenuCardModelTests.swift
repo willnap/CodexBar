@@ -1424,7 +1424,7 @@ struct MenuCardModelTests {
     }
 
     @Test
-    func `kilo model keeps zero total edge state visible`() throws {
+    func `kilo model retains zero total details without a measured quota`() throws {
         let now = Date()
         let metadata = try #require(ProviderDefaults.metadata[.kilo])
         let snapshot = KiloUsageSnapshot(
@@ -1455,9 +1455,12 @@ struct MenuCardModelTests {
             hidePersonalInfo: false,
             now: now))
 
-        let primary = try #require(model.metrics.first)
-        #expect(primary.percent == 0)
-        #expect(primary.detailText == "0/0 credits")
+        #expect(model.metrics.isEmpty)
+        #expect(snapshot.primary?.isSyntheticPlaceholder == true)
+        #expect(snapshot.primary?.resetDescription == "0/0 credits")
+        #expect(snapshot.providerCost?.used == 0)
+        #expect(snapshot.providerCost?.limit == 0)
+        #expect(snapshot.providerCost?.balance == 0)
         #expect(model.placeholder == nil)
     }
 

@@ -31,7 +31,15 @@ struct ProviderPluginExtensionParityTests {
             transport: Self.transport { _ in fixture })
             .fetchUsage(now: now, cookieResolver: { _, _ in "session_id=fixture-session" })
 
-        Self.expectCoreParity(swift, script)
+        Self.expectCoreParity(swift, script, providerCost: ProviderCostSnapshot(
+            used: 0,
+            limit: 0,
+            currencyCode: "credits",
+            period: nil,
+            balance: 1200,
+            balanceUpdatedAt: now,
+            usageIsUnavailable: true,
+            updatedAt: now))
     }
 
     @Test(arguments: [
@@ -213,12 +221,16 @@ struct ProviderPluginExtensionParityTests {
         }
     }
 
-    private static func expectCoreParity(_ swift: UsageSnapshot, _ script: UsageSnapshot) {
+    private static func expectCoreParity(
+        _ swift: UsageSnapshot,
+        _ script: UsageSnapshot,
+        providerCost: ProviderCostSnapshot? = nil)
+    {
         #expect(script.primary == swift.primary)
         #expect(script.secondary == swift.secondary)
         #expect(script.tertiary == swift.tertiary)
         #expect(script.extraRateWindows == swift.extraRateWindows)
-        #expect(script.providerCost == swift.providerCost)
+        #expect(script.providerCost == (providerCost ?? swift.providerCost))
         #expect(script.subscriptionRenewsAt == swift.subscriptionRenewsAt)
         #expect(script.subscriptionExpiresAt == swift.subscriptionExpiresAt)
         #expect(script.identity?.accountEmail == swift.identity?.accountEmail)

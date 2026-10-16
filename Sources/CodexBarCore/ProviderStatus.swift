@@ -17,11 +17,58 @@ package struct ProviderStatus: Sendable {
     package let indicator: ProviderStatusIndicator
     package let description: String?
     package let updatedAt: Date?
+    /// nil means the feed did not supply incident data; an empty array means it supplied no incidents.
+    package let incidents: [ProviderStatusIncident]?
 
-    package init(indicator: ProviderStatusIndicator, description: String?, updatedAt: Date?) {
+    package init(
+        indicator: ProviderStatusIndicator,
+        description: String?,
+        updatedAt: Date?,
+        incidents: [ProviderStatusIncident]? = nil)
+    {
         self.indicator = indicator
         self.description = description
         self.updatedAt = updatedAt
+        self.incidents = incidents
+    }
+}
+
+package struct ProviderStatusIncident: Equatable, Sendable {
+    package let id: String
+    package let title: String
+    package let phase: String
+    package let impact: String
+    package let componentIDs: Set<String>
+    package let updatedAt: Date?
+    package let scheduledFor: Date?
+    package let scheduledUntil: Date?
+
+    package init(
+        id: String,
+        title: String,
+        phase: String,
+        impact: String,
+        componentIDs: Set<String> = [],
+        updatedAt: Date? = nil,
+        scheduledFor: Date? = nil,
+        scheduledUntil: Date? = nil)
+    {
+        self.id = id
+        self.title = title
+        self.phase = phase
+        self.impact = impact
+        self.componentIDs = componentIDs
+        self.updatedAt = updatedAt
+        self.scheduledFor = scheduledFor
+        self.scheduledUntil = scheduledUntil
+    }
+
+    package var isResolved: Bool {
+        ["resolved", "completed", "postmortem"].contains(self.phase)
+    }
+
+    package var isMaintenance: Bool {
+        self.impact == "maintenance" || ["scheduled", "in_progress", "verifying"].contains(self.phase)
     }
 }
 

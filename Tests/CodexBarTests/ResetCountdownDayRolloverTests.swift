@@ -58,7 +58,11 @@ struct ResetCountdownDayRolloverTests {
             secrets: ["EDITOR_AUTH": "4242 fixture-token"],
             now: now,
             sourceMode: .api)
-        #expect(snapshot.secondary?.resetDescription == "Cycle ends in 1d 0h")
+        #expect(snapshot.secondary == nil)
+        #expect(snapshot.details.flatMap(\.rows).contains {
+            $0.label == "Billing cycle" && $0.value == "Cycle ends in 1d 0h"
+        })
+        #expect(snapshot.subscriptionRenewsAt == now.addingTimeInterval(86400))
     }
 
     @Test

@@ -122,6 +122,16 @@ interface CodexBarDetailSection {
   chart?: CodexBarDetailChart | null;
 }
 
+interface CodexBarBalanceSnapshot {
+  /** Available wallet amount, including a measured zero or actual negative debt. */
+  value: number;
+  /** Explicit denomination, e.g. USD, CNY, credits, points or HC. Never inferred from formatted text. */
+  unit: string;
+  /** Source observation time; defaults to the refresh instant and must not be in the future. */
+  updatedAt?: Date | string | null;
+  isWorkspace?: boolean | null;
+}
+
 interface CodexBarUsageSnapshot {
   /** Explicitly declares a successful response with no displayable usage or identity. Other fields are still validated. */
   empty?: boolean;
@@ -131,11 +141,15 @@ interface CodexBarUsageSnapshot {
   tertiary?: CodexBarRateWindow | null;
   extraWindows?: CodexBarNamedRateWindow[] | null;
   cost?: CodexBarCostSnapshot | null;
+  /** Standalone wallet; null means queried but unavailable, omission means not queried. Cannot be combined with cost. */
+  balance?: CodexBarBalanceSnapshot | null;
   /** Exact provider-reported daily spend. The host validates and sums every numeric row. */
   costUsage?: CodexBarCostUsageSnapshot | null;
   identity?: CodexBarIdentitySnapshot | null;
   subscriptionRenewsAt?: Date | string | null;
   subscriptionExpiresAt?: Date | string | null;
+  subscriptionStatus?: string | null;
+  subscriptionIsActive?: boolean | null;
   dataConfidence?: "exact" | "estimated" | "percentOnly" | "unknown";
   details?: CodexBarDetailSection[] | null;
 }

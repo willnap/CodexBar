@@ -69,6 +69,80 @@ struct NativeOrbitClaudeDataTests {
         #expect(!switching.autoSwitchEligible)
     }
 
+    @Test func `switching retains each verified Claude adjunct until its next measurement`() throws {
+        let store = self.store()
+        let owner = self.account()
+        let sibling = self.account(slot: "2", email: "other@example.com", active: false)
+        store.claudeSwapAccountSnapshots = [owner, sibling]
+        store.snapshots[.claude] = self.snapshot()
+        let before = try #require(store.nativeOrbitAccounts(for: .claude).first { $0.isActive })
+        #expect(before.gauge.resolvedWindows.contains { $0.id == "model" })
+        #expect(before.metrics.reportedSpend?.balance == 8)
+
+        // The adapter changes only which login is active. Its narrower payload must not erase remembered inputs.
+        store.claudeSwapAccountSnapshots = [
+            self.account(active: false),
+            self.account(slot: "2", email: "other@example.com"),
+        ]
+        store.snapshots[.claude] = nil
+        let switched = store.nativeOrbitAccounts(for: .claude)
+        let retained = try #require(switched.first { $0.id == "claude-swap:1" })
+        #expect(retained.gauge.resolvedWindows.contains { $0.id == "model" })
+        #expect(retained.metrics.reportedSpend?.balance == 8)
+        #expect(retained.updatedAt == self.now)
+        #expect(switched.first { $0.id == "claude-swap:2" }?.metrics.reportedSpend == nil)
+
+        // A recycled slot, changed organization, and duplicate slot cannot inherit the previous owner's adjuncts.
+        for replacement in [
+            self.account(email: "replacement@example.com", active: false),
+            self.account(organization: "Different", active: false),
+        ] {
+            store.claudeSwapAccountSnapshots = [replacement]
+            #expect(store.nativeOrbitAccounts(for: .claude).first?.metrics.reportedSpend == nil)
+        }
+        store.claudeSwapAccountSnapshots = [owner, owner]
+        #expect(store.nativeOrbitAccounts(for: .claude).isEmpty)
+    }
+
+    @Test func `new Claude adjuncts replace remembered reset credits and subscription state`() throws {
+        let store = self.store()
+        let owner = self.account()
+        store.claudeSwapAccountSnapshots = [owner]
+        func reading(resets: Int, active: Bool, at date: Date) -> UsageSnapshot {
+            UsageSnapshot(
+                primary: nil,
+                secondary: nil,
+                claudeResetCredits: .init(expirations: Array(repeating: nil, count: resets), updatedAt: date),
+                subscriptionIsActive: active,
+                updatedAt: date,
+                identity: self.snapshot().identity)
+        }
+        _ = store.nativeOrbitClaudePresentationSnapshot(
+            for: owner, ambient: reading(resets: 1, active: false, at: self.now))
+        let refreshed = try #require(store.nativeOrbitClaudePresentationSnapshot(
+            for: owner, ambient: reading(resets: 2, active: true, at: self.now.addingTimeInterval(60))))
+        #expect(refreshed.claudeResetCredits?.expirations.count == 2)
+        #expect(refreshed.subscriptionIsActive == true)
+        let retained = try #require(store.nativeOrbitClaudePresentationSnapshot(for: owner, ambient: nil))
+        #expect(retained.claudeResetCredits?.expirations.count == 2)
+        #expect(retained.subscriptionIsActive == true)
+        let olderAdapter = self.account(usage: nil)
+        let stale = ProviderAccountUsageSnapshot(
+            id: olderAdapter.id,
+            provider: .claude,
+            displayLabel: olderAdapter.displayLabel,
+            accountEmail: olderAdapter.accountEmail,
+            accountOrganizationName: olderAdapter.accountOrganizationName,
+            isActive: false,
+            snapshot: reading(resets: 1, active: false, at: self.now),
+            error: nil,
+            sourceLabel: "fixture")
+        store.claudeSwapAccountSnapshots = [stale]
+        let afterSwitch = try #require(store.nativeOrbitClaudePresentationSnapshot(for: stale, ambient: nil))
+        #expect(afterSwitch.claudeResetCredits?.expirations.count == 2)
+        #expect(afterSwitch.subscriptionIsActive == true)
+    }
+
     @Test func `newer Claude spend retains an independent balance but respects confirmed absence`() throws {
         let balance = ProviderCostSnapshot(
             used: 2, limit: 10, currencyCode: "USD", balance: 8, updatedAt: self.now)

@@ -10,7 +10,6 @@ enum NativeUsageGaugeProjection {
         error: String? = nil,
         codexProjection: CodexConsumerProjection? = nil,
         showOptionalCreditsAndExtraUsage: Bool = true,
-        includeModelScopedWeeklyUsage: Bool = false,
         visibleMetrics: [UsageMenuCardView.Model.Metric]? = nil,
         weeklyPace: UsagePace? = nil,
         status: ProviderStatusIndicator = .none,
@@ -44,11 +43,10 @@ enum NativeUsageGaugeProjection {
         } ?? rawLanes : rawLanes
         lanes += (snapshot?.extraRateWindows ?? []).map { ($0.id, $0.title, $0.window, $0.usageKnown) }
         var seenIDs = Set<String>()
-        let windows = lanes.compactMap { id, label, candidate, usageKnown -> UsageWindow? in
+        var windows = lanes.compactMap { id, label, candidate, usageKnown -> UsageWindow? in
             guard let window = candidate?.measured else { return nil }
-            // Provider-specific by design: full model-specific quota adds no menu bar lane.
-            // Detailed popups retain the reported quota even when it is unused.
-            if provider == .claude, id.hasPrefix("claude-weekly-scoped-"), !includeModelScopedWeeklyUsage,
+            // Provider-specific by design: both Claude gauges hide unused model allowances and restore them on use.
+            if provider == .claude, id == "tertiary" || id.hasPrefix("claude-weekly-scoped-"),
                !usageKnown || !window.usedPercent.isFinite || window.usedPercent <= 0
             {
                 return nil
@@ -93,6 +91,23 @@ enum NativeUsageGaugeProjection {
                 used: used,
                 countdown: countdown,
                 recovery: window.nextRegenPercent.map { $0.isFinite && $0 > 0 } == true ? .nextRecovery : .reset)
+        }
+        // A genuine money budget already supplies both sides of a percentage. Use it only when the provider did
+        // not report a quota; an optional overage allowance must not replace subscription capacity.
+        if windows.isEmpty, snapshot?.measuredRateWindows.isEmpty == true,
+           let budget = NativeOrbitMonetaryInstrument.validBudget(snapshot?.providerCost)
+        {
+            windows.append(UsageWindow(
+                id: "monetary-budget",
+                label: "Budget",
+                period: 1,
+                used: budget.used,
+                limit: budget.limit,
+                unit: budget.currencyCode,
+                countdown: budget.resetsAt.map {
+                    ResetCountdown(units: 1, secondsPerUnit: 1, nextReset: $0, isReliable: false)
+                },
+                recovery: budget.resetsAt == nil ? .none : .reset))
         }
         // The symbol supports three lanes. Keep binding/exhausted quotas first when there are more;
         // the usage card continues to show every quota, including lanes beyond the compact symbol.

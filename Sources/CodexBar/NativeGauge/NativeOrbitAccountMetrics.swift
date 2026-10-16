@@ -70,9 +70,15 @@ struct NativeOrbitPeriodSpendReading {
 }
 
 struct NativeOrbitAccountMetrics {
-    static let empty = Self()
+    static var empty: Self {
+        Self()
+    }
+
     /// Provider reports or explicitly labeled local-home reports; scope must stay visible to the user.
-    var accountUsageHistory: NativeCodexAccountUsageHistory?
+    var accountUsageHistory: NativeCodexAccountUsageHistory? {
+        didSet { self.preparedAccountUsage = nil }
+    }
+
     var usage: CostUsageTokenSnapshot?
     var usageCostPartialDays: Set<String> = []
     var usageScope: NativeOrbitUsageScope = .account
@@ -82,7 +88,10 @@ struct NativeOrbitAccountMetrics {
     /// The local report standing in for `usage` when no account report exists; its stale or unattributed
     /// activity keeps totals marked as lower bounds.
     var primaryLocalUsage: NativeOrbitLocalUsage?
-    var creditUsageEvents: [NativeOrbitCreditUsageEvent] = []
+    var creditUsageEvents: [NativeOrbitCreditUsageEvent] = [] {
+        didSet { self.preparedCreditEvents = nil }
+    }
+
     var reportedBalance: NativeOrbitReportedBalance?
     /// Provider-reported billing-cycle spend; never relabeled as a selected calendar-period total.
     var reportedSpend: ProviderCostSnapshot?
@@ -95,6 +104,27 @@ struct NativeOrbitAccountMetrics {
     var bankedResets: Int?
     var nextResetCreditExpiry: Date?
     var resetInventoryObservedAt: Date?
+
+    /// Built once when an account presentation changes, shared by its value copies during inspection.
+    var preparedHistory: NativeOrbitPreparedMetricHistory?
+    var preparedAccountUsage: NativeOrbitPreparedAccountUsage?
+    var preparedCreditEvents: [NativeOrbitCreditUsageEvent]?
+    var preparedUsageSlices: [NativeOrbitPreparedUsageSlices] = []
+
+    func preparingInspection(history: [PlanUtilizationSeriesHistory]) -> Self {
+        var result = self
+        let prepared = NativeOrbitPreparedMetricHistory(history: history)
+        result.preparedHistory = prepared
+        result
+            .preparedAccountUsage = NativeOrbitPreparedAccountUsage(snapshot: self.accountUsageHistory?.tokenSnapshot())
+        result.preparedCreditEvents = NativeOrbitCreditUsageEvent.merging([
+            self.creditUsageEvents,
+            prepared.creditEvents,
+        ])
+        result.preparedUsageSlices = [self.usage, self.localCostUsage?.snapshot, self.primaryLocalUsage?.snapshot]
+            .compactMap { $0.flatMap { NativeOrbitPreparedUsageSlices($0.quotaSlices) } }
+        return result
+    }
 
     func providerPeriodTokenReading(now: Date) -> (tokens: Int, period: String, isPartial: Bool)? {
         guard self.usageScope == .account, let usage, usage.updatedAt <= now,
@@ -151,10 +181,11 @@ struct NativeOrbitAccountMetrics {
         }
         guard result.cost == nil || result.tokens == nil || self.localCostUsage?.isAccountAttributed == true,
               let local = self.localCostUsage else { return result }
-        let localMetrics = Self(
+        var localMetrics = Self(
             usage: local.snapshot,
             usageScope: local.scope,
             bucketTimeZoneIdentifier: local.bucketTimeZoneIdentifier)
+        localMetrics.preparedUsageSlices = self.preparedUsageSlices
         var localSummary = localMetrics.usageSummary(days: days, now: now, calendar: calendar)
         if local.isStale || local.hasUnattributedActivity(days: days, now: now, calendar: calendar) {
             localSummary.isPartial = true
@@ -163,11 +194,12 @@ struct NativeOrbitAccountMetrics {
         // The account endpoint covers every machine but lags hours behind; window-attributed local requests are
         // real time. Both measure the same account, so each civil day takes the larger of the two counts.
         if local.isAccountAttributed, self.usageScope == .account, let usage = self.usage {
-            let merged = Self(
+            var mergedMetrics = Self(
                 usage: Self.dailyMaximum(account: usage, local: local),
                 usageScope: .account,
                 bucketTimeZoneIdentifier: local.bucketTimeZoneIdentifier)
-                .usageSummary(days: days, now: now, calendar: calendar)
+            mergedMetrics.preparedUsageSlices = self.preparedUsageSlices
+            let merged = mergedMetrics.usageSummary(days: days, now: now, calendar: calendar)
             if let tokens = merged.tokens {
                 result.tokens = tokens
                 result.requests = nil
@@ -253,10 +285,14 @@ struct NativeOrbitAccountMetrics {
         if now < usage.updatedAt {
             // Completed civil days remain measured history. The inspection day's aggregate can contain
             // activity after the pointer, so use only timestamped events for that day.
-            let completed = period.entries(usage.daily, now: now, calendar: calendar).filter {
-                CostReportingPeriod.rolling(days: 1).entries([$0], now: now, calendar: calendar).isEmpty
-            }
-            let slices = usage.quotaSlices.filter { $0.timestamp >= requested.lowerBound && $0.timestamp <= now }
+            let currentDays = Set(CostReportingPeriod.rolling(days: 1)
+                .entries(usage.daily, now: now, calendar: calendar).map(\.date))
+            let completed = period.entries(usage.daily, now: now, calendar: calendar)
+                .filter { !currentDays.contains($0.date) }
+            let bounds = requested.lowerBound...now
+            let slices = self.preparedUsageSlices.lazy.compactMap {
+                $0.entries(matching: usage.quotaSlices, in: bounds)
+            }.first ?? usage.quotaSlices.filter { $0.timestamp >= requested.lowerBound && $0.timestamp <= now }
             if !completed.isEmpty {
                 // Slices arrive in time order: evaluate each civil day once, not once per request.
                 var day: (interval: DateInterval, isCompleted: Bool)?
@@ -348,13 +384,19 @@ struct NativeOrbitAccountMetrics {
     func at(
         _ date: Date?,
         observedAt: Date?,
-        history: [PlanUtilizationSeriesHistory] = []) -> Self
+        history: [PlanUtilizationSeriesHistory] = [],
+        historyCutoff: Date? = nil) -> Self
     {
         var result = self
-        result.includeRecordedCreditEvents(from: history)
-        result.includeRecordedUsage(from: history, at: date)
+        result.includeRecordedCreditEvents(from: history, cutoff: historyCutoff)
+        result.includeRecordedUsage(from: history, at: date, cutoff: historyCutoff)
         guard let date else { return result }
-        if let accountUsage = self.accountUsageHistory?.tokenSnapshot() {
+        let accountUsageSnapshot: CostUsageTokenSnapshot? = if let prepared = self.preparedAccountUsage {
+            prepared.snapshot
+        } else {
+            self.accountUsageHistory?.tokenSnapshot()
+        }
+        if let accountUsage = accountUsageSnapshot {
             // Completed civil days keep their latest corrected account total; usageSummary excludes the inspected
             // day's aggregate (it may include later activity) and uses timestamped local requests for it instead.
             if let primary = result.primaryLocalUsage {
@@ -374,7 +416,7 @@ struct NativeOrbitAccountMetrics {
         result.resetInventoryObservedAt = nil
         result.reportedQuotaUsage = []
         result.reportedPlanExpiry = nil
-        result.restoreHistoricalMetrics(from: history, at: date)
+        result.restoreHistoricalMetrics(from: history, at: date, cutoff: historyCutoff)
         return result
     }
 

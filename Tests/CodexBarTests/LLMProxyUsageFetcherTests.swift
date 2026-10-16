@@ -52,12 +52,15 @@ struct LLMProxyUsageFetcherTests {
 
         let snapshot = try await Self.fetch(json, engine: engine)
         #expect(snapshot.accountOrganization(for: .llmproxy) == "3/4 active keys")
-        #expect(snapshot.extraRateWindows?.first?.window.resetDescription == "120 req · 6,000 tok · $12.50")
+        #expect(snapshot.extraRateWindows == nil)
+        #expect(snapshot.details.first?.rows.first { $0.label == "openai" }?.value == "120 req · 6,000 tok · $12.50")
 
         #expect(snapshot.identity?.providerID == .llmproxy)
         #expect(snapshot.primary?.usedPercent == 58)
-        #expect(snapshot.secondary?.resetDescription == "160 requests")
-        #expect(snapshot.tertiary?.resetDescription == "7,000 tokens")
+        #expect(snapshot.secondary == nil)
+        #expect(snapshot.tertiary == nil)
+        #expect(snapshot.details.first?.rows.first?.value == "160 requests")
+        #expect(snapshot.details.first?.rows.first { $0.label == "Tokens" }?.value == "7,000 tokens")
         #expect(snapshot.providerCost?.used == 15.5)
     }
 
@@ -121,10 +124,10 @@ struct LLMProxyUsageFetcherTests {
         let usage = try await Self.fetch(json, engine: engine)
         #expect(usage.primary?.usedPercent == 100)
         #expect(usage.primary?.resetsAt == ISO8601DateParser.parse("2026-05-01T00:00:00Z"))
-        #expect(usage.secondary?.resetDescription == "11 requests")
-        #expect(usage.tertiary?.resetDescription == "2 tokens")
+        #expect(usage.details.first?.rows.first?.value == "11 requests")
+        #expect(usage.details.first?.rows.first { $0.label == "Tokens" }?.value == "2 tokens")
         #expect(usage.providerCost?.used == 5)
-        #expect(usage.extraRateWindows?.map(\.id) == ["alpha", "bravo", "charlie"])
+        #expect(usage.details.first?.rows.dropFirst(2).map(\.label) == ["alpha", "bravo", "charlie"])
     }
 
     @Test(arguments: BundledPluginTestSupport.engines)
@@ -134,7 +137,7 @@ struct LLMProxyUsageFetcherTests {
         let usage = try await Self.fetch(#"{"providers":{},"summary":{"approx_cost":0}}"#, engine: engine)
         #expect(usage.primary == nil)
         #expect(usage.providerCost?.used == 0)
-        #expect(usage.secondary?.resetDescription == "0 requests")
+        #expect(usage.details.first?.rows.first?.value == "0 requests")
         #expect(usage.identity?.accountOrganization == "0/0 active keys")
     }
 

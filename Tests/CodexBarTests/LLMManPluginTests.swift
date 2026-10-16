@@ -14,17 +14,18 @@ struct LLMManPluginTests {
     """
 
     @Test(arguments: BundledPluginTestSupport.engines)
-    func `loaded weights fill the memory bar and list largest first`(engine: ProviderPluginEngineKind) async throws {
+    func `loaded weights fill the memory detail bar and list largest first`(
+        engine: ProviderPluginEngineKind) async throws
+    {
         let snapshot = try await Self.fetch(engine: engine)
-        #expect(snapshot.primary?.usedPercent == 25)
-        #expect(snapshot.primary?.resetDescription == "10.0 GB of 40.0 GB")
-        #expect(snapshot.primary?.resetsAt == nil)
+        #expect(snapshot.primary == nil)
         #expect(snapshot.identity?.providerID == .llmman)
         #expect(snapshot.identity?.loginMethod == "API key")
         #expect(snapshot.dataConfidence == .exact)
         let summary = try #require(snapshot.details.first)
-        #expect(summary.rows.map(\.label) == ["Loaded", "Stored", "Version"])
-        #expect(summary.rows.map(\.value) == ["2 · 10.0 GB", "3 · 10.5 GB", "0.9.0"])
+        #expect(summary.rows.map(\.label) == ["Memory", "Loaded", "Stored", "Version"])
+        #expect(summary.rows.map(\.value) == ["10.0 GB of 40.0 GB", "2 · 10.0 GB", "3 · 10.5 GB", "0.9.0"])
+        #expect(summary.rows.first?.progress?.usedPercent == 25)
         let loaded = try #require(snapshot.details.last)
         #expect(loaded.title == "Loaded models")
         #expect(loaded.rows.map(\.label) == ["fixture/large:Q4_K_M", "fixture/small:Q4_K_M"])
@@ -60,7 +61,7 @@ struct LLMManPluginTests {
     {
         for (address, _) in LLMManSettingsReaderTests.addresses {
             let snapshot = try await Self.fetch(engine: engine, base: address)
-            #expect(snapshot.primary?.usedPercent == 25)
+            #expect(snapshot.details.first?.rows.first?.progress?.usedPercent == 25)
         }
     }
 

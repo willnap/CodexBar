@@ -9,7 +9,7 @@ enum NativeOrbitProjectionStyle {
     nonisolated static let saturationLift: CGFloat = 0.06
 
     /// The accent of the future: hue kept, saturation and brightness raised, resolved per appearance. `strength`
-    /// 1 is the standard future accent; the hover scales it with how far ahead it reads.
+    /// 1 is the standard future accent; custom strengths adjust its intensity.
     static func future(_ accent: Color, strength: CGFloat = 1) -> Color {
         let base = NSColor(accent)
         return Color(nsColor: NSColor(name: nil) { appearance in
@@ -48,10 +48,7 @@ enum NativeOrbitProjectionStyle {
             : min(-0.1, (clamped * 10).rounded(.down) / 10)
     }
 
-    /// The column's accent at a moment: the past desaturates and the future intensifies, each with a clear step on
-    /// crossing and the rest by distance. The past keeps enough colour to tell its lanes apart. Each accent is made
-    /// once per offset: a dynamic colour equals only itself, and a fresh one on every hover step would redraw every
-    /// chart mark drawn in it.
+    /// Each tenth of the inspected span has a stable colour identity while retaining its distance from now.
     @MainActor
     static func temporalAccent(_ live: Color, offset: Double?) -> Color {
         guard let offset else { return live }
@@ -60,7 +57,6 @@ enum NativeOrbitProjectionStyle {
         let accent = offset > 0
             ? Self.future(live, strength: 0.6 + 0.8 * CGFloat(offset))
             : Self.past(live, fade: 0.16 + 0.22 * CGFloat(min(1, -offset)))
-        // Offsets come in tenths, so this holds about twenty accents per column colour.
         if self.temporalAccents.count >= 256 { self.temporalAccents.removeAll() }
         self.temporalAccents[key] = accent
         return accent

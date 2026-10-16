@@ -1813,8 +1813,10 @@ actor PlanUtilizationHistoryPersistenceCoordinator {
             return await saveOperation(snapshot)
         }
         let store = self.store
-        return await Task.detached(priority: .utility) {
-            store.save(snapshot).isEmpty
+        let failures = await Task.detached(priority: .utility) {
+            store.save(snapshot)
         }.value
+        await NativeOrbitSystemSignals.shared.recordHistoryWriteFailures(failures)
+        return failures.isEmpty
     }
 }

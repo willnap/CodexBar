@@ -132,12 +132,15 @@ defineProvider({
           const value = numeric(status[field]);
           if (value !== undefined && !Number.isSafeInteger(value)) return invalid(`invalid ${field}`);
         }
-        const cap = numeric(status.budget_cap) ?? 0,
-          used = numeric(status.used_credit) ?? 0;
-        const unlimited = status.is_unlimited === true || cap <= 0;
+        const cap = numeric(status.budget_cap),
+          used = numeric(status.used_credit);
+        const unlimited = status.is_unlimited === true;
         const cycleEnd = numeric(status.cycle_end_date),
           cycleStart = numeric(status.cycle_start_date);
-        const usedPercent = unlimited ? 0 : ctx.pct(used, cap);
+        const usedPercent =
+          !unlimited && cap !== undefined && cap > 0 && used !== undefined && used >= 0
+            ? ctx.pct(used, cap)
+            : undefined;
         const now = ctx.date.now();
         const start = new Date(now);
         start.setDate(start.getDate() - 30);
@@ -180,6 +183,7 @@ defineProvider({
           if ((error as { failureKind?: string }).failureKind === "authentication-expired") evict();
         }
         const details: CodexBarDetailSection[] = [];
+        if (unlimited) details.push({ title: "Credits", rows: [{ label: "Allowance", value: "Unlimited" }] });
         if (history) {
           const day = (date: Date): string =>
             `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -204,7 +208,7 @@ defineProvider({
             { label: "Today", value: format(totals[day(now)] ?? 0) },
             { label: "30d credits", value: format(points.reduce((sum, point) => sum + point.value, 0)) },
           ];
-          if (!unlimited && cycleStart && cycleEnd && cycleEnd > cycleStart) {
+          if (usedPercent !== undefined && cycleStart && cycleEnd && cycleEnd > cycleStart) {
             const duration = Math.trunc((cycleEnd - cycleStart) / 60000) * 60000;
             const remaining = cycleEnd - now.getTime();
             if (
@@ -233,11 +237,14 @@ defineProvider({
           });
         }
         return {
-          primary: {
-            usedPercent,
-            resetsAt: !unlimited && cycleEnd && cycleEnd > 0 ? new Date(cycleEnd) : undefined,
-            resetDescription: "Credits",
-          },
+          primary:
+            usedPercent === undefined
+              ? undefined
+              : {
+                  usedPercent,
+                  resetsAt: !unlimited && cycleEnd && cycleEnd > 0 ? new Date(cycleEnd) : undefined,
+                  resetDescription: "Credits",
+                },
           details,
           identity: { email: minted.email, loginMethod: minted.email ? "Cookie" : undefined },
         };

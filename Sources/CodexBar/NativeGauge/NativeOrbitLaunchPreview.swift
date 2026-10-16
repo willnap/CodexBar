@@ -159,7 +159,10 @@ private enum NativeOrbitPreviewWindow {
             activate: { [weak controller] id in controller?.activateAccount(id: id) },
             signIn: nil,
             refresh: { [weak controller] in controller?.refreshUsage() },
-            settings: { [weak controller] in controller?.openSettings() }))
+            settings: { [weak controller] in controller?.openSettings() },
+            lightAction: { [weak controller] accountID, action in
+                controller?.handleLight(action, accountID: accountID)
+            }))
         // The popover's own material, so vibrant styles (`.secondary`, `.tertiary`) render here as they do there.
         let material = NSVisualEffectView()
         material.material = .popover

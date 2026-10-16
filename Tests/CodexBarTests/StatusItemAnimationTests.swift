@@ -1671,7 +1671,7 @@ struct StatusItemAnimationTests {
     }
 
     @Test
-    func `menu bar display text shows zero percent for kilo zero total edge`() {
+    func `menu bar display text omits a quota percentage for kilo without an allocation`() {
         let settings = SettingsStore(
             configStore: testConfigStore(suiteName: "StatusItemAnimationTests-kilo-zero-edge"),
             zaiTokenStore: NoopZaiTokenStore(),
@@ -1713,7 +1713,9 @@ struct StatusItemAnimationTests {
 
         let displayText = controller.menuBarDisplayText(for: .kilo, snapshot: snapshot)
 
-        #expect(displayText == "0%")
+        #expect(displayText == nil)
+        #expect(snapshot.measuredRateWindows.isEmpty)
+        #expect(snapshot.providerCost?.balance == 0)
     }
 
     @Test

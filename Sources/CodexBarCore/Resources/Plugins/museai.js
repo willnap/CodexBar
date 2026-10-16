@@ -136,6 +136,7 @@ defineProvider({
           }
         : undefined;
     return {
+      balance: typeof balance === "number" && Number.isFinite(balance) ? { value: balance / 1e6, unit: "USD" } : null,
       primary: {
         usedPercent: Math.min(100, Math.max(0, sub.usage.percentUsed)),
         windowMinutes: 7 * 24 * 60,

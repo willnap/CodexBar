@@ -70,7 +70,7 @@ struct DoubaoUsageSnapshotTests {
     }
 
     @Test
-    func `invalid key with no headers reports No usage data`() {
+    func `invalid key with no headers has no measured request allocation`() {
         let snapshot = DoubaoUsageSnapshot(
             remainingRequests: 0,
             limitRequests: 0,
@@ -78,8 +78,7 @@ struct DoubaoUsageSnapshotTests {
             updatedAt: Date(),
             apiKeyValid: false)
         let usage = snapshot.toUsageSnapshot()
-        #expect(usage.primary?.usedPercent == 0)
-        #expect(usage.primary?.resetDescription == "No usage data")
+        #expect(usage.primary == nil)
     }
 
     @Test

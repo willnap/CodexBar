@@ -20,7 +20,9 @@ struct SofyaPluginTests {
         let snapshot = try await Self.fetch(engine: engine)
         #expect(snapshot.primary == nil)
         #expect(snapshot.secondary == nil)
-        #expect(snapshot.providerCost == nil)
+        #expect(snapshot.providerCost?.balance == 1034)
+        #expect(snapshot.providerCost?.currencyCode == "credits")
+        #expect(snapshot.providerCost?.usageIsUnavailable == true)
         #expect(snapshot.details.first?.rows.map(\.label) == [
             "Available credits", "Plan credits", "Purchased credits", "Monthly reset",
         ])

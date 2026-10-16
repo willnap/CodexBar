@@ -74,9 +74,8 @@ public struct PerplexityUsageSnapshot: Sendable {
 extension PerplexityUsageSnapshot {
     public func toUsageSnapshot() -> UsageSnapshot {
         // Primary: recurring (monthly) credits
-        let hasFallbackCredits = self.promoTotal > 0 || self.purchasedTotal > 0
         let primaryWindow: RateWindow? = {
-            if self.recurringTotal > 0 {
+            if self.recurringTotal > 0, self.recurringTotal.isFinite {
                 let primaryPercent = min(100, max(0, self.recurringUsed / self.recurringTotal * 100))
                 return RateWindow(
                     usedPercent: primaryPercent,
@@ -85,20 +84,10 @@ extension PerplexityUsageSnapshot {
                     resetDescription: Self.creditDescription(
                         used: self.recurringUsed, total: self.recurringTotal, unit: "credits"))
             }
-            if hasFallbackCredits {
-                // When recurring is absent but bonus/purchased credits remain, omit the fake 0/0 primary lane
-                // so automatic menu-bar rendering can fall through to the usable pool.
-                return nil
-            }
-            return RateWindow(
-                usedPercent: 100,
-                windowMinutes: nil,
-                resetsAt: self.renewalDate,
-                resetDescription: "0/0 credits")
+            return nil
         }()
 
-        // Secondary: promotional bonus credits — always shown.
-        // usedPercent=100 when promoTotal==0 so the bar renders empty rather than full.
+        // Secondary: promotional bonus credits with a finite positive allocation.
         let promoPercent = self.promoTotal > 0
             ? min(100, max(0, self.promoUsed / self.promoTotal * 100))
             : 100.0
@@ -112,8 +101,7 @@ extension PerplexityUsageSnapshot {
             resetsAt: nil,
             resetDescription: promoDesc)
 
-        // Tertiary: on-demand purchased credits — always shown.
-        // usedPercent=100 when purchasedTotal==0 so the bar renders empty rather than full.
+        // Tertiary: on-demand purchased credits with a finite positive allocation.
         let purchasedPercent = self.purchasedTotal > 0
             ? min(100, max(0, self.purchasedUsed / self.purchasedTotal * 100))
             : 100.0
@@ -132,8 +120,8 @@ extension PerplexityUsageSnapshot {
 
         return UsageSnapshot(
             primary: primaryWindow,
-            secondary: secondary,
-            tertiary: tertiary,
+            secondary: self.promoTotal > 0 && self.promoTotal.isFinite ? secondary : nil,
+            tertiary: self.purchasedTotal > 0 && self.purchasedTotal.isFinite ? tertiary : nil,
             providerCost: nil,
             updatedAt: self.updatedAt,
             identity: identity)

@@ -222,7 +222,8 @@ struct NativeOrbitLastKnownUsageTests {
 
     @Test func `remembered Codex attribution waits for the same account set and settled scans`() async throws {
         let store = try UsageStoreSpendDashboardCodexCostCatchUpTests.makeStore(suite: "last-known-codex")
-        let live = self.codexAccount(id: "live", source: .liveSystem)
+        let managedID = try #require(UUID(uuidString: "C1C5A87B-9DF8-4806-BE68-D5292DC10B9B"))
+        let live = self.codexAccount(id: "live", source: .liveSystem, storedAccountID: managedID)
         let profile = self.codexAccount(id: "profile", source: .profileHome(path: "/tmp/codexbar-last-known-profile"))
         let windowLive = self.noon.addingTimeInterval(5 * 86400)
         let windowProfile = self.noon.addingTimeInterval(3 * 86400)
@@ -258,6 +259,61 @@ struct NativeOrbitLastKnownUsageTests {
         #expect(liveRemembered.usage.isAccountAttributed)
         #expect(liveRemembered.usage.snapshot.quotaSlices.map(\.totalTokens) == [300, 50])
         #expect(remembered["profile"]?.usage.snapshot.quotaSlices.map(\.totalTokens) == [1000])
+
+        // Activating another login changes this account from live to its managed home. Its retained attribution
+        // still belongs to the same account and must remain visible while the replacement scan is pending.
+        let dormant = self.codexAccount(id: "live", source: .managedAccount(id: managedID), storedAccountID: managedID)
+        let switchedContexts = [
+            (account: dormant, history: [self.weeklyLane(windowLive)], snapshot: UsageSnapshot?.none),
+            (account: profile, history: [self.weeklyLane(windowProfile)], snapshot: UsageSnapshot?.none),
+        ]
+        let afterSwitch = store.nativeOrbitCodexResolvedLocalUsages(switchedContexts)
+        #expect(afterSwitch["live"]?.usage.snapshot.quotaSlices.map(\.totalTokens) == [300, 50])
+        #expect(afterSwitch["profile"]?.usage.snapshot.quotaSlices.map(\.totalTokens) == [1000])
+
+        // A first profile activation creates a managed identity. Only the explicitly verified importer alias can
+        // carry that profile's own report across; the other account's cohort reading follows the transaction too.
+        let importedID = try #require(UUID(uuidString: "1F37E0F8-B130-4769-9575-E060696C4BAA"))
+        let imported = CodexVisibleAccount(
+            id: "imported-profile",
+            email: profile.email,
+            workspaceAccountID: profile.workspaceAccountID,
+            authFingerprint: profile.authFingerprint,
+            storedAccountID: importedID,
+            selectionSource: .managedAccount(id: importedID),
+            isActive: false,
+            isLive: false,
+            canReauthenticate: false,
+            canRemove: false)
+        store.nativeCodexAccountSwitchPresentation = .init(
+            projection: .init(
+                visibleAccounts: [live, profile],
+                activeVisibleAccountID: live.id,
+                liveVisibleAccountID: live.id,
+                hasUnreadableAddedAccountStore: false),
+            snapshots: [],
+            localUsages: remembered)
+        let importedContexts = [
+            (account: live, history: [self.weeklyLane(windowLive)], snapshot: UsageSnapshot?.none),
+            (account: imported, history: [self.weeklyLane(windowProfile)], snapshot: UsageSnapshot?.none),
+        ]
+        #expect(store.nativeOrbitCodexResolvedLocalUsages(importedContexts)["imported-profile"] == nil)
+        store.nativeCodexAccountSwitchPresentation?.importedAccounts[profile.id] = imported
+        // Cleanup explicitly migrates the alias without waiting for any intervening popup render.
+        store.settings.cachedCodexAccountMenuProjection = .init(
+            activeSource: store.settings.codexActiveSource,
+            loadedAt: Date(),
+            projection: .init(
+                visibleAccounts: [live, imported],
+                activeVisibleAccountID: live.id,
+                liveVisibleAccountID: live.id,
+                hasUnreadableAddedAccountStore: false))
+        let switchToken = try #require(store.nativeCodexAccountSwitchPresentation?.token)
+        store.finishNativeCodexAccountSwitchPresentation(token: switchToken)
+        #expect(store.nativeCodexAccountSwitchPresentation == nil)
+        let afterImport = store.nativeOrbitCodexResolvedLocalUsages(importedContexts)
+        #expect(afterImport["imported-profile"]?.usage.snapshot.quotaSlices.map(\.totalTokens) == [1000])
+        #expect(afterImport["live"]?.usage.snapshot.quotaSlices.map(\.totalTokens) == [300, 50])
 
         // Attribution split the shared home between exactly these accounts; another account set must wait.
         let third = self.codexAccount(id: "third", source: .profileHome(path: "/tmp/codexbar-last-known-third"))
@@ -437,14 +493,18 @@ struct NativeOrbitLastKnownUsageTests {
             sourceLabel: "fixture")
     }
 
-    private func codexAccount(id: String, source: CodexActiveSource) -> CodexVisibleAccount {
+    private func codexAccount(
+        id: String,
+        source: CodexActiveSource,
+        storedAccountID: UUID? = nil) -> CodexVisibleAccount
+    {
         let live = source == .liveSystem
         return CodexVisibleAccount(
             id: id,
             email: "\(id)@example.com",
             workspaceAccountID: "workspace-\(id)",
             authFingerprint: "fingerprint-\(id)",
-            storedAccountID: nil,
+            storedAccountID: storedAccountID,
             selectionSource: source,
             isActive: live,
             isLive: live,

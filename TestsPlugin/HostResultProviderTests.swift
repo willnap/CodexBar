@@ -7,7 +7,10 @@ import Testing
 
 struct HostResultProviderTests {
     static let now = Date(timeIntervalSince1970: 1_700_179_200)
-    static let spend = #"{"lineItems":[{"totalCost":{"currencyCode":"USD","units":"0","nanos":530000000}},{"totalCost":{"currencyCode":"EUR","units":"20","nanos":0}}]}"#
+    static let spend = #"""
+    {"lineItems":[{"totalCost":{"currencyCode":"USD","units":"0","nanos":530000000}},
+      {"totalCost":{"currencyCode":"EUR","units":"20","nanos":0}}]}
+    """#
     static let account = #"{"accounts":[{"name":"accounts/fixture-team"}]}"#
     static let emptyPage = #"{"data":[],"has_more":false}"#
 
@@ -117,15 +120,20 @@ struct HostResultProviderTests {
             .init("/v1/organization/costs", "{}", 403),
             .init(
                 "/v1/dashboard/billing/credit_grants",
-                #"{"total_granted":100,"total_used":25,"total_available":75,"grants":{"data":[{"expires_at":1800000000},{"expires_at":1}]}}"#),
+                #"""
+                {"total_granted":100,"total_used":25,"total_available":75,
+                  "grants":{"data":[{"expires_at":1800000000},{"expires_at":1}]}}
+                """#),
         ])
         let result = try await Self.runtime("openai", transport: transport, engine: engine).fetchResult(
             settings: ["OPENAI_ALLOW_BALANCE_FALLBACK": "1"], secrets: ["OPENAI_API_KEY": "fixture-key"], now: Self.now)
         #expect(result.sourceLabel == "billing-api" && result.usage.openAIAPIUsage == nil)
         #expect(result.usage.providerCost?.used == 25 && result.usage.primary?.usedPercent == 25)
         #expect(result.usage.identity?.loginMethod == "API balance: $75.00")
-        #expect(result.usage.primary?.resetsAt == Date(timeIntervalSince1970: 1_800_000_000))
-        #expect(result.usage.details.isEmpty)
+        #expect(result.usage.primary?.resetsAt == nil)
+        #expect(result.usage.providerCost?.resetsAt == nil)
+        #expect(result.usage.details.flatMap(\.rows).first { $0.label == "Credit expiry" }?.value
+            == "2027-01-15T08:00:00.000Z")
     }
 
     @Test(arguments: ProviderPluginTransportTests.engines)

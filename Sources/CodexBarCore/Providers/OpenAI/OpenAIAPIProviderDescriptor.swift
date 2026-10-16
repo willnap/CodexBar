@@ -41,7 +41,7 @@ public enum OpenAIAPIProviderDescriptor {
                 statusPageURL: "https://status.openai.com"),
             branding: ProviderBranding(
                 iconStyle: .init(provider: .openai),
-                iconResourceName: "ProviderIcon-codex",
+                iconResourceName: "ProviderIcon-openai",
                 color: ProviderColor(red: 0.06, green: 0.51, blue: 0.43),
                 confettiPalette: [
                     ProviderColor(hex: 0x000000),

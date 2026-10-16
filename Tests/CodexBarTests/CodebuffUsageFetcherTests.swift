@@ -356,22 +356,21 @@ struct CodebuffUsageFetcherTests {
     }
 
     @Test
-    func `snapshot surfaces exhausted state when quota is missing from payload`() {
-        // Only `creditsUsed` is populated (no total, no remaining) — the API response is
-        // degenerate but we still want the row to be visible so the user notices the
-        // missing configuration instead of seeing an empty/healthy-looking bar.
+    func `snapshot preserves an unmeasured slot when quota capacity is missing`() {
         let usedOnly = CodebuffUsageSnapshot(
             creditsUsed: 42,
             creditsTotal: nil,
             creditsRemaining: nil)
-        #expect(usedOnly.toUsageSnapshot().primary?.usedPercent == 100)
+        #expect(usedOnly.toUsageSnapshot().primary?.isSyntheticPlaceholder == true)
+        #expect(usedOnly.toUsageSnapshot().measuredRateWindows.isEmpty)
 
         // Only `creditsRemaining` is populated — same fallback should apply.
         let remainingOnly = CodebuffUsageSnapshot(
             creditsUsed: nil,
             creditsTotal: nil,
             creditsRemaining: 17)
-        #expect(remainingOnly.toUsageSnapshot().primary?.usedPercent == 100)
+        #expect(remainingOnly.toUsageSnapshot().primary?.isSyntheticPlaceholder == true)
+        #expect(remainingOnly.toUsageSnapshot().providerCost?.balance == 17)
     }
 
     @Test

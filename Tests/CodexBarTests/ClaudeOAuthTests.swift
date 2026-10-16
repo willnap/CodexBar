@@ -525,16 +525,17 @@ struct ClaudeOAuthTests {
                     })
             }
             Issue.record("Expected OAuth rate limit to fail with guidance")
-        } catch let error as ClaudeUsageError {
-            guard case let .oauthFailed(message) = error else {
-                Issue.record("Expected ClaudeUsageError.oauthFailed, got \(error)")
+        } catch let error as ClaudeOAuthFetchError {
+            guard case .rateLimited = error else {
+                Issue.record("Expected typed OAuth rate limit, got \(error)")
                 return
             }
+            let message = error.localizedDescription
             #expect(message.contains("rate limited"))
             #expect(message.contains("claude logout && claude login"))
             #expect(!message.contains("rate_limit_error"))
         } catch {
-            Issue.record("Expected ClaudeUsageError, got \(error)")
+            Issue.record("Expected ClaudeOAuthFetchError, got \(error)")
         }
     }
 

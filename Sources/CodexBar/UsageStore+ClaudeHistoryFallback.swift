@@ -46,6 +46,12 @@ extension UsageStore {
             return error.underlyingError
         }
         // These owned OAuth error cases preserve transport identity inside their public wrappers.
+        if case let .networkError(underlyingError) = error as? ClaudeOAuthFetchError {
+            return underlyingError
+        }
+        if case let .networkError(underlyingError) = error as? ClaudeWebAPIFetcher.FetchError {
+            return underlyingError
+        }
         if case let .networkError(underlyingError) = error as? CodexOAuthFetchError {
             return underlyingError
         }

@@ -75,6 +75,9 @@ defineProvider({
     }
 
     const summary = [
+      ...(memory > 0
+        ? [{ label: "Memory", value: `${size(inUse)} of ${size(memory)}`, progress: Math.min(1, inUse / memory) }]
+        : []),
       { label: "Loaded", value: count(loaded) },
       { label: "Stored", value: count(stored) },
       ...(version ? [{ label: "Version", value: version }] : []),
@@ -88,10 +91,6 @@ defineProvider({
         ...(memory > 0 ? { progress: Math.min(1, weight / memory) } : {}),
       }));
     return {
-      primary:
-        memory > 0
-          ? { usedPercent: ctx.pct(inUse, memory), resetDescription: `${size(inUse)} of ${size(memory)}` }
-          : null,
       details: [{ title: "Daemon", rows: summary }, ...(rows.length ? [{ title: "Loaded models", rows }] : [])],
       identity: { loginMethod: key ? "API key" : "Local daemon" },
       dataConfidence: "exact",

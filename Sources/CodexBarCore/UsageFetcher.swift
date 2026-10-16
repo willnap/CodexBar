@@ -167,6 +167,9 @@ public struct UsageSnapshot: Codable, Sendable {
     public let grokResetCredits: GrokRateLimitResetCreditsSnapshot?
     /// Live-only display inventory. Claude grant identifiers are never decoded.
     public let claudeResetCredits: ClaudeRateLimitResetCreditsSnapshot?
+    /// Live-only provider credit state and reset eligibility, separate from inventory counts.
+    public let claudeCloudCredits: ClaudeCloudCreditsSnapshot?
+    public let claudeResetCreditsIneligibleReason: String?
     public let mistralUsage: MistralUsageSnapshot?
     public let kimiRequestQuotas: [KimiRequestQuota]?
     /// Retains an observed zero when a metered Copilot seat has no visible credit row.
@@ -177,6 +180,8 @@ public struct UsageSnapshot: Codable, Sendable {
     public let commandCodeHasSubscriptionPlan: Bool
     /// Live-only marker that Command Code's monthly grant has no remaining credits.
     public let commandCodeMonthlyGrantDepleted: Bool
+    public let subscriptionStatus: String?
+    public let subscriptionIsActive: Bool?
     public let subscriptionExpiresAt: Date?
     public let subscriptionRenewsAt: Date?
     public let subscriptionRenewsAtIsDateOnly: Bool
@@ -197,6 +202,8 @@ public struct UsageSnapshot: Codable, Sendable {
         case mistralUsage
         case kimiRequestQuotas
         case copilotMeteredZeroCredits
+        case subscriptionStatus
+        case subscriptionIsActive
         case subscriptionExpiresAt
         case subscriptionRenewsAt
         case subscriptionRenewsAtIsDateOnly
@@ -226,12 +233,16 @@ public struct UsageSnapshot: Codable, Sendable {
         codexResetCredits: CodexRateLimitResetCreditsSnapshot? = nil,
         grokResetCredits: GrokRateLimitResetCreditsSnapshot? = nil,
         claudeResetCredits: ClaudeRateLimitResetCreditsSnapshot? = nil,
+        claudeCloudCredits: ClaudeCloudCreditsSnapshot? = nil,
+        claudeResetCreditsIneligibleReason: String? = nil,
         mistralUsage: MistralUsageSnapshot? = nil,
         kimiRequestQuotas: [KimiRequestQuota]? = nil,
         copilotMeteredZeroCredits: Bool = false,
         commandCodeSubscriptionEnrichmentUnavailable: Bool = false,
         commandCodeHasSubscriptionPlan: Bool = false,
         commandCodeMonthlyGrantDepleted: Bool = false,
+        subscriptionStatus: String? = nil,
+        subscriptionIsActive: Bool? = nil,
         subscriptionExpiresAt: Date? = nil,
         subscriptionRenewsAt: Date? = nil,
         subscriptionRenewsAtIsDateOnly: Bool = false,
@@ -259,12 +270,16 @@ public struct UsageSnapshot: Codable, Sendable {
         self.codexResetCredits = codexResetCredits
         self.grokResetCredits = grokResetCredits
         self.claudeResetCredits = claudeResetCredits
+        self.claudeCloudCredits = claudeCloudCredits
+        self.claudeResetCreditsIneligibleReason = claudeResetCreditsIneligibleReason
         self.mistralUsage = mistralUsage
         self.kimiRequestQuotas = kimiRequestQuotas
         self.copilotMeteredZeroCredits = copilotMeteredZeroCredits
         self.commandCodeSubscriptionEnrichmentUnavailable = commandCodeSubscriptionEnrichmentUnavailable
         self.commandCodeHasSubscriptionPlan = commandCodeHasSubscriptionPlan
         self.commandCodeMonthlyGrantDepleted = commandCodeMonthlyGrantDepleted
+        self.subscriptionStatus = subscriptionStatus
+        self.subscriptionIsActive = subscriptionIsActive
         self.subscriptionExpiresAt = subscriptionExpiresAt
         self.subscriptionRenewsAt = subscriptionRenewsAt
         self.subscriptionRenewsAtIsDateOnly = subscriptionRenewsAtIsDateOnly
@@ -306,9 +321,11 @@ public struct UsageSnapshot: Codable, Sendable {
         expiresAt: Date?,
         renewsAt: Date?,
         expiresAtIsDateOnly: Bool = false,
-        renewsAtIsDateOnly: Bool = false) -> UsageSnapshot
+        renewsAtIsDateOnly: Bool = false,
+        status: String? = nil) -> UsageSnapshot
     {
         self.replacing(
+            subscriptionStatus: .value(status),
             subscriptionExpiresAt: .value(expiresAt),
             subscriptionRenewsAt: .value(renewsAt),
             subscriptionRenewsAtIsDateOnly: .value(renewsAtIsDateOnly),
@@ -371,6 +388,8 @@ public struct UsageSnapshot: Codable, Sendable {
             forKey: .codexResetCredits)
         self.grokResetCredits = nil // Live-only inventory; refresh without persisting redemption state.
         self.claudeResetCredits = nil // Live-only inventory; a reset used on claude.ai must not reappear.
+        self.claudeCloudCredits = nil
+        self.claudeResetCreditsIneligibleReason = nil
         self.mistralUsage = try container.decodeIfPresent(MistralUsageSnapshot.self, forKey: .mistralUsage)
         self.kimiRequestQuotas = try container.decodeIfPresent([KimiRequestQuota].self, forKey: .kimiRequestQuotas)
         self.copilotMeteredZeroCredits = try container
@@ -378,6 +397,8 @@ public struct UsageSnapshot: Codable, Sendable {
         self.commandCodeSubscriptionEnrichmentUnavailable = false // Live-only fetch state
         self.commandCodeHasSubscriptionPlan = false // Live-only fetch state
         self.commandCodeMonthlyGrantDepleted = false // Live-only fetch state
+        self.subscriptionStatus = try container.decodeIfPresent(String.self, forKey: .subscriptionStatus)
+        self.subscriptionIsActive = try container.decodeIfPresent(Bool.self, forKey: .subscriptionIsActive)
         self.subscriptionExpiresAt = try container.decodeIfPresent(Date.self, forKey: .subscriptionExpiresAt)
         self.subscriptionRenewsAt = try container.decodeIfPresent(Date.self, forKey: .subscriptionRenewsAt)
         self.subscriptionRenewsAtIsDateOnly = try container.decodeIfPresent(
@@ -413,6 +434,8 @@ public struct UsageSnapshot: Codable, Sendable {
         if self.copilotMeteredZeroCredits {
             try container.encode(true, forKey: .copilotMeteredZeroCredits)
         }
+        try container.encodeIfPresent(self.subscriptionStatus, forKey: .subscriptionStatus)
+        try container.encodeIfPresent(self.subscriptionIsActive, forKey: .subscriptionIsActive)
         try container.encodeIfPresent(self.subscriptionExpiresAt, forKey: .subscriptionExpiresAt)
         try container.encodeIfPresent(self.subscriptionRenewsAt, forKey: .subscriptionRenewsAt)
         if self.subscriptionRenewsAtIsDateOnly { try container.encode(true, forKey: .subscriptionRenewsAtIsDateOnly) }
@@ -590,6 +613,7 @@ public struct UsageSnapshot: Codable, Sendable {
         browserSessionOwner: Replacement<ProviderBrowserSessionOwner?> = .unchanged,
         codexResetCredits: Replacement<CodexRateLimitResetCreditsSnapshot?> = .unchanged,
         grokResetCredits: Replacement<GrokRateLimitResetCreditsSnapshot?> = .unchanged,
+        subscriptionStatus: Replacement<String?> = .unchanged,
         subscriptionExpiresAt: Replacement<Date?> = .unchanged,
         subscriptionRenewsAt: Replacement<Date?> = .unchanged,
         subscriptionRenewsAtIsDateOnly: Replacement<Bool> = .unchanged,
@@ -614,12 +638,16 @@ public struct UsageSnapshot: Codable, Sendable {
             codexResetCredits: codexResetCredits.resolving(self.codexResetCredits),
             grokResetCredits: grokResetCredits.resolving(self.grokResetCredits),
             claudeResetCredits: self.claudeResetCredits,
+            claudeCloudCredits: self.claudeCloudCredits,
+            claudeResetCreditsIneligibleReason: self.claudeResetCreditsIneligibleReason,
             mistralUsage: self.mistralUsage,
             kimiRequestQuotas: self.kimiRequestQuotas,
             copilotMeteredZeroCredits: self.copilotMeteredZeroCredits,
             commandCodeSubscriptionEnrichmentUnavailable: self.commandCodeSubscriptionEnrichmentUnavailable,
             commandCodeHasSubscriptionPlan: self.commandCodeHasSubscriptionPlan,
             commandCodeMonthlyGrantDepleted: self.commandCodeMonthlyGrantDepleted,
+            subscriptionStatus: subscriptionStatus.resolving(self.subscriptionStatus),
+            subscriptionIsActive: self.subscriptionIsActive,
             subscriptionExpiresAt: subscriptionExpiresAt.resolving(self.subscriptionExpiresAt),
             subscriptionRenewsAt: subscriptionRenewsAt.resolving(self.subscriptionRenewsAt),
             subscriptionRenewsAtIsDateOnly: subscriptionRenewsAtIsDateOnly
@@ -919,6 +947,16 @@ public enum CodexRPCFailure {
     }
 
     /// The Codex app-server could not be started.
+    public static func isMalformedReply(_ error: Error) -> Bool {
+        if case RPCWireError.malformed = error { return true }
+        return false
+    }
+
+    public static func isTimeout(_ error: Error) -> Bool {
+        if case RPCWireError.timeout = error { return true }
+        return false
+    }
+
     public static func isStartFailure(_ error: Error) -> Bool {
         if case RPCWireError.startFailed = error { return true }
         return false

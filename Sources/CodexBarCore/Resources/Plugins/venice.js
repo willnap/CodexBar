@@ -48,31 +48,32 @@ defineProvider({
 
     let usedPercent;
     let resetDescription;
-    if (!payload.canConsume) {
-      usedPercent = 100;
-      resetDescription = "Balance unavailable for API calls";
-    } else if (currency === "USD" && usd !== null && usd > 0) {
-      usedPercent = 0;
+    if (currency === "USD" && usd !== null && usd > 0) {
       resetDescription = `$${usd.toFixed(2)} USD remaining`;
     } else if (currency !== "USD" && diem !== null && allocation !== null && allocation > 0) {
       usedPercent = ctx.pct(allocation - diem, allocation);
       resetDescription = `DIEM ${diem.toFixed(2)} / ${allocation.toFixed(2)} epoch allocation`;
     } else if (currency === "DIEM" && diem !== null && diem > 0) {
-      usedPercent = 0;
       resetDescription = `DIEM ${diem.toFixed(2)} remaining`;
     } else if (diem !== null && diem > 0) {
-      usedPercent = 0;
       resetDescription = `DIEM ${diem.toFixed(2)} remaining`;
     } else if (usd !== null && usd > 0) {
-      usedPercent = 0;
       resetDescription = `$${usd.toFixed(2)} USD remaining`;
     } else {
-      usedPercent = 100;
       resetDescription = "No Venice API balance available";
     }
 
     const usage = {
-      primary: { usedPercent, resetDescription },
+      primary: usedPercent === undefined ? undefined : { usedPercent, resetDescription },
+      details: [
+        {
+          title: "API balance",
+          rows: [
+            { label: "Balance", value: resetDescription },
+            { label: "API access", value: payload.canConsume ? "Available" : "Unavailable" },
+          ],
+        },
+      ],
       identity: {},
     };
     // The consumption currency's own balance is typed for the native extra-usage dial; DIEM is not money.

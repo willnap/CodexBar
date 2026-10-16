@@ -40,6 +40,32 @@ extension UsageStore {
         return name
     }
 
+    /// Keeps the richest verified reading under this exact slot owner when the ambient login moves away.
+    func nativeOrbitClaudePresentationSnapshot(
+        for account: ProviderAccountUsageSnapshot,
+        ambient: UsageSnapshot?) -> UsageSnapshot?
+    {
+        let current = Self.nativeOrbitClaudeMergedSnapshot(adapter: account.snapshot, ambient: ambient)
+        guard let historyKey = Self.nativeOrbitClaudeHistoryKey(account),
+              account.credentialIssue != .wrongAccount,
+              self.claudeSwapAccountSnapshots.count(where: { $0.id == account.id }) == 1 else { return current }
+        let owner = NativeOrbitLastKnownUsageStore.ownerDigest([
+            historyKey, account.sourceOrganizationID ?? "", self.settings.claudeSwapExecutablePath,
+        ])
+        let retained = self.nativeLastKnownUsage.accountSnapshot(.claude, owner: owner)
+        // The newest accepted reading owns adjuncts. An older adapter payload after switching cannot replace a
+        // newer ambient observation; at equal measurement times the current receipt wins.
+        let snapshot: UsageSnapshot? = if let current, let retained, retained.updatedAt > current.updatedAt {
+            Self.nativeOrbitClaudeMergedSnapshot(adapter: current, ambient: retained)
+        } else {
+            Self.nativeOrbitClaudeMergedSnapshot(adapter: retained, ambient: current)
+        }
+        if let snapshot {
+            self.nativeLastKnownUsage.recordAccountSnapshot(.claude, owner: owner, snapshot: snapshot)
+        }
+        return snapshot
+    }
+
     nonisolated static func nativeOrbitClaudeMergedSnapshot(
         adapter: UsageSnapshot?, ambient: UsageSnapshot?) -> UsageSnapshot?
     {
@@ -59,6 +85,11 @@ extension UsageStore {
             costUsage: newest.costUsage ?? older.costUsage,
             details: newest.details,
             claudeResetCredits: ambient.claudeResetCredits ?? adapter.claudeResetCredits,
+            claudeCloudCredits: ambient.claudeCloudCredits ?? adapter.claudeCloudCredits,
+            claudeResetCreditsIneligibleReason: ambient.claudeResetCreditsIneligibleReason
+                ?? adapter.claudeResetCreditsIneligibleReason,
+            subscriptionStatus: ambient.subscriptionStatus ?? adapter.subscriptionStatus,
+            subscriptionIsActive: ambient.subscriptionIsActive ?? adapter.subscriptionIsActive,
             subscriptionExpiresAt: ambient.subscriptionExpiresAt ?? adapter.subscriptionExpiresAt,
             subscriptionRenewsAt: ambient.subscriptionRenewsAt ?? adapter.subscriptionRenewsAt,
             updatedAt: newest.updatedAt,

@@ -64,7 +64,7 @@ public struct KiloUsageSnapshot: Sendable {
             let usedPercent: Double = if total > 0 {
                 min(100, max(0, (used / total) * 100))
             } else {
-                // Preserve a visible exhausted state for valid zero-total snapshots.
+                // Retain the descriptive slot, marked unmeasured below when its capacity is unknown.
                 100
             }
             let usedText = Self.compactNumber(used)
@@ -73,7 +73,9 @@ public struct KiloUsageSnapshot: Sendable {
                 usedPercent: usedPercent,
                 windowMinutes: nil,
                 resetsAt: nil,
-                resetDescription: "\(usedText)/\(totalText) credits")
+                resetDescription: "\(usedText)/\(totalText) credits",
+                isSyntheticPlaceholder: total <= 0 || self.creditsUsageIsUnavailable
+                    || self.creditsUsed == nil && self.creditsRemaining == nil)
         } else {
             primary = nil
         }
@@ -155,7 +157,8 @@ public struct KiloUsageSnapshot: Sendable {
             usedPercent: usedPercent,
             windowMinutes: nil,
             resetsAt: self.passResetsAt,
-            resetDescription: detail)
+            resetDescription: detail,
+            isSyntheticPlaceholder: total <= 0 || self.passUsed == nil && self.passRemaining == nil)
     }
 
     private static func compactNumber(_ value: Double) -> String {

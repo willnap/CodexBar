@@ -139,26 +139,50 @@ defineProvider({
     const promoDescription = description(promoUsed, promo, "bonus");
     return {
       primary:
-        recurring > 0
+        recurring > 0 && Number.isFinite(recurring)
           ? {
               usedPercent: percent(recurringUsed, recurring),
               resetsAt: ctx.date.unixSeconds(renewal),
               resetDescription: description(recurringUsed, recurring, "credits"),
             }
-          : promo > 0 || purchased > 0
-            ? undefined
-            : { usedPercent: 100, resetsAt: ctx.date.unixSeconds(renewal), resetDescription: "0/0 credits" },
-      secondary: {
-        usedPercent: percent(promoUsed, promo),
-        resetDescription:
-          promoExpiry !== undefined && promoDescription !== undefined
-            ? `${promoDescription} · exp. ${ctx.format.monthDay(new Date(promoExpiry * 1000))}`
-            : promoDescription,
-      },
-      tertiary: {
-        usedPercent: percent(purchasedUsed, purchased),
-        resetDescription: description(purchasedUsed, purchased, "credits"),
-      },
+          : undefined,
+      secondary:
+        promo > 0 && Number.isFinite(promo)
+          ? {
+              usedPercent: percent(promoUsed, promo),
+              resetDescription:
+                promoExpiry !== undefined && promoDescription !== undefined
+                  ? `${promoDescription} · exp. ${ctx.format.monthDay(new Date(promoExpiry * 1000))}`
+                  : promoDescription,
+            }
+          : undefined,
+      tertiary:
+        purchased > 0 && Number.isFinite(purchased)
+          ? {
+              usedPercent: percent(purchasedUsed, purchased),
+              resetDescription: description(purchasedUsed, purchased, "credits"),
+            }
+          : undefined,
+      details: [
+        {
+          title: "Credits",
+          rows: [
+            {
+              label: "Recurring credits",
+              value: description(recurringUsed, recurring, "credits"),
+              usageValue: recurringUsed,
+            },
+            { label: "Bonus credits", value: description(promoUsed, promo, "bonus"), usageValue: promoUsed },
+            {
+              label: "Purchased credits",
+              value: description(purchasedUsed, purchased, "credits"),
+              usageValue: purchasedUsed,
+            },
+          ].filter(
+            (row) => typeof row.value === "string" && row.value.length <= 120 && Number.isFinite(row.usageValue),
+          ),
+        },
+      ],
       identity: { loginMethod: recurring <= 0 ? undefined : recurring < 5000 ? "Pro" : "Max" },
     };
   },

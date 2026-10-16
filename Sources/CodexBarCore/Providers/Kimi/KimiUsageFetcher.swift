@@ -107,7 +107,9 @@ public struct KimiUsageFetcher: Sendable {
             rateLimitWindow: rateLimit?.window,
             subscriptionBalance: subscription.stats?.subscriptionBalance,
             subscriptionCodeWeeklyLimit: subscription.stats?.ratelimitCode7d,
-            planName: subscription.planName,
+            planName: subscription.plan?.planName,
+            subscriptionStatus: subscription.plan?.subscription?.status,
+            subscriptionIsActive: subscription.plan?.subscription?.active,
             updatedAt: now)
         snapshot.historyOwnerID = self.historyOwnerID(endpoint: region.webBaseURL, credential: authToken)
         snapshot.historyOwnerAliases = self.legacyHistoryOwnerID(endpoint: region.webBaseURL, credential: authToken)
@@ -175,13 +177,13 @@ public struct KimiUsageFetcher: Sendable {
             let responseBody = String(data: data, encoding: .utf8) ?? "<binary data>"
             Self.log.error("Kimi API returned \(response.statusCode): \(responseBody)")
 
-            if response.statusCode == 401 || response.statusCode == 403 {
+            if response.statusCode == 401 {
                 throw KimiAPIError.invalidToken
             }
             if response.statusCode == 400 {
                 throw KimiAPIError.invalidRequest("Bad request")
             }
-            throw KimiAPIError.apiError("HTTP \(response.statusCode)")
+            throw KimiAPIError.httpError(response.statusCode)
         }
 
         let usageResponse = try JSONDecoder().decode(KimiUsageResponse.self, from: data)
@@ -216,7 +218,9 @@ public struct KimiUsageFetcher: Sendable {
             subscriptionCodeWeeklyLimit: subscription.stats?.ratelimitCode7d,
             codeUsagePools: snapshot.codeUsagePools,
             boosterCost: snapshot.boosterCost,
-            planName: snapshot.planName ?? subscription.planName,
+            planName: snapshot.planName ?? subscription.plan?.planName,
+            subscriptionStatus: subscription.plan?.subscription?.status ?? snapshot.subscriptionStatus,
+            subscriptionIsActive: subscription.plan?.subscription?.active ?? snapshot.subscriptionIsActive,
             updatedAt: now)
     }
 
@@ -257,7 +261,7 @@ public struct KimiUsageFetcher: Sendable {
         authToken: String,
         region: KimiRegion = .china,
         sessionInfo: SessionInfo?,
-        transport: any ProviderHTTPTransport) async throws -> String?
+        transport: any ProviderHTTPTransport) async throws -> KimiSubscriptionResponse?
     {
         let url = region.webBaseURL
             .appendingPathComponent("apiv2/kimi.gateway.membership.v2.MembershipService/GetSubscription")
@@ -266,13 +270,13 @@ public struct KimiUsageFetcher: Sendable {
         request.timeoutInterval = self.subscriptionGraceSeconds
         let response = try await transport.response(for: request)
         guard response.statusCode == 200 else { return nil }
-        return try JSONDecoder().decode(KimiSubscriptionResponse.self, from: response.data).planName
+        return try JSONDecoder().decode(KimiSubscriptionResponse.self, from: response.data)
     }
 
     /// Statistics and the optional title share a deadline, but neither can discard the other's completed result.
     private struct SubscriptionEnrichment: Sendable {
         let stats: Task<BoundedTaskJoinOutcome<KimiSubscriptionStatsResponse?>, Never>
-        let plan: Task<BoundedTaskJoinOutcome<String?>, Never>
+        let plan: Task<BoundedTaskJoinOutcome<KimiSubscriptionResponse?>, Never>
 
         init(
             authToken: String,
@@ -291,7 +295,7 @@ public struct KimiUsageFetcher: Sendable {
                     sessionInfo: sessionInfo,
                     transport: transport)
             }
-            let planTask = Task<String?, Error> {
+            let planTask = Task<KimiSubscriptionResponse?, Error> {
                 try Task.checkCancellation()
                 guard includePlan else { return nil }
                 return try await KimiUsageFetcher.fetchPlan(
@@ -314,7 +318,7 @@ public struct KimiUsageFetcher: Sendable {
             self.plan.cancel()
         }
 
-        func value() async throws -> (stats: KimiSubscriptionStatsResponse?, planName: String?) {
+        func value() async throws -> (stats: KimiSubscriptionStatsResponse?, plan: KimiSubscriptionResponse?) {
             let outcomes = await withTaskCancellationHandler {
                 let stats = await self.stats.value
                 let plan = await self.plan.value
@@ -406,9 +410,9 @@ public struct KimiUsageFetcher: Sendable {
         case 401:
             .invalidAPIKey
         case 403:
-            .apiError("HTTP 403 (permission or quota denied)")
+            .httpError(403)
         default:
-            .apiError("HTTP \(statusCode)")
+            .httpError(statusCode)
         }
     }
 

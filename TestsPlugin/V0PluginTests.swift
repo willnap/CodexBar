@@ -81,9 +81,14 @@ struct V0PluginTests {
             engine: engine,
             billing: #"{"billingType":"legacy","data":{"remaining":0,"reset":0,"limit":0}}"#,
             rateLimits: #"{"limit":100}"#, scope: "   ")
-        #expect(snapshot.primary?.usedPercent == 100)
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.measuredRateWindows.isEmpty)
         #expect(snapshot.primary?.resetsAt == nil)
         #expect(snapshot.secondary == nil)
+        #expect(snapshot.providerCost == nil)
+        #expect(snapshot.details.first?.rows.contains {
+            $0.label == "Billing remaining" && $0.value == "0" && $0.secondaryValue == "of 0"
+        } == true)
         #expect(snapshot.details.first?.rows.contains { $0.label == "Scope" } == false)
     }
 

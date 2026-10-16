@@ -405,8 +405,8 @@ struct KiloUsageFetcherTests {
         let parsed = try KiloUsageFetcher._parseSnapshotForTesting(Data(json.utf8))
         let snapshot = parsed.toUsageSnapshot()
 
-        #expect(snapshot.primary?.remainingPercent == 0)
-        #expect(snapshot.primary?.usedPercent == 100)
+        #expect(snapshot.primary?.isSyntheticPlaceholder == true)
+        #expect(snapshot.measuredRateWindows.isEmpty)
         #expect(snapshot.primary?.resetDescription == "0/0 credits")
         #expect(snapshot.loginMethod(for: .kilo)?.contains("Auto top-up: visa") == true)
     }
@@ -447,8 +447,8 @@ struct KiloUsageFetcherTests {
         let parsed = try KiloUsageFetcher._parseSnapshotForTesting(Data(json.utf8))
         let snapshot = parsed.toUsageSnapshot()
 
-        #expect(snapshot.primary?.usedPercent == 100)
-        #expect(snapshot.primary?.remainingPercent == 0)
+        #expect(snapshot.primary?.isSyntheticPlaceholder == true)
+        #expect(snapshot.measuredRateWindows.isEmpty)
         #expect(snapshot.primary?.resetDescription == "0/0 credits")
         #expect(snapshot.loginMethod(for: .kilo) == "Auto top-up: off")
     }

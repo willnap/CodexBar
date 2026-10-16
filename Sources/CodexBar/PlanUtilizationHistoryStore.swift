@@ -212,6 +212,26 @@ struct PlanUtilizationSeriesHistory: Codable, Equatable, Sendable {
         self.entries = entries.sorted(by: PlanUtilizationHistoryEntry.precedes)
     }
 
+    /// A prefix of this already ordered history keeps its exact source ordering without sorting it again.
+    func prefix(through date: Date) -> Self {
+        var lower = 0
+        var upper = self.entries.count
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if self.entries[middle].capturedAt <= date { lower = middle + 1 } else { upper = middle }
+        }
+        if lower == self.entries.count { return self }
+        return Self(name: self.name, windowMinutes: self.windowMinutes, orderedEntries: Array(self.entries[..<lower]))
+    }
+
+    private init(
+        name: PlanUtilizationSeriesName, windowMinutes: Int, orderedEntries: [PlanUtilizationHistoryEntry])
+    {
+        self.name = name
+        self.windowMinutes = windowMinutes
+        self.entries = orderedEntries
+    }
+
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let name = try container.decode(PlanUtilizationSeriesName.self, forKey: .name)

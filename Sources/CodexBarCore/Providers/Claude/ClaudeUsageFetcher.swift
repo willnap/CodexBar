@@ -19,6 +19,7 @@ public struct ClaudeUsageSnapshot: Sendable {
     public let extraRateWindows: [NamedRateWindow]
     public let providerCost: ProviderCostSnapshot?
     public let resetCredits: ClaudeRateLimitResetCreditsSnapshot?
+    public let resetCreditsIneligibleReason: String?
     public let cloudCredits: ClaudeCloudCreditsSnapshot?
     public let updatedAt: Date
     public let accountEmail: String?
@@ -49,6 +50,7 @@ public struct ClaudeUsageSnapshot: Sendable {
         extraRateWindows: [NamedRateWindow] = [],
         providerCost: ProviderCostSnapshot? = nil,
         resetCredits: ClaudeRateLimitResetCreditsSnapshot? = nil,
+        resetCreditsIneligibleReason: String? = nil,
         cloudCredits: ClaudeCloudCreditsSnapshot? = nil,
         updatedAt: Date,
         accountEmail: String?,
@@ -70,6 +72,7 @@ public struct ClaudeUsageSnapshot: Sendable {
         self.extraRateWindows = extraRateWindows
         self.providerCost = providerCost
         self.resetCredits = resetCredits
+        self.resetCreditsIneligibleReason = resetCreditsIneligibleReason
         self.cloudCredits = cloudCredits
         self.updatedAt = updatedAt
         self.accountEmail = accountEmail
@@ -348,16 +351,9 @@ public struct ClaudeUsageFetcher: ClaudeUsageFetching, Sendable {
                     return try await self.loadAfterDelegatedRefresh(allowDelegatedRetry: allowDelegatedRetry)
                 }
                 // Metadata changes do not grant credential access; retain the same owner-CLI fallback as absence.
-                switch error {
-                case .notFound, .credentialsChanged:
-                    throw error
-                default:
-                    throw ClaudeUsageError.oauthFailed(error.localizedDescription)
-                }
+                throw error
             } catch let error as ClaudeOAuthFetchError {
-                if case .rateLimited = error {
-                    throw ClaudeUsageError.oauthFailed(error.localizedDescription)
-                }
+                if case .rateLimited = error { throw error }
                 // Explicit OAuth is an authority boundary. Retain a credential that reached the
                 // service but failed so a later retry cannot reinterpret it as absence and fall
                 // through to the ambient CLI. Auto retains its existing invalidation behavior.
@@ -368,15 +364,21 @@ public struct ClaudeUsageFetcher: ClaudeUsageFetching, Sendable {
                    statusCode == 403,
                    body?.contains("user:profile") ?? false
                 {
-                    throw ClaudeUsageError.oauthFailed(
-                        "Claude OAuth token does not meet scope requirement 'user:profile'. "
+                    throw ProviderFetchClassifiedError(
+                        kind: .permissionDenied,
+                        message: "Claude OAuth token does not meet scope requirement 'user:profile'. "
                             + Self.scopeRecoveryMessage)
                 }
-                let failure = ClaudeUsageError.oauthFailed(error.localizedDescription)
-                if case let .networkError(underlyingError) = error {
-                    throw ProviderTransportError.preservingIdentity(of: underlyingError, describedBy: failure)
+                if case let .networkError(underlying) = error,
+                   (underlying as NSError).domain == NSURLErrorDomain
+                {
+                    // Keep URL domain, code and userInfo for retention, startup retries and refresh hooks.
+                    // The warning classifier consumes the same transport code, including TLS failures.
+                    throw ProviderTransportError.preservingIdentity(of: underlying, describedBy: error)
                 }
-                throw failure
+                throw error
+            } catch let error as ProviderFetchClassifiedError {
+                throw error
             } catch {
                 throw ClaudeUsageError.oauthFailed(error.localizedDescription)
             }
@@ -520,8 +522,9 @@ public struct ClaudeUsageFetcher: ClaudeUsageFetching, Sendable {
                 let detail = scopes.isEmpty
                     ? "Claude OAuth token missing 'user:profile' scope."
                     : "Claude OAuth token missing 'user:profile' scope (has: \(scopes))."
-                throw ClaudeUsageError.oauthFailed(
-                    detail + " " + Self.scopeRecoveryMessage)
+                throw ProviderFetchClassifiedError(
+                    kind: .permissionDenied,
+                    message: detail + " " + Self.scopeRecoveryMessage)
             }
         }
 
@@ -1070,6 +1073,7 @@ extension ClaudeUsageFetcher {
             extraRateWindows: extraRateWindows,
             providerCost: providerCost,
             resetCredits: usage.resetStatus?.snapshot(updatedAt: updatedAt),
+            resetCreditsIneligibleReason: usage.resetStatus.flatMap { $0.eligible ? nil : $0.ineligibleReason },
             cloudCredits: usage.cloudCredits,
             updatedAt: updatedAt,
             accountEmail: nil,
@@ -1227,6 +1231,7 @@ extension ClaudeUsageFetcher {
             extraRateWindows: webData.extraRateWindows,
             providerCost: webData.extraUsageCost,
             resetCredits: webData.resetCredits,
+            resetCreditsIneligibleReason: webData.resetCreditsIneligibleReason,
             cloudCredits: webData.cloudCredits,
             updatedAt: Date(),
             accountEmail: webData.accountEmail,

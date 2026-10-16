@@ -216,16 +216,16 @@ struct KimiWindow: Codable, Sendable {
 }
 
 /// The active subscription, as returned by the same endpoint used by the Code console.
-struct KimiSubscriptionResponse: Decodable {
+struct KimiSubscriptionResponse: Decodable, Sendable {
     let subscription: Subscription?
 
-    struct Subscription: Decodable {
+    struct Subscription: Decodable, Sendable {
         let active: Bool?
         let status: String?
         let goods: Goods?
     }
 
-    struct Goods: Decodable {
+    struct Goods: Decodable, Sendable {
         let title: String?
     }
 

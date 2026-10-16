@@ -6,6 +6,59 @@ import Testing
 struct NativeUsageGaugeTests {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
+    @Test func `unused Claude model quotas stay out of both popup and menu bar and return on use`() {
+        for scopedID in ["tertiary", "claude-weekly-scoped-fixture"] {
+            for used in [0.0, 12.0] {
+                let window = RateWindow(
+                    usedPercent: used, windowMinutes: 10080, resetsAt: nil, resetDescription: nil)
+                let snapshot = UsageSnapshot(
+                    primary: RateWindow(usedPercent: 20, windowMinutes: 300, resetsAt: nil, resetDescription: nil),
+                    secondary: nil,
+                    tertiary: scopedID == "tertiary" ? window : nil,
+                    extraRateWindows: scopedID == "tertiary" ? [] : [NamedRateWindow(
+                        id: scopedID, title: "Model Weekly", window: window)],
+                    updatedAt: self.now)
+                let gauge = NativeUsageGaugeProjection.state(provider: .claude, snapshot: snapshot)
+                #expect(gauge.resolvedWindows.contains { $0.id == scopedID } == (used > 0))
+            }
+        }
+    }
+
+    @Test func `company identities do not resolve to coding products`() {
+        #expect(UsageProduct.canonicalID("anthropic") != UsageProduct.canonicalID("claude"))
+        #expect(UsageProduct.canonicalID("openai") != UsageProduct.canonicalID("codex"))
+        #expect(UsageProduct.name("chatgpt") == "ChatGPT")
+        #expect(UsageProduct.companyName("openai") == "OpenAI")
+    }
+
+    @Test func `a measured monetary budget supplies a gauge when no rate window was reported`() throws {
+        let snapshot = UsageSnapshot(
+            primary: nil,
+            secondary: nil,
+            providerCost: ProviderCostSnapshot(
+                used: 25, limit: 100, currencyCode: "USD", period: "Monthly", updatedAt: self.now),
+            updatedAt: self.now)
+        let state = NativeUsageGaugeProjection.state(provider: .openrouter, snapshot: snapshot)
+        let window = try #require(state.resolvedWindows.first)
+        #expect(window.id == "monetary-budget")
+        #expect(window.usedFraction == 0.25)
+        #expect(window.countdown == nil)
+    }
+
+    @Test func `disabled unavailable and nonmonetary budgets never invent a main gauge`() {
+        for cost in [
+            ProviderCostSnapshot(used: 25, limit: 100, currencyCode: "USD", isDisabled: true, updatedAt: self.now),
+            ProviderCostSnapshot(
+                used: 25, limit: 100, currencyCode: "USD", usageIsUnavailable: true, updatedAt: self.now),
+            ProviderCostSnapshot(used: 25, limit: 100, currencyCode: "Points", updatedAt: self.now),
+            ProviderCostSnapshot(used: .nan, limit: 100, currencyCode: "USD", updatedAt: self.now),
+        ] {
+            let snapshot = UsageSnapshot(primary: nil, secondary: nil, providerCost: cost, updatedAt: self.now)
+            let state = NativeUsageGaugeProjection.state(provider: .openrouter, snapshot: snapshot)
+            #expect(state.resolvedWindows.allSatisfy { $0.usedFraction == nil })
+        }
+    }
+
     @Test func `recorded local usage selects one Codex two Claude and two Kimi bars`() {
         /// Values read from the local app's saved usage on 2026-10-10, without account identifiers.
         func window(_ used: Double, minutes: Int) -> RateWindow {

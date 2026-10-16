@@ -99,6 +99,7 @@ extension UsageStore {
         self.claudeOrganizationUsagePublication = nil
         self.claudeSwapLastRefreshAt = nil
         self.claudeSwapLastError = nil
+        self.nativeClaudeSwapFault = nil
         self.claudeSwapTransientState = ClaudeSwapTransientState(
             task: self.claudeSwapTransientState.task,
             configurationGeneration: self.claudeSwapTransientState.configurationGeneration &+ 1,
@@ -234,6 +235,7 @@ extension UsageStore {
             self.claudeSwapAccountSnapshots = snapshots
             self.claudeSwapLastRefreshAt = Date()
             self.claudeSwapLastError = nil
+            self.nativeClaudeSwapFault = nil
             self.claudeSwapRevision &+= 1
             self.persistWidgetSnapshot(reason: "claude-swap-accounts")
             await self.probeClaudeSwapVersionIfNeeded(executablePath: executablePath)
@@ -258,6 +260,7 @@ extension UsageStore {
             // pane surfaces the adapter error and last refresh time.
             let message = (error as? LocalizedError)?.errorDescription
                 ?? error.localizedDescription
+            self.nativeClaudeSwapFault = NativeOrbitFetchFault.light(for: error, provider: .claude)
             if self.claudeSwapLastError != message {
                 self.claudeSwapLastError = message
                 self.claudeSwapRevision &+= 1

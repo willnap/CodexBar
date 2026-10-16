@@ -59,7 +59,9 @@ public struct IBMBobUsageSnapshot: Sendable, Equatable {
         let used = self.usedBobcoins
         let limit = self.limitBobcoins
         let reset = self.teams.compactMap(\.resetsAt).min()
-        let usedPercent = limit.flatMap { $0 > 0 ? min(100, max(0, used / $0 * 100)) : nil }
+        let usedPercent = limit.flatMap {
+            $0.isFinite && $0 > 0 && used.isFinite ? min(100, max(0, used / $0 * 100)) : nil
+        }
         let summary = limit.map { "\(Self.bobcoins(used)) / \(Self.bobcoins($0)) Bobcoins" }
             ?? "\(Self.bobcoins(used)) Bobcoins used"
         let planNames = Array(Set(self.teams.compactMap(\.planName))).sorted()
@@ -82,7 +84,8 @@ public struct IBMBobUsageSnapshot: Sendable, Equatable {
                 usedPercent: usedPercent ?? 0,
                 windowMinutes: ProviderPaceCapability.monthlyWindowSentinelMinutes,
                 resetsAt: reset,
-                resetDescription: summary),
+                resetDescription: summary,
+                isSyntheticPlaceholder: usedPercent == nil),
             secondary: nil,
             details: [.makeSection(title: "Bobcoin usage", rows: rows)],
             updatedAt: self.updatedAt,

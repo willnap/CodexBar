@@ -87,7 +87,7 @@ defineProvider({
       const remaining = optionalNumber(payload.remaining, `${field}.remaining`);
       if (limit < 0) return fail(`${field}.limit must not be negative`);
       return {
-        usedPercent: remaining === undefined ? undefined : ctx.pct(Math.max(0, limit - remaining), limit),
+        usedPercent: remaining === undefined || limit <= 0 ? undefined : ctx.pct(Math.max(0, limit - remaining), limit),
         resetsAt: reset(payload.reset, `${field}.reset`),
         remaining,
         limit,
@@ -106,7 +106,7 @@ defineProvider({
           : object(payload.onDemand, `${field}.onDemand`);
       if (total < 0) return fail(`${field}.balance.total must not be negative`);
       return {
-        usedPercent: ctx.pct(Math.max(0, total - remaining), total),
+        usedPercent: total > 0 ? ctx.pct(Math.max(0, total - remaining), total) : undefined,
         resetsAt: reset(billingCycle.end, `${field}.billingCycle.end`),
         remaining,
         limit: total,
@@ -158,10 +158,10 @@ defineProvider({
           ? null
           : { usedPercent: billingData.usedPercent, resetsAt: billingData.resetsAt },
       secondary:
-        rateRemaining === undefined
+        rateLimit.usedPercent === undefined
           ? null
           : {
-              usedPercent: ctx.pct(Math.max(0, rateLimit.limit - rateRemaining), rateLimit.limit),
+              usedPercent: rateLimit.usedPercent,
               resetsAt: rateLimit.resetsAt,
             },
       details: [{ title: "v0 API", rows }],

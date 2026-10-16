@@ -23,7 +23,7 @@ struct GroqUsageFetcherTests {
     }
 
     @Test
-    func `snapshot maps prometheus rates to menu windows`() {
+    func `snapshot maps prometheus rates to throughput details`() {
         let snapshot = GroqUsageSnapshot(
             requestRatePerSecond: 2,
             inputTokenRatePerSecond: 100,
@@ -34,9 +34,10 @@ struct GroqUsageFetcherTests {
 
         #expect(snapshot.identity?.providerID == .groq)
         #expect(snapshot.identity?.loginMethod == "Prometheus metrics")
-        #expect(snapshot.primary?.resetDescription == "120 req/min")
-        #expect(snapshot.secondary?.resetDescription == "9000 tok/min")
-        #expect(snapshot.tertiary?.resetDescription == "180 cache/min")
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.secondary == nil)
+        #expect(snapshot.tertiary == nil)
+        #expect(snapshot.details.first?.rows.map(\.value) == ["120 req/min", "9000 tok/min", "180 cache/min"])
     }
 
     @Test(arguments: [
@@ -93,7 +94,7 @@ struct GroqUsageFetcherTests {
             inputTokenRatePerSecond: 0,
             outputTokenRatePerSecond: 0,
             updatedAt: Date(timeIntervalSince1970: 1)).toUsageSnapshot()
-        #expect(usage.primary?.resetDescription == label)
+        #expect(usage.details.first?.rows.first?.value == label)
     }
 
     @Test(arguments: ["requests", "cache", "tokens"])

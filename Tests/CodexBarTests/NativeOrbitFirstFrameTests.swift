@@ -3,10 +3,10 @@ import Testing
 @testable import CodexBar
 @testable import CodexBarCore
 
-/// The popup's first frame is complete or not shown: its content waits for everything it draws, then fades in.
+/// Evidence readiness controls startup checks and remembered layout, without hiding the prepared first frame.
 @MainActor
 struct NativeOrbitFirstFrameTests {
-    @Test func `the popup waits for history, its account list and every reading, then shows them together`() {
+    @Test func `readiness tracks history account inventory and every reading without waiting forever`() {
         let loaded = self.account(updatedAt: Date())
         let loading = self.account(updatedAt: nil)
         func ready(
@@ -19,10 +19,10 @@ struct NativeOrbitFirstFrameTests {
                 waitRemaining: wait, historyAvailable: history, awaitingAccountList: awaiting, accounts: accounts)
         }
         #expect(ready([loaded, loaded]))
-        #expect(!ready(history: false, [loaded]), "No chart without its history")
-        #expect(!ready(awaiting: true, [loaded]), "No placeholder column before claude-swap answers")
-        #expect(!ready([]), "No empty popup")
-        #expect(!ready([loaded, loading]), "No half-filled dials")
+        #expect(!ready(history: false, [loaded]), "History check stays pending")
+        #expect(!ready(awaiting: true, [loaded]), "Inventory check stays pending")
+        #expect(!ready([]), "Empty inventory is pending")
+        #expect(!ready([loaded, loading]), "Each account needs evidence")
         #expect(ready([self.account(updatedAt: nil, status: "Sign in required")]), "A definite status is an answer")
         #expect(ready(wait: 0, history: false, awaiting: true, [loading]), "The launch wait is bounded")
     }

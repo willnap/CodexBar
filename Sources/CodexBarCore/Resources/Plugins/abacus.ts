@@ -109,12 +109,25 @@ defineProvider({
             )
           : 30 * 24 * 60;
         return {
-          primary: {
-            usedPercent: total > 0 ? ctx.pct(used, total) : 0,
-            windowMinutes,
-            resetsAt,
-            resetDescription: `${credits(used)} / ${credits(total)} credits`,
-          },
+          primary:
+            total > 0
+              ? {
+                  usedPercent: ctx.pct(used, total),
+                  windowMinutes,
+                  resetsAt,
+                  resetDescription: `${credits(used)} / ${credits(total)} credits`,
+                }
+              : null,
+          balance: { value: left, unit: "credits" },
+          details: [
+            {
+              title: "Credits",
+              rows: [
+                { label: "Used", value: `${credits(used)} credits`, usageValue: used },
+                { label: "Available", value: `${credits(left)} credits`, usageValue: left },
+              ],
+            },
+          ],
           identity: { loginMethod: typeof billing.currentTier === "string" ? billing.currentTier : undefined },
         };
       } catch (error) {

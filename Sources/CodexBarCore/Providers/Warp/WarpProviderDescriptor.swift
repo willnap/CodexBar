@@ -53,7 +53,7 @@ public enum WarpProviderDescriptor {
                 menuBarWindowResolver: { context in
                     guard context.metric == .automatic else { return .unhandled }
                     // Warp consumes monthly credits first, then available add-on credits.
-                    let windows = [context.snapshot.primary, context.snapshot.secondary].compactMap(\.self)
+                    let windows = [context.snapshot.primary, context.snapshot.secondary].compactMap { $0?.measured }
                     return .resolved(windows.first { $0.remainingPercent > 0 } ?? windows.first)
                 },
                 // The Add-on credits lane already shows the balance carried for the native extra-usage dial.

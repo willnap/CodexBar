@@ -64,7 +64,9 @@ struct ClaudeOAuthTransportIdentityTests {
     @Test(arguments: [401, 403])
     func `explicit OAuth authentication rejection still invalidates prior quota`(statusCode: Int) async throws {
         let (error, _) = await Self.failure(statusCode: statusCode)
-        #expect(error is ClaudeUsageError)
+        #expect(error is ClaudeOAuthFetchError)
+        #expect(NativeOrbitFetchFault.light(for: error, provider: .claude)?.kind
+            == (statusCode == 401 ? .signIn : .permission))
         #expect(!error.localizedDescription.contains("user:profile"))
         #expect(!UsageStore.shouldPreservePriorSnapshot(after: error, hadPriorData: true))
         #expect(!UsageStore.isStartupConnectivityRetryableError(error))
@@ -87,7 +89,8 @@ struct ClaudeOAuthTransportIdentityTests {
             responseBody: #"{"error":"Missing required scope user:profile"}"#,
             scopes: locallyMissingScope ? ["user:inference"] : ["user:profile"])
         #expect(await transport.requests().count == (locallyMissingScope ? 0 : 1))
-        #expect(error is ClaudeUsageError)
+        #expect((error as? ProviderFetchClassifiedError)?.kind == .permissionDenied)
+        #expect(NativeOrbitFetchFault.light(for: error, provider: .claude)?.kind == .permission)
         #expect(error.localizedDescription.contains("user:profile"))
         #expect(error.localizedDescription.contains("Claude Code sign-in"))
         #expect(error.localizedDescription.contains("OAuth token override"))
@@ -100,10 +103,21 @@ struct ClaudeOAuthTransportIdentityTests {
     @Test(arguments: [429, 500])
     func `explicit OAuth preserves nontransport response errors`(statusCode: Int) async {
         let (error, _) = await Self.failure(statusCode: statusCode)
-        #expect(error is ClaudeUsageError)
+        #expect(error is ClaudeOAuthFetchError)
+        #expect(NativeOrbitFetchFault.light(for: error, provider: .claude)?.kind
+            == (statusCode == 429 ? .rateLimited : .usageFailing))
         #expect(!UsageStore.isStartupConnectivityRetryableError(error))
         #expect(UsageStore.refreshFailureHookStatus(error) == "error")
         #expect(!ClaudeOAuthFetchStrategy().shouldFallback(on: error, context: Self.context()))
+    }
+
+    @Test(arguments: ProviderTransportRegressionSupport.codes)
+    func `typed Claude transport wrappers keep retention retry and hook policies`(code: URLError.Code) {
+        let underlying = ProviderTransportRegressionSupport.urlError(code)
+        let error = ClaudeOAuthFetchError.networkError(underlying)
+        ProviderTransportRegressionSupport.expectPolicy(error, code: code)
+        #expect((UsageStore.underlyingProviderTransportError(error) as NSError).userInfo["fixture-marker"] as? String
+            == "preserved")
     }
 
     private static func failure(

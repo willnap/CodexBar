@@ -28,8 +28,8 @@ struct VenicePluginGoldenTests {
           "diemEpochAllocation": null
         }
         """)
-        #expect(snapshot.primary?.usedPercent == 0)
-        #expect(snapshot.primary?.resetDescription == "$25.75 USD remaining")
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.details.first?.rows.first?.value == "$25.75 USD remaining")
     }
 
     @Test
@@ -70,12 +70,12 @@ struct VenicePluginGoldenTests {
           "diemEpochAllocation": 100.0
         }
         """)
-        #expect(snapshot.primary?.usedPercent == 0)
-        #expect(snapshot.primary?.resetDescription == "$12.34 USD remaining")
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.details.first?.rows.first?.value == "$12.34 USD remaining")
     }
 
     @Test
-    func `non-consumable fixture is exhausted`() async throws {
+    func `non-consumable fixture retains access status without inventing quota exhaustion`() async throws {
         let snapshot = try await Self.fetch("""
         {
           "canConsume": false,
@@ -84,8 +84,8 @@ struct VenicePluginGoldenTests {
           "diemEpochAllocation": null
         }
         """)
-        #expect(snapshot.primary?.usedPercent == 100)
-        #expect(snapshot.primary?.resetDescription == "Balance unavailable for API calls")
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.details.first?.rows.first { $0.label == "API access" }?.value == "Unavailable")
     }
 
     @Test
@@ -112,8 +112,8 @@ struct VenicePluginGoldenTests {
           "diemEpochAllocation": null
         }
         """)
-        #expect(snapshot.primary?.usedPercent == 0)
-        #expect(snapshot.primary?.resetDescription == "DIEM 50.00 remaining")
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.details.first?.rows.first?.value == "DIEM 50.00 remaining")
     }
 
     @Test
@@ -126,12 +126,12 @@ struct VenicePluginGoldenTests {
           "diemEpochAllocation": null
         }
         """)
-        #expect(snapshot.primary?.usedPercent == 0)
-        #expect(snapshot.primary?.resetDescription == "$15.50 USD remaining")
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.details.first?.rows.first?.value == "$15.50 USD remaining")
     }
 
     @Test
-    func `zero balances match the exhausted golden`() async throws {
+    func `zero balances have no finite quota`() async throws {
         let snapshot = try await Self.fetch("""
         {
           "canConsume": true,
@@ -140,12 +140,12 @@ struct VenicePluginGoldenTests {
           "diemEpochAllocation": null
         }
         """)
-        #expect(snapshot.primary?.usedPercent == 100)
-        #expect(snapshot.primary?.resetDescription == "No Venice API balance available")
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.details.first?.rows.first?.value == "No Venice API balance available")
     }
 
     @Test
-    func `null balances match the exhausted golden`() async throws {
+    func `null balances have no finite quota`() async throws {
         let snapshot = try await Self.fetch("""
         {
           "canConsume": true,
@@ -154,8 +154,8 @@ struct VenicePluginGoldenTests {
           "diemEpochAllocation": null
         }
         """)
-        #expect(snapshot.primary?.usedPercent == 100)
-        #expect(snapshot.primary?.resetDescription == "No Venice API balance available")
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.details.first?.rows.first?.value == "No Venice API balance available")
     }
 
     @Test
@@ -211,7 +211,7 @@ struct VenicePluginGoldenTests {
         }
         let runtime = try ProviderPluginRuntime(bundledPlugin: "venice", transport: transport)
         let snapshot = try await runtime.fetchUsage(secrets: ["VENICE_API_KEY": "venice-test"])
-        #expect(snapshot.primary?.resetDescription == "$1.00 USD remaining")
+        #expect(snapshot.details.first?.rows.first?.value == "$1.00 USD remaining")
     }
 
     private static func fetch(_ body: String) async throws -> UsageSnapshot {

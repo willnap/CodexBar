@@ -89,6 +89,13 @@ defineProvider({
       { label: rangeLabel, value: ctx.format.usd(spend) },
     ];
     return {
+      cost: {
+        used: spend,
+        currency: "USD",
+        period: rangeLabel,
+        balance: data.balance_unavailable ? undefined : dollars("balance"),
+        balanceUpdatedAt: ctx.date.now(),
+      },
       details: [{ title: "Organization billing", rows }],
       identity: { loginMethod: "API key" },
       dataConfidence: "exact",

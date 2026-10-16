@@ -79,9 +79,9 @@ defineProvider({
     const text = (value) => (typeof value === "string" ? value.trim() || undefined : undefined);
     return {
       primary:
-        used !== undefined && limit !== undefined
+        used !== undefined && limit !== undefined && limit > 0
           ? {
-              usedPercent: limit === 0 ? 100 : ctx.pct(used, limit),
+              usedPercent: ctx.pct(used, limit),
               windowMinutes: 1440,
               resetsAt: ctx.date.nextDailyReset("UTC", 0),
             }

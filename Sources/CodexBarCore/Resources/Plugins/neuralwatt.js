@@ -83,7 +83,7 @@ defineProvider({
     for (const period of [usage.lifetime, usage.current_month])
       validate(period, { number: "cost_usd energy_kwh", integer: "requests tokens" });
     const nonnegative = (value) => (Number.isFinite(value) && value >= 0 ? value : undefined);
-    const positive = (value) => (value > 0 ? value : undefined);
+    const positive = (value) => (Number.isFinite(value) && value > 0 ? value : undefined);
     const total =
       positive(balance.total_credits_usd) ??
       positive((nonnegative(balance.credits_used_usd) ?? NaN) + (nonnegative(balance.credits_remaining_usd) ?? NaN));
@@ -133,11 +133,9 @@ defineProvider({
           }
         : undefined;
     const allowancePercent =
-      allowance.blocked === true
-        ? 100
-        : allowance.spent_usd != null && allowance.limit_usd > 0
-          ? ctx.pct(allowance.spent_usd, allowance.limit_usd)
-          : undefined;
+      nonnegative(allowance.spent_usd) !== undefined && allowance.limit_usd > 0
+        ? ctx.pct(allowance.spent_usd, allowance.limit_usd)
+        : undefined;
     const plan = subscription.plan?.trim();
     const month = usage.current_month;
     const periodDate = new Date(observedAt);
@@ -161,6 +159,11 @@ defineProvider({
     return {
       empty: true,
       primary,
+      subscriptionStatus: subscription.status,
+      details:
+        allowance.blocked === true
+          ? [{ title: "Key allowance", rows: [{ label: "Key access", value: "Blocked" }] }]
+          : [],
       dataConfidence: "exact",
       costUsage,
       cost:

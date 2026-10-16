@@ -92,6 +92,12 @@ defineProvider({
     const format = (value) =>
       ctx.format.number(Math.sign(value) * Math.round(Math.abs(value)), { maximumFractionDigits: 0 });
     return {
+      balance:
+        (typeof data.totalCredits === "number" ||
+          (typeof data.totalCredits === "string" && data.totalCredits.trim())) &&
+        Number.isFinite(Number(data.totalCredits))
+          ? { value: Number(data.totalCredits), unit: "credits" }
+          : null,
       primary:
         monthly > 0
           ? {

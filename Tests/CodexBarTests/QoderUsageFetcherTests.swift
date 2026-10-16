@@ -62,7 +62,7 @@ struct QoderUsageFetcherTests {
     }
 
     @Test
-    func `zero total zero usage without percentage is exhausted`() async throws {
+    func `zero total zero usage without percentage has no measured quota`() async throws {
         let snapshot = try await CookiePluginFixtures.qoder(
             data: Data(Self.zeroTotalQuotaJSON.utf8),
             now: Self.now)
@@ -71,9 +71,8 @@ struct QoderUsageFetcherTests {
         #expect(snapshot.usedCredits == 0)
         #expect(snapshot.totalCredits == 0)
         #expect(snapshot.remainingCredits == 0)
-        #expect(snapshot.usagePercentage == 100)
-        #expect(usage.primary?.usedPercent == 100)
-        #expect(usage.primary?.resetDescription == "0 / 0 credits")
+        #expect(!snapshot.percentageIsKnown)
+        #expect(usage.primary == nil)
     }
 
     @Test

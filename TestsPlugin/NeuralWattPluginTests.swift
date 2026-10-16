@@ -316,7 +316,8 @@ struct NeuralWattPluginTests {
                 #expect(usage.primary?.resetsAt != nil)
                 #expect(usage.subscriptionRenewsAt == nil)
             } else if index == 6 {
-                #expect(usage.extraRateWindows?.first?.window.usedPercent == 100)
+                #expect(usage.extraRateWindows == nil)
+                #expect(usage.details.flatMap(\.rows).contains { $0.label == "Key access" && $0.value == "Blocked" })
             } else {
                 #expect(usage.extraRateWindows == nil)
             }

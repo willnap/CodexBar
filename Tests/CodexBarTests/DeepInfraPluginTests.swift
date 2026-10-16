@@ -13,11 +13,8 @@ struct DeepInfraPluginTests {
     @Test(arguments: BundledPluginTestSupport.engines)
     func `billing fixture preserves native projection`(engine: ProviderPluginEngineKind) async throws {
         let snapshot = try await Self.fetch(engine: engine)
-        #expect(snapshot.primary == RateWindow(
-            usedPercent: 0,
-            windowMinutes: nil,
-            resetsAt: nil,
-            resetDescription: "$95.81 available · $3.94 spent this month"))
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.details.first?.rows.first?.value == "$95.81 available · $3.94 spent this month")
         #expect(snapshot.providerCost == ProviderCostSnapshot(
             used: 3.94,
             limit: 20,
@@ -32,22 +29,27 @@ struct DeepInfraPluginTests {
     }
 
     @Test(arguments: [
-        (#"{"stripe_balance":2.75,"recent":7,"limit":-1}"#, "$9.75 owed · $3.94 spent this month", 100.0, -9.75),
+        (
+            #"{"stripe_balance":2.75,"recent":7,"limit":-1}"#,
+            "$9.75 owed · $3.94 spent this month",
+            nil as String?,
+            -9.75),
         (
             #"{"stripe_balance":-5,"recent":1,"suspended":true,"suspend_reason":" Payment review "}"#,
             "Suspended: Payment review · $4.00 available · $3.94 spent this month",
-            100.0, 4.0),
-        (#"{"stripe_balance":0,"recent":-1}"#, "$0.00 available · $3.94 spent this month", 100.0, 0.0),
+            "suspended", 4.0),
+        (#"{"stripe_balance":0,"recent":-1}"#, "$0.00 available · $3.94 spent this month", nil, 0.0),
     ], BundledPluginTestSupport.engines)
     func `balances suspension and missing limits preserve goldens`(
-        fixture: (String, String, Double, Double),
+        fixture: (String, String, String?, Double),
         engine: ProviderPluginEngineKind) async throws
     {
         let snapshot = try await Self.fetch(
             checklist: fixture.0,
             engine: engine)
-        #expect(snapshot.primary?.resetDescription == fixture.1)
-        #expect(snapshot.primary?.usedPercent == fixture.2)
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.details.first?.rows.first?.value == fixture.1)
+        #expect(snapshot.subscriptionStatus == fixture.2)
         #expect(snapshot.providerCost?.balance == fixture.3)
         #expect(snapshot.providerCost?.used == 3.94)
         #expect(snapshot.providerCost?.balanceUpdatedAt == Self.now)
@@ -58,7 +60,7 @@ struct DeepInfraPluginTests {
         let snapshot = try await Self.fetch(
             usage: #"{"months":[]}"#,
             engine: engine)
-        #expect(snapshot.primary?.resetDescription == "$95.81 available · $3.94 spent this month")
+        #expect(snapshot.details.first?.rows.first?.value == "$95.81 available · $3.94 spent this month")
     }
 
     @Test(arguments: [0.125, 1.375, 49.585, 1000.625, 1e21], BundledPluginTestSupport.engines)
@@ -70,7 +72,7 @@ struct DeepInfraPluginTests {
         let snapshot = try await Self.fetch(
             checklist: checklist,
             engine: engine)
-        #expect(snapshot.primary?.resetDescription == String(
+        #expect(snapshot.details.first?.rows.first?.value == String(
             format: "$%.2f available · $3.94 spent this month",
             balance))
     }
@@ -170,7 +172,8 @@ struct DeepInfraPluginTests {
                     status: count == 2 ? 503 : 200)
             })
         let snapshot = try await runtime.fetchUsage(secrets: ["DEEPINFRA_API_KEY": "fixture-token"])
-        #expect(snapshot.primary?.usedPercent == 0)
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.providerCost?.balance == 95.81)
         #expect(await recorder.values.map(\.url?.path) == ["/payment/checklist", "/payment/usage", "/payment/usage"])
     }
 

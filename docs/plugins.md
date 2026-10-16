@@ -314,7 +314,7 @@ abandoned evaluation thread can remain alive until process exit.
 
 ## Snapshot result
 
-Return at least one rate window, cost object, detail section, or non-empty identity field:
+Return at least one rate window, cost object, standalone balance, detail section, or non-empty identity field:
 
 ```js
 return {
@@ -349,7 +349,32 @@ Detail rows accept optional `progress` (a finite consumed fraction from 0 throug
 The host maps the fraction to native progress with `used: progress, total: 1`; `usageValue` is preserved independently.
 Absent or null numeric fields leave existing text-only rows unchanged. A supplied `usageKnown` must be a boolean,
 including when the window uses the nested `window` form; null is invalid.
-An identity-only snapshot is useful for balance-only or zero-usage provider states and renders its available account,
+For a wallet without measured spending or an allowance, report its value and explicit unit separately:
+
+```js
+return {
+  balance: { value: 125.25, unit: "credits", updatedAt: "2026-10-16T12:00:00Z" },
+  identity: { loginMethod: "API key" },
+};
+```
+
+`balance.value` must be finite; an actual zero or negative debt is preserved. `balance.unit` is required and can be an
+ISO currency or a noncurrency unit such as `credits`, `points`, or `HC`. It is limited to 64 UTF-8 bytes, with no control
+characters. The optional observation date defaults to the fetch instant and cannot be in the future. Optional
+`balance.isWorkspace` must be a boolean. Unknown balance keys fail validation. A standalone balance creates no spend,
+budget or quota percentage. Omit `balance` when the wallet was not queried. Use `balance: null` when a successful
+wallet query returned an unavailable value: it records a dated absence so older funding or consumption evidence
+cannot bridge that gap. Never substitute zero or infer a unit from formatted text. Do not combine standalone
+`balance`, including explicit null, with `cost`: when measured spend and a wallet share one currency and source scope,
+use the existing `cost.balance` field alongside the actual `cost.used` and period. If that queried wallet is unavailable,
+set `cost.balanceUpdatedAt` to the observation time while leaving `cost.balance` null; actual spend remains intact.
+
+`subscriptionStatus` accepts an optional status string, and `subscriptionIsActive` an optional boolean. Use explicit
+provider billing evidence such as `subscriptionStatus: "past_due"` for overdue invoices. Billing-cycle progress,
+memory occupancy and request throughput are detail measurements, not rate-limit windows. Missing capabilities or an
+optional window that was never measured do not establish a failed reading.
+
+An identity-only snapshot is useful for zero-usage or validation-only provider states and renders its available account,
 organization, plan/login-method, and account-ID fields in the menu and CLI. A verified response with no displayable data
 may return `{empty: true}` with optional identity. This creates no artificial rate window; every supplied field is still
 validated. An empty object, an empty `identity` object, or metadata such as confidence and subscription dates without
@@ -529,7 +554,7 @@ Bundled scripts own requests, error classification, and snapshot mapping; Swift 
 | [ai&](aiand.md) | `aiand.ts` follows paired log cursors and sums decimal costs with integer arithmetic before display conversion. Empty windows omit cost; capped/incomplete pagination is estimated. |
 | [DevPass](devpass.md) | `devpass.ts` reads billing-cycle and premium weekly credits from LLM Gateway's key-status API; Swift registers the provider and API-key setting. |
 | [xKiro](xkiro.md) | `xkiro.ts` reads daily free tokens and UTC reset from the usage API; Swift registers the provider and API-key setting. |
-| [Moonshot](moonshot.md) | `moonshot.ts` runs on both engines. Swift resolves the regional credential and `BASE_URL`; the script validates fixed International/China origins and uses `ctx.format.currency` for identity-only balance/deficit text. |
+| [Moonshot](moonshot.md) | `moonshot.ts` runs on both engines. Swift resolves the regional credential and `BASE_URL`; the script validates fixed International/China origins and reports the numeric USD/CNY balance alongside its formatted balance/deficit text. |
 | [DeepInfra](deepinfra.md) | Both engines require both billing GETs, preserve prepaid deductions and monthly cents conversion, and retry transient failures once. |
 | [ZenMux](zenmux.md) | Both engines require subscription quotas. Optional USD PAYG enrichment failures preserve quotas except for credential rejection and cancellation. |
 | [Atlas Cloud](atlascloud.md), [Vercel AI Gateway](vercel.md) | Fixed-origin bearer GETs return account/team balances as generic details without quota windows. Scripts classify HTTP failures; the host bounds retries. |

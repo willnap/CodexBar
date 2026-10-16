@@ -156,9 +156,11 @@ struct ProviderArchitectureGatekeeperTests {
             Self.hash(descriptor.branding.burnDownWidgetColor, into: &burnDownFingerprint)
         }
 
-        // Both provider batches extend the palette without changing existing provider colors.
-        #expect(widgetFingerprint == 14_588_483_983_924_548_755)
-        #expect(burnDownFingerprint == 14_027_062_183_472_836_508)
+        // Codex uses the sampled violet body from its shipped app icon in both widgets.
+        #expect(CodexProviderDescriptor.descriptor.branding.widgetColor == ProviderColor(hex: 0x3935F5))
+        #expect(CodexProviderDescriptor.descriptor.branding.burnDownWidgetColor == ProviderColor(hex: 0x3935F5))
+        #expect(widgetFingerprint == 9_667_417_189_498_996_024)
+        #expect(burnDownFingerprint == 4_902_169_527_610_723_594)
     }
 
     @Test
@@ -968,6 +970,16 @@ struct ProviderArchitectureGatekeeperTests {
     /// policy.
     private static let suppressedProviderReferences: [SuppressedProviderReference] = [
         SuppressedProviderReference(
+            path: "Sources/CodexBar/NativeGauge/Generated/NativeOrbitBadgeVocabulary.swift",
+            anchor: ".init(key: \"native:computermouse.fill\", title: \"mouse cursor pointing computer\", symbol: \"computermouse.fill\", kind: .meaning, domains: [], clues: [\"mouse\", \"cursor\", \"pointing\", \"computer\"]),",
+            expectedProviderIDs: ["cursor"],
+            reason: "Cursor describes the mouse pointer in this symbol vocabulary, without referring to the Cursor provider."),
+        SuppressedProviderReference(
+            path: "Sources/CodexBar/NativeGauge/Generated/NativeOrbitBadgeVocabulary.swift",
+            anchor: ".init(key: \"native:magicmouse.fill\", title: \"Magic Mouse computer pointing cursor\", symbol: \"magicmouse.fill\", kind: .meaning, domains: [], clues: [\"Magic\", \"Mouse\", \"computer\", \"pointing\", \"cursor\"]),",
+            expectedProviderIDs: ["cursor"],
+            reason: "Cursor describes a pointing device in this symbol vocabulary, without referring to the Cursor provider."),
+        SuppressedProviderReference(
             path: "Sources/CodexBar/IconRenderer.swift",
             anchor: "let eyeTiltAngle: CGFloat = .pi / 3 // 60 degrees tilt",
             expectedProviderIDs: ["pi"],
@@ -1741,6 +1753,13 @@ struct ProviderArchitectureGatekeeperTests {
     /// Anchors match trimmed source lines exactly; repeated text requires a 1-based occurrence.
     private static let allowedProviderConstructs: [AllowedProviderConstruct] = [
         AllowedProviderConstruct(
+            path: "Sources/CodexBar/NativeGauge/Generated/NativeOrbitBadgeVocabulary.swift",
+            anchor: ".init(key: \"native:fireworks\", title: \"fireworks celebration display pyrotechnics\", symbol: \"fireworks\", kind: .meaning, domains: [], clues: [\"fireworks\", \"celebration\", \"display\", \"pyrotechnics\"]),",
+            expectedProviderIDs: ["fireworks"],
+            expectedReferenceCount: 2,
+            expectedReferenceFingerprint: ["fireworks@0", "fireworks@0"],
+            reason: "Both tokens name the native pyrotechnics symbol and its search clue, without selecting a provider."),
+        AllowedProviderConstruct(
             path: "Sources/CodexBar/NativeGauge/Generated/ComputeGauge.swift",
             anchor: "private var nominalLogoFont:CGFloat{state.productID==\"openai\" ? optical(9.5,11.2,12.0,18.0):optical(11.6,13.0,14.2,17.0)}",
             expectedProviderIDs: ["openai", "codex", "kimi"],
@@ -1787,10 +1806,10 @@ struct ProviderArchitectureGatekeeperTests {
         AllowedProviderConstruct(
             path: "Sources/CodexBar/NativeGauge/Generated/UsageModel.swift",
             anchor: "case \"chatgpt\":return \"openai\"",
-            expectedProviderIDs: ["claude", "gemini", "openai"],
-            expectedReferenceCount: 3,
-            expectedReferenceFingerprint: ["openai@0", "claude@1", "gemini@2"],
-            reason: "The original component canonicalizes product aliases to their catalog identities."),
+            expectedProviderIDs: ["claude", "codex", "gemini", "openai"],
+            expectedReferenceCount: 6,
+            expectedReferenceFingerprint: ["openai@0", "claude@1", "gemini@2", "openai@13", "codex@21", "openai@21"],
+            reason: "Product aliases and their distinct parent-company marks use the authored identity catalog."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/CodexOwnershipContext.swift",
             anchor: "snapshot?.accountEmail(for: .codex) ??",

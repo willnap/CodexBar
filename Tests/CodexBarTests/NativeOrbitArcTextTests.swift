@@ -52,12 +52,91 @@ struct NativeOrbitReadoutNumberTests {
 struct NativeOrbitArcTextTests {
     private typealias Corner = NativeOrbitComplication.Corner
 
+    @Test func `numeric text animates its first change and changes after a pause but rapid scrubs are immediate`() {
+        let cadence = NativeOrbitReadoutCadence(initialValue: "10")
+        let interval = NativeOrbitReadoutCadence.scrubInterval
+        var first = Transaction(animation: nil)
+        cadence.prepareTransaction(&first, value: "11", now: 10, reduceMotion: false)
+        #expect(first.animation == .smooth(duration: NativeOrbitReadoutCadence.animationDuration))
+        #expect(!first.disablesAnimations)
+        var rapid = Transaction(animation: .smooth(duration: 3))
+        cadence.prepareTransaction(&rapid, value: "12", now: 10 + interval / 2, reduceMotion: false)
+        #expect(rapid.animation == nil)
+        #expect(rapid.disablesAnimations)
+        var paused = Transaction(animation: nil)
+        cadence.prepareTransaction(&paused, value: "13", now: 10 + interval * 2, reduceMotion: false)
+        #expect(paused.animation == .smooth(duration: NativeOrbitReadoutCadence.animationDuration))
+        #expect(!paused.disablesAnimations)
+    }
+
+    @Test func `repeated transaction passes do not change numeric cadence or restart its pause clock`() {
+        let cadence = NativeOrbitReadoutCadence(initialValue: "10")
+        let interval = NativeOrbitReadoutCadence.scrubInterval
+        var first = Transaction()
+        cadence.prepareTransaction(&first, value: "11", now: 0, reduceMotion: false)
+        var repeated = Transaction()
+        cadence.prepareTransaction(&repeated, value: "11", now: interval * 0.75, reduceMotion: false)
+        #expect(repeated.animation != nil)
+        #expect(!repeated.disablesAnimations)
+        var threshold = Transaction()
+        cadence.prepareTransaction(&threshold, value: "12", now: interval, reduceMotion: false)
+        #expect(threshold.animation != nil)
+        #expect(!threshold.disablesAnimations)
+        var rapid = Transaction()
+        cadence.prepareTransaction(&rapid, value: "13", now: interval * 1.5, reduceMotion: false)
+        var repeatedRapid = Transaction(animation: .smooth(duration: 3))
+        cadence.prepareTransaction(&repeatedRapid, value: "13", now: interval * 3, reduceMotion: false)
+        #expect(repeatedRapid.animation == nil)
+        #expect(repeatedRapid.disablesAnimations)
+    }
+
+    @Test func `reduced motion suppresses first and slow numeric transitions and upstream disabling is respected`() {
+        let cadence = NativeOrbitReadoutCadence(initialValue: "10")
+        for (value, now) in [("11", 0.0), ("12", 10.0)] {
+            var transaction = Transaction(animation: .smooth(duration: 3))
+            cadence.prepareTransaction(&transaction, value: value, now: now, reduceMotion: true)
+            #expect(transaction.animation == nil)
+            #expect(transaction.disablesAnimations)
+        }
+        var disabled = Transaction()
+        disabled.disablesAnimations = true
+        cadence.prepareTransaction(&disabled, value: "13", now: 20, reduceMotion: false)
+        #expect(disabled.animation == nil)
+        #expect(disabled.disablesAnimations)
+    }
+
     @Test func `tabular figures keep the characters a change keeps where they were`() {
         // SF Rounded's own figures run from 7.87pt for a 1 to 10.61pt for a 0.
         for monospaced in [false, true] {
             let font = NativeOrbitArcText.font(monospaced: monospaced, size: 16)
             for (old, new) in [("$84.18", "$84.98"), ("$1.11", "$7.77"), ("$10.00", "$19.91"), ("276.7M", "111.1M")] {
                 #expect(Self.offsets(old, font: font) == Self.offsets(new, font: font), "\(old) to \(new)")
+            }
+        }
+    }
+
+    @Test func `immutable arc fonts preserve each size design and tabular glyph metrics`() {
+        for monospaced in [false, true] {
+            for size: CGFloat in [8, 12, 16, 24, 32] {
+                let reference: NSFont
+                if monospaced {
+                    reference = NSFont.monospacedSystemFont(ofSize: size, weight: .semibold)
+                } else {
+                    let base = NSFont.systemFont(ofSize: size, weight: .semibold)
+                    let rounded = base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor
+                    let tabular = rounded.addingAttributes([.featureSettings: [[
+                        NSFontDescriptor.FeatureKey.typeIdentifier: kNumberSpacingType,
+                        NSFontDescriptor.FeatureKey.selectorIdentifier: kMonospacedNumbersSelector,
+                    ]]])
+                    reference = NSFont(descriptor: tabular, size: size) ?? base
+                }
+                let font = NativeOrbitArcText.font(monospaced: monospaced, size: size)
+                #expect(font === NativeOrbitArcText.font(monospaced: monospaced, size: size))
+                #expect(font.pointSize == size)
+                #expect(font.fontDescriptor == reference.fontDescriptor)
+                for text in ["$84.18", "CA$1,234.56", "12.34 credits", "276.7M", "—"] {
+                    #expect(Self.offsets(text, font: font) == Self.offsets(text, font: reference))
+                }
             }
         }
     }
@@ -78,7 +157,8 @@ struct NativeOrbitArcTextTests {
                     value: readout.value,
                     corner: corner,
                     monospaced: readout.monospaced)
-                    .fill(readout.value == NativeOrbitArcText.placeholder ? Color.secondary : Color.primary))
+                    .fill(readout.value == NativeOrbitArcText.placeholder ? NativeOrbitComplicationStyle
+                        .unavailable : Color.primary))
                 let (drawnCentre, drawnInk) = Self.centroid(drawn)
                 let (expectedCentre, expectedInk) = Self.centroid(expected)
                 // Within a point of the reference (2px at 2x), and all of it: a clipped glyph would lose ink. Text

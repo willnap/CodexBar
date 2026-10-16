@@ -71,6 +71,7 @@ defineProvider({
       }
     }
     return {
+      balance: data.credits == null ? null : { value: data.credits, unit: "credits" },
       details: [{ title: "Account credits", rows }],
       identity: { loginMethod: eligible === true ? "Free tier" : eligible === false ? "Pay as you go" : "API" },
       dataConfidence: "exact",

@@ -120,17 +120,13 @@ extension UsageStore {
         let contexts = accounts.compactMap { account -> NativeOrbitCodexAccountContext? in
             guard uniqueIDs[account.id] != nil else { return nil }
             let active = account.isLive && account.id == projection.liveVisibleAccountID
-            let matches = self.codexAccountSnapshots.filter {
-                $0.id == account.id && Self.codexPriorSnapshotAccountMatches(
-                    $0.account,
-                    account: account)
-            }
-            let record = matches.count == 1 ? matches.first : nil
+            let record = self.nativeCodexPresentationRecord(for: account)
             let ownsLive = active && self.lastCodexUsagePublicationGuard.map {
                 Self.codexScopedRefreshGuardsMatchAccount($0, Self.codexScopedRefreshGuard(for: account))
             } == true
             // Provider-specific by design: Only a verified active Codex owner can use the current provider reading.
-            let snapshot = ownsLive ? self.snapshots[.codex] : record?.snapshot
+            let snapshot = self.nativeCodexPresentationSnapshot(
+                for: account, live: ownsLive ? self.snapshots[.codex] : nil, record: record)
             let error = ownsLive ? self.userFacingError(for: .codex)
                 : CodexUIErrorMapper.userFacingMessage(record?.error)
             let email = CodexIdentityResolver.normalizeEmail(account.email)
@@ -182,7 +178,7 @@ extension UsageStore {
                     && account.authenticationHealthLabel == nil,
                 snapshot: context.snapshot,
                 error: context.error ?? account.authenticationHealthLabel,
-                credits: context.ownsLive ? self.credits : context.record?.credits,
+                credits: context.ownsLive ? self.credits ?? context.record?.credits : context.record?.credits,
                 history: context.history,
                 // Provider-specific by design: only a reconciled Codex account can select its credential scope.
                 selection: .codex(account),
@@ -290,9 +286,7 @@ extension UsageStore {
             // here is tied to its own slot, and the ambient one also to its email and organization, so none can land
             // on the wrong column meanwhile.
             let ambient = self.nativeOrbitClaudeOwnedAmbientSnapshot(for: account)
-            let snapshot = Self.nativeOrbitClaudeMergedSnapshot(
-                adapter: account.snapshot,
-                ambient: ambient)
+            let snapshot = self.nativeOrbitClaudePresentationSnapshot(for: account, ambient: ambient)
             let localUsage = self.nativeOrbitClaudeResolvedLocalUsage(account)
             let warnings = self.nativeOrbitClaudeSwapWarnings(account)
             let displayError = account.usesLastKnownUsage && ambient == nil
@@ -354,7 +348,7 @@ extension UsageStore {
         for provider: UsageProvider,
         automatic: Bool = false) -> NativeOrbitAccountPresentation
     {
-        let presentation = self.nativeServicePresentation(for: provider, includeModelScopedWeeklyUsage: true)
+        let presentation = self.nativeServicePresentation(for: provider)
         let snapshot = self.presentationSnapshot(for: provider)
         _ = self.planUtilizationHistoryRevision
         let history = self.planUtilizationHistorySelection(
@@ -419,8 +413,13 @@ extension UsageStore {
                 metrics: ambientMetrics,
                 error: self.userFacingError(for: provider),
                 extra: presentation.gauge.health == .authentication
-                    ? [NativeOrbitFetchFault.signInLight(self.metadata(for: provider).displayName)] : [],
-                errorExplained: false))
+                    ? [NativeOrbitFetchFault.signInLight(self.metadata(for: provider).displayName)]
+                    : snapshot == nil ? self.unavailableMessage(for: provider).map {
+                        [.init(.unavailableHere, .caution, $0, action: .settings)]
+                    } ?? [] : [],
+                errorExplained: false,
+                snapshot: snapshot,
+                history: sourceHistory))
     }
 
     // swiftlint:disable:next function_parameter_count
@@ -479,7 +478,6 @@ extension UsageStore {
             error: error,
             codexProjection: projection,
             showOptionalCreditsAndExtraUsage: input.showOptionalCreditsAndExtraUsage,
-            includeModelScopedWeeklyUsage: true,
             visibleMetrics: model.metrics,
             weeklyPace: input.paceVisible ? input.weeklyPace : nil,
             status: self.statusIndicator(for: provider),
@@ -526,7 +524,7 @@ extension UsageStore {
             updatedAt: snapshot?.updatedAt,
             history: Self.nativeOrbitHistoryIncludingCurrentSnapshot(
                 history, provider: provider, snapshot: historySnapshot, credits: credits),
-            odometer: tokens.map { (total.isPartial ? "≥" : "") + $0.formatted() + " tokens" },
+            odometer: tokens.map { $0.formatted() + " tokens" },
             odometerHelp: tokens == nil ? nil : tokenScope + " · last 30 days"
                 + (total.isPartial ? " · Partial data" : ""),
             statusText: PersonalInfoRedactor.redactEmails(
@@ -550,7 +548,9 @@ extension UsageStore {
                 metrics: metrics,
                 error: error,
                 extra: extraWarnings,
-                errorExplained: errorExplained))
+                errorExplained: errorExplained,
+                snapshot: snapshot,
+                history: history))
     }
 
     private func nativeOrbitHistory(

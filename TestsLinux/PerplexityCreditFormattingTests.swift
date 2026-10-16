@@ -36,7 +36,9 @@ struct PerplexityCreditFormattingTests {
             cookieResolver: { _, _ in "authjs.session-token=fixture" })
 
         #expect(usage.primary?.resetDescription == expected)
-        #expect(usage.secondary?.resetDescription == "0/0 bonus")
-        #expect(usage.tertiary?.resetDescription == "0/0 credits")
+        #expect(usage.secondary == nil)
+        #expect(usage.tertiary == nil)
+        #expect(usage.details.flatMap(\.rows).first { $0.label == "Bonus credits" }?.value == "0/0 bonus")
+        #expect(usage.details.flatMap(\.rows).first { $0.label == "Purchased credits" }?.value == "0/0 credits")
     }
 }

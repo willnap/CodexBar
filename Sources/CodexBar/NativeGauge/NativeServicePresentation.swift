@@ -47,12 +47,11 @@ extension UsageStore {
             showSingleAccount: self.settings.nativeDesignEnabled || self.settings.claudeSwapShowSingleAccount)
     }
 
-    /// The longest a popup waits after launch for its first complete frame before showing what it has.
+    /// The readiness window for remembering the launch layout; it never holds back the popup's first frame.
     static let nativePopupReadinessLimit: TimeInterval = 5
 
-    /// Whether a popup has everything its first frame shows: its history in memory, its account list (for Claude,
-    /// claude-swap's answer when it owns the columns), and a reading or a definite status for every column. After
-    /// `nativePopupReadinessLimit` from launch it is ready whatever it has.
+    /// Whether account inventory, history, and readings have answered during the launch readiness window.
+    /// Layout memory stops waiting after the window; visible columns and diagnostic evidence do not wait.
     func nativePopupIsReady(
         for provider: UsageProvider,
         accounts: [NativeOrbitAccountPresentation],
@@ -98,6 +97,7 @@ extension UsageStore {
         guard self.settings.codexUsageDataSource != .pat,
               self.lastSourceLabels[.codex] != CodexUsageDataSource.pat.sourceLabel else { return nil }
         return self.settings.codexVisibleAccountProjectionForMenuDisplay
+            ?? self.nativeCodexAccountSwitchPresentation?.projection
     }
 
     func nativeClaudeSwapDisplay(inspectedAccountID: ProviderAccountIdentity? = nil) -> ClaudeSwapAccountMenuDisplay {
@@ -112,8 +112,7 @@ extension UsageStore {
 
     func nativeServicePresentation(
         for provider: UsageProvider,
-        inspectedAccountID: ProviderAccountIdentity? = nil,
-        includeModelScopedWeeklyUsage: Bool = false) -> NativeServicePresentation
+        inspectedAccountID: ProviderAccountIdentity? = nil) -> NativeServicePresentation
     {
         var context = UsageMenuCardContext.menu
         var accountID: String?
@@ -133,17 +132,19 @@ extension UsageStore {
                 let ownsLiveUsage = self.lastCodexUsagePublicationGuard.map {
                     Self.codexScopedRefreshGuardsMatchAccount($0, Self.codexScopedRefreshGuard(for: account))
                 } == true
-                if !ownsLiveUsage {
-                    let matches = self.codexAccountSnapshots.filter {
-                        $0.id == account.id && Self.codexPriorSnapshotAccountMatches($0.account, account: account)
-                    }
-                    let record = matches.count == 1 ? matches.first : nil
+                let record = self.nativeCodexPresentationRecord(for: account)
+                if !ownsLiveUsage || self.nativeCodexAccountSwitchPresentation != nil
+                    || (self.snapshots[.codex] == nil && record?.snapshot != nil)
+                {
                     context = .account(.init(
-                        snapshot: record?.snapshot,
-                        error: CodexUIErrorMapper.userFacingMessage(record?.error),
+                        snapshot: self.nativeCodexPresentationSnapshot(
+                            for: account, live: ownsLiveUsage ? self.snapshots[.codex] : nil, record: record),
+                        error: ownsLiveUsage ? self.userFacingError(for: .codex)
+                            : CodexUIErrorMapper.userFacingMessage(record?.error),
                         info: AccountInfo(email: account.email, plan: nil),
-                        sourceLabel: record?.sourceLabel,
-                        credits: record?.credits))
+                        sourceLabel: ownsLiveUsage ? self.lastSourceLabels[.codex] ?? record?.sourceLabel
+                            : record?.sourceLabel,
+                        credits: ownsLiveUsage ? self.credits ?? record?.credits : record?.credits))
                 }
             } else {
                 // A monitored source is not evidence of the machine's actual login.
@@ -168,9 +169,12 @@ extension UsageStore {
                     adapterError: self.claudeSwapLastError,
                     switchError: self.claudeSwapTransientState.lastErrorAccountID == account.id
                         ? self.claudeSwapTransientState.lastError : nil)
+                if var accountContext = context.account {
+                    accountContext.snapshot = self.nativeOrbitClaudePresentationSnapshot(
+                        for: account, ambient: self.nativeOrbitClaudeOwnedAmbientSnapshot(for: account))
+                    context = .account(accountContext)
+                }
                 suppressGaugeUsage = account.usesLastKnownUsage
-                    || self.claudeSwapTransientState.switchingAccountID != nil
-                    || self.claudeSwapTransientState.switchPhase != nil
             } else {
                 context = .account(.init(error: L("No active account"), info: AccountInfo(email: nil, plan: nil)))
                 suppressGaugeUsage = true
@@ -211,7 +215,6 @@ extension UsageStore {
             error: gaugeError,
             codexProjection: gaugeProjection,
             showOptionalCreditsAndExtraUsage: input.showOptionalCreditsAndExtraUsage,
-            includeModelScopedWeeklyUsage: includeModelScopedWeeklyUsage,
             visibleMetrics: model.metrics,
             weeklyPace: suppressGaugeUsage || !input.paceVisible ? nil : input.weeklyPace,
             status: self.statusIndicator(for: provider),

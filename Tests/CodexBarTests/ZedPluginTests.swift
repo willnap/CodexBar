@@ -55,7 +55,8 @@ struct ZedPluginTests {
         #expect(snapshot.details.first?.rows.first?.usageValue == 2.5)
         #expect(snapshot.details.first?.rows.last?.value == "Not reported")
         #expect(snapshot.providerCost?.balance == nil)
-        #expect(snapshot.primary?.resetDescription == "Unlimited")
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.details.flatMap(\.rows).contains { $0.value == "Unlimited" })
     }
 
     @Test(
@@ -158,9 +159,11 @@ struct ZedPluginTests {
         #expect(snapshot.identity?.loginMethod == "Zed Pro Trial")
         #expect(snapshot.primary?.usedPercent == 50)
         #expect(snapshot.primary?.resetDescription == "10 / 20 predictions")
-        #expect(snapshot.secondary?.resetDescription == "Cycle ended")
-        #expect(snapshot.subscriptionRenewsAt == snapshot.secondary?.resetsAt)
-        #expect(snapshot.extraRateWindows?.first?.usageKnown == false)
+        #expect(snapshot.secondary == nil)
+        #expect(snapshot.details.flatMap(\.rows).contains { $0.value == "Cycle ended" })
+        #expect(snapshot.subscriptionRenewsAt != nil)
+        #expect(snapshot.subscriptionStatus == "past_due")
+        #expect(snapshot.extraRateWindows == nil)
         #expect(snapshot.providerCost == nil)
     }
 

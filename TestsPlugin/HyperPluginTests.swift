@@ -18,7 +18,12 @@ struct HyperPluginTests {
     {
         for balance in [0, 12, 18.5, 42.5] {
             let snapshot = try await Self.fetch(engine: engine, body: "{\"balance\":\(balance)}")
-            #expect(snapshot.providerCost == nil)
+            #expect(snapshot.providerCost?.balance == balance)
+            #expect(snapshot.providerCost?.currencyCode == "HC")
+            #expect(snapshot.providerCost?.balanceUpdatedAt == snapshot.updatedAt)
+            #expect(snapshot.providerCost?.usageIsUnavailable == true)
+            #expect(snapshot.providerCost?.limit == 0)
+            #expect(snapshot.costUsage == nil)
             #expect(snapshot.details.first?.rows.first?.usageValue == balance)
             #expect(snapshot.primary == nil)
             #expect(snapshot.secondary == nil)

@@ -69,10 +69,13 @@ defineProvider({
     const reason = checklist.suspend_reason?.trim();
     const suspension = checklist.suspended ? (reason ? `Suspended: ${reason} · ` : "Suspended · ") : "";
     return {
-      primary: {
-        usedPercent: checklist.suspended || balance >= 0 ? 100 : 0,
-        resetDescription: `${suspension}${balanceText} · ${usd(monthCost)} spent this month`,
-      },
+      subscriptionStatus: checklist.suspended ? "suspended" : undefined,
+      details: [
+        {
+          title: "Billing",
+          rows: [{ label: "Balance", value: `${suspension}${balanceText} · ${usd(monthCost)} spent this month` }],
+        },
+      ],
       cost: {
         used: monthCost,
         limit: checklist.limit > 0 ? checklist.limit : undefined,

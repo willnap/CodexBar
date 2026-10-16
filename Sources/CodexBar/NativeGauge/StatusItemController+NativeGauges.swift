@@ -143,8 +143,12 @@ extension StatusItemController {
                 },
                 signIn: { [weak self] in self?.signInToNativeService(provider) },
                 dashboard: { [weak self] in
-                    guard let self, let url = self.dashboardURL(for: provider) else { return }
-                    NSWorkspace.shared.open(url)
+                    guard let self else { return }
+                    if let url = self.dashboardURL(for: provider) {
+                        NSWorkspace.shared.open(url)
+                    } else {
+                        self.openNativeServiceSettings(provider)
+                    }
                 },
                 settings: { [weak self] in self?.openNativeServiceSettings(provider) },
                 advanced: { [weak self] in
@@ -182,6 +186,12 @@ extension StatusItemController {
                         !self.isNativeAccountActivationBlocked(provider: provider)
                 },
                 statusPage: { [weak self] in self?.openProviderStatusPage(provider) },
+                availableUpdate: { [weak self] in
+                    guard let status = self?.updater.updateStatus else { return nil }
+                    return status.availableVersion ?? (status.isUpdateReady ? "update" : nil)
+                },
+                checkForUpdates: { [weak self] in self?.checkForUpdates() },
+                canLaunchLogin: { [weak self] in self?.nativeServiceCanLaunchLogin(provider) == true },
                 didClose: { [weak self] in
                     self?.nativePopoverRefreshScheduler.cancel()
                     // Hand activation back once nothing of ours is on screen (e.g. closed from its status item).
@@ -224,22 +234,7 @@ extension StatusItemController {
     }
 
     private func signInToNativeService(_ provider: UsageProvider) {
-        // Provider-specific by design: Managed Codex and ClaudeSwap accounts must reconnect through
-        // their scoped
-        // account settings.
-        if provider == .codex, self.settings.codexActiveSource != .liveSystem {
-            self.configureNativeService(provider)
-            return
-        }
-        if provider == .claude, self.store.nativeClaudeSwapOwnsPresentation {
-            self.configureNativeService(provider)
-            return
-        }
-        if self.settings.effectiveSelectedTokenAccount(for: provider) != nil {
-            self.configureNativeService(provider)
-            return
-        }
-        guard ProviderCatalog.implementation(for: provider)?.supportsLoginFlow == true else {
+        guard self.nativeServiceCanLaunchLogin(provider) else {
             self.configureNativeService(provider)
             return
         }
@@ -247,6 +242,25 @@ extension StatusItemController {
         Task { @MainActor [weak self] in
             await self?.runLoginFlowFromSettings(provider: provider)
         }
+    }
+
+    private func nativeServiceCanLaunchLogin(_ provider: UsageProvider) -> Bool {
+        // Provider-specific by design: Managed Codex and ClaudeSwap accounts must reconnect through
+        // their scoped
+        // account settings.
+        if provider == .codex, self.settings.codexActiveSource != .liveSystem {
+            return false
+        }
+        if provider == .claude, self.store.nativeClaudeSwapOwnsPresentation {
+            return false
+        }
+        if self.settings.effectiveSelectedTokenAccount(for: provider) != nil {
+            return false
+        }
+        guard ProviderCatalog.implementation(for: provider)?.supportsLoginFlow == true else {
+            return false
+        }
+        return true
     }
 
     private func configureNativeService(_ provider: UsageProvider) {

@@ -25,7 +25,9 @@ enum QoderReferenceParser {
             usagePercentage: merged.usagePercentage,
             unit: merged.unit,
             resetsAt: response.nextResetAt,
-            updatedAt: now)
+            updatedAt: now,
+            percentageIsKnown: merged.totalCredits > 0
+                || response.sharedQuota?.quotaSummary == nil && summary.usagePercentage != nil)
     }
 
     private struct MergedQuota {

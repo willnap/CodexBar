@@ -438,8 +438,10 @@ struct CLISnapshotTests {
                 useColor: false,
                 resetStyle: .absolute))
 
-        #expect(output.contains("Credits: 0% left"))
-        #expect(output.contains("0/0 credits"))
+        #expect(!output.contains("Credits:"))
+        #expect(output.contains("Cost: 0.0 / 0.0"))
+        #expect(output.contains("Plan: Kilo Pass Pro"))
+        #expect(output.contains("Activity: Auto top-up: visa"))
         #expect(!output.contains("Resets 0/0 credits"))
     }
 

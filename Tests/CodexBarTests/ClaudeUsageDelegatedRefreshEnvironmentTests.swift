@@ -131,7 +131,7 @@ struct ClaudeUsageDelegatedRefreshEnvironmentTests {
                         self.storeCache(accessToken: "profile-a-token", environment: environmentA)
                         self.storeCache(accessToken: "profile-b-token", environment: environmentB)
 
-                        await #expect(throws: ClaudeUsageError.self) {
+                        await #expect(throws: ClaudeOAuthFetchError.self) {
                             try await ClaudeUsageFetcher.$hasCachedCredentialsOverride.withValue(true) {
                                 try await ClaudeUsageFetcher.$fetchOAuthUsageOverride.withValue(fetchOverride) {
                                     try await ClaudeUsageFetcher.$loadOAuthCredentialsOverride.withValue(

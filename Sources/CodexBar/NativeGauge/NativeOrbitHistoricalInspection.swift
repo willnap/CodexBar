@@ -30,37 +30,75 @@ enum NativeOrbitHistoricalInspection {
             preparedLanes: preparedLanes)
         widget.isProjecting = isProjecting
         let lanes = widget.lanes
-        return windows.map { window in
-            var result = window
+        var restored = windows.map { window in
             let id = self.historyID(window, provider: account.gauge.provider)
             let lane = lanes.first { $0.history.name.rawValue == id }
                 ?? lanes.first { $0.history.name.rawValue == window.id }
-            // Server-period totals are discrete points, not a measurement of every quota at that instant.
-            guard let lane, let point = widget.nearest(lane, to: date), point.id.historicalPeriod == nil else {
-                result.used = nil
-                if var countdown = result.countdown {
-                    countdown.nextReset = nil
-                    countdown.isReliable = false
-                    result.countdown = countdown
-                }
-                return result
+            return self.restored(window, point: lane.flatMap { widget.nearest($0, to: date) })
+        }
+        // A no-longer-active session or model allowance may be absent from today's compact gauge. Its recorded
+        // chart samples still describe the past, with the same interpolation and gap rules as visible lanes.
+        var represented = Set(windows.map { self.historyID($0, provider: account.gauge.provider) })
+        widget.preparedLanes = lanes
+        let labels = widget.legendLabels
+        for (index, lane) in lanes.enumerated() where lane.history.name.isNativeQuotaObservation {
+            let key = lane.history.name.rawValue
+            guard !represented.contains(key), let point = widget.nearest(lane, to: date),
+                  point.id.historicalPeriod == nil,
+                  let period = point.period, period.isFinite, period > 0 else { continue }
+            var id = String(key.dropFirst("nativeQuota:".count))
+            // Provider-specific by design: Codex maps primary/secondary history to stable session/weekly IDs.
+            if account.gauge.provider == UsageProvider.codex.rawValue {
+                if id == "primary" { id = "session" }
+                if id == "secondary" { id = "weekly" }
             }
-            result.used = (100 - point.available) / 100
-            result.limit = 1
-            result.unit = "fraction"
-            if let period = point.period {
-                result.period = period
-                let units = self.countdownUnits(period)
-                result.countdown = ResetCountdown(
-                    units: units,
-                    secondsPerUnit: period / Double(units),
-                    nextReset: point.id.resetsAt,
-                    isReliable: point.id.resetsAt != nil)
-            } else {
-                result.countdown = nil
+            guard !restored.contains(where: { $0.id == id }) else { continue }
+            represented.insert(key)
+            restored.append(self.restored(
+                UsageWindow(id: id, label: labels[index], period: period, used: nil), point: point))
+        }
+        if restored.contains(where: { $0.usedFraction != nil }) {
+            restored.removeAll { $0.usedFraction == nil }
+        }
+        // The symbol accepts three unique lanes. An exhausted historical allowance must remain visible even when
+        // the account has accumulated more model-specific lanes than fit in that compact geometry.
+        let selected = restored.enumerated().sorted { lhs, rhs in
+            let leftExhausted = lhs.element.usedFraction == 1
+            let rightExhausted = rhs.element.usedFraction == 1
+            return leftExhausted == rightExhausted ? lhs.offset < rhs.offset : leftExhausted
+        }.prefix(3).map(\.element)
+        var historicalGauge = account.gauge
+        historicalGauge.windows = selected
+        return historicalGauge.resolvedWindows
+    }
+
+    private static func restored(_ window: UsageWindow, point: NativeOrbitHistoryWidget.Sample?) -> UsageWindow {
+        var result = window
+        // Server-period totals are discrete points, not a measurement of every quota at that instant.
+        guard let point, point.id.historicalPeriod == nil else {
+            result.used = nil
+            if var countdown = result.countdown {
+                countdown.nextReset = nil
+                countdown.isReliable = false
+                result.countdown = countdown
             }
             return result
         }
+        result.used = (100 - point.available) / 100
+        result.limit = 1
+        result.unit = "fraction"
+        if let period = point.period {
+            result.period = period
+            let units = self.countdownUnits(period)
+            result.countdown = ResetCountdown(
+                units: units,
+                secondsPerUnit: period / Double(units),
+                nextReset: point.id.resetsAt,
+                isReliable: point.id.resetsAt != nil)
+        } else {
+            result.countdown = nil
+        }
+        return result
     }
 
     /// Each window's predicted usage at a future instant, with the countdown running to the reset scheduled after

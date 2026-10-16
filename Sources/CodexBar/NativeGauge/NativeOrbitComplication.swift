@@ -2,8 +2,20 @@ import AppKit
 import CodexBarCore
 import CoreText
 import SwiftUI
+import Synchronization
 
 /// Corner readouts share the dial's center and follow its outer circumference.
+enum NativeOrbitComplicationStyle {
+    static let radius: CGFloat = 118
+    static let idle = Color.secondary
+    static let unavailable = Color.secondary.opacity(0.55)
+
+    static func point(degrees: Double, radius: CGFloat = radius) -> CGPoint {
+        let angle = degrees * .pi / 180
+        return CGPoint(x: 112 + radius * cos(angle), y: 112 + radius * sin(angle))
+    }
+}
+
 struct NativeOrbitComplication: View {
     enum Corner {
         case topLeading, topTrailing, bottomLeading, bottomTrailing
@@ -30,16 +42,14 @@ struct NativeOrbitComplication: View {
 
     /// Primary ink throughout: the readout inks its own placeholder, so a "—" rolling in or out keeps its colour.
     var body: some View {
-        NativeOrbitArcText(
-            value: self.value,
-            corner: self.corner,
-            monospaced: self.monospaced,
-            numericValue: self.numericValue)
-            .foregroundStyle(Color.primary)
-            .contentShape(NativeOrbitCornerRegion(corner: self.corner))
-            .help(self.help)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(self.help)
+        NativeOrbitInstrumentElement(corner: self.corner, help: self.help) {
+            NativeOrbitArcText(
+                value: self.value,
+                corner: self.corner,
+                monospaced: self.monospaced,
+                numericValue: self.numericValue)
+                .foregroundStyle(Color.primary)
+        }
     }
 }
 
@@ -50,11 +60,7 @@ struct NativeOrbitComplication: View {
 /// changing digits a permanent blur.
 struct NativeOrbitArcText: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// What the text shows, and the number its transition compares; nil until the readout first changes.
-    @State private var shown: String?
-    @State private var shownNumber: Double?
-    /// When the readout last changed, in system uptime.
-    @State private var changedAt: TimeInterval = -.infinity
+    @State private var cadence: NativeOrbitReadoutCadence
     let value: String
     let corner: NativeOrbitComplication.Corner
     let radius: CGFloat
@@ -66,7 +72,7 @@ struct NativeOrbitArcText: View {
     init(
         value: String,
         corner: NativeOrbitComplication.Corner,
-        radius: CGFloat = 118,
+        radius: CGFloat = NativeOrbitComplicationStyle.radius,
         monospaced: Bool = false,
         fontSize: CGFloat = 16,
         maximumSpan: CGFloat = 0.75,
@@ -79,26 +85,40 @@ struct NativeOrbitArcText: View {
         self.fontSize = fontSize
         self.maximumSpan = maximumSpan
         self.numericValue = numericValue
+        self._cadence = State(initialValue: NativeOrbitReadoutCadence(initialValue: value))
     }
 
     static let placeholder = "—"
 
-    /// Changes closer together than this come from scrubbing the chart, and show at once.
-    static let scrubInterval: TimeInterval = 0.25 * NativeOrbitProjectionStyle.previewAnimationScale
+    private struct FontKey: Hashable, Sendable {
+        let monospaced: Bool
+        let size: CGFloat
+    }
+
+    private nonisolated static let fonts = Mutex<[FontKey: NSFont]>([:])
 
     /// SF Mono for counts and SF Rounded for money, semibold, both with tabular figures as `.monospacedDigit()` sets
-    /// them: a digit's width never moves the characters a change keeps.
+    /// them: a digit's width never moves the characters a change keeps. These fonts are immutable and shared.
     nonisolated static func font(monospaced: Bool, size: CGFloat) -> NSFont {
-        if monospaced {
-            return NSFont.monospacedSystemFont(ofSize: size, weight: .semibold)
+        let key = FontKey(monospaced: monospaced, size: size)
+        return Self.fonts.withLock { fonts in
+            if let font = fonts[key] { return font }
+            let font: NSFont
+            if monospaced {
+                font = NSFont.monospacedSystemFont(ofSize: size, weight: .semibold)
+            } else {
+                let base = NSFont.systemFont(ofSize: size, weight: .semibold)
+                let rounded = base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor
+                let tabular = rounded.addingAttributes([.featureSettings: [[
+                    NSFontDescriptor.FeatureKey.typeIdentifier: kNumberSpacingType,
+                    NSFontDescriptor.FeatureKey.selectorIdentifier: kMonospacedNumbersSelector,
+                ]]])
+                font = NSFont(descriptor: tabular, size: size) ?? base
+            }
+            if fonts.count >= 128 { fonts.removeAll(keepingCapacity: true) }
+            fonts[key] = font
+            return font
         }
-        let base = NSFont.systemFont(ofSize: size, weight: .semibold)
-        let rounded = base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor
-        let tabular = rounded.addingAttributes([.featureSettings: [[
-            NSFontDescriptor.FeatureKey.typeIdentifier: kNumberSpacingType,
-            NSFontDescriptor.FeatureKey.selectorIdentifier: kMonospacedNumbersSelector,
-        ]]])
-        return NSFont(descriptor: tabular, size: size) ?? base
     }
 
     /// The value the transition compares to pick each change's direction: the caller's number, else the readout's own
@@ -110,14 +130,16 @@ struct NativeOrbitArcText: View {
 
     var body: some View {
         let font = Self.font(monospaced: self.monospaced, size: self.fontSize)
-        let text = self.shown ?? self.value
-        Text(text)
+        let cadence = self.cadence
+        let value = self.value
+        let reduceMotion = self.reduceMotion
+        return Text(self.value)
             .font(Font(font as CTFont))
-            .foregroundStyle(text == Self.placeholder ? Color.secondary : Color.primary)
+            .foregroundStyle(self.value == Self.placeholder ? NativeOrbitComplicationStyle.unavailable : Color.primary)
             .lineLimit(1)
             .fixedSize()
             .contentTransition(.numericText(
-                value: self.shownNumber ?? Self.transitionValue(self.value, numericValue: self.numericValue)))
+                value: Self.transitionValue(self.value, numericValue: self.numericValue)))
             .textRenderer(NativeOrbitArcTextRenderer(
                 corner: self.corner,
                 radius: self.radius,
@@ -125,23 +147,45 @@ struct NativeOrbitArcText: View {
                 capHeight: font.capHeight))
             .frame(width: 224, height: 224)
             .accessibilityHidden(true)
-            .onChange(of: self.value) { _, new in
-                self.show(new)
+            .transaction(value: value) { [value, reduceMotion, cadence] transaction in
+                cadence.prepareTransaction(
+                    &transaction,
+                    value: value,
+                    now: ProcessInfo.processInfo.systemUptime,
+                    reduceMotion: reduceMotion)
             }
     }
+}
 
-    private func show(_ new: String) {
-        let now = ProcessInfo.processInfo.systemUptime
-        let scrubbing = now - self.changedAt < Self.scrubInterval
-        self.changedAt = now
-        let number = Self.transitionValue(new, numericValue: self.numericValue)
-        var transaction = Transaction(animation: scrubbing ? nil : self.reduceMotion
-            ? .easeInOut(duration: 0.2)
-            : .smooth(duration: 0.4 * NativeOrbitProjectionStyle.previewAnimationScale))
-        transaction.disablesAnimations = scrubbing
-        withTransaction(transaction) {
-            self.shown = new
-            self.shownNumber = number
+/// Stored by view identity without publishing a second state update for each numeric change.
+@MainActor
+final class NativeOrbitReadoutCadence {
+    static let scrubInterval: TimeInterval = 0.25 * NativeOrbitProjectionStyle.previewAnimationScale
+    static let animationDuration: TimeInterval = 0.4 * NativeOrbitProjectionStyle.previewAnimationScale
+    private var value: String
+    private var changedAt: TimeInterval?
+    private var scrubbing = false
+
+    init(initialValue: String) {
+        self.value = initialValue
+    }
+
+    func prepareTransaction(
+        _ transaction: inout Transaction,
+        value: String,
+        now: TimeInterval,
+        reduceMotion: Bool)
+    {
+        if self.value != value {
+            self.scrubbing = self.changedAt.map { now - $0 < Self.scrubInterval } ?? false
+            self.changedAt = now
+            self.value = value
+        }
+        if self.scrubbing || reduceMotion {
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        } else if !transaction.disablesAnimations {
+            transaction.animation = .smooth(duration: Self.animationDuration)
         }
     }
 }
@@ -172,6 +216,8 @@ struct NativeOrbitArcTextRenderer: TextRenderer {
                     let distance = (glyph.rect.midX - bounds.rect.midX) * scale
                     let point = arc.point(along: distance, height: 0)
                     // Upright to the arc: along its tangent, tops outward on top corners and inward on bottom ones.
+                    // Provider-specific by design: CGFloat.pi is the mathematical rotation constant, unrelated to a
+                    // provider.
                     let angle = arc.angle(along: distance) + (self.corner.isTop ? 1 : -1) * CGFloat.pi / 2
                     var placed = context
                     placed.translateBy(x: center.x + point.x, y: center.y + point.y)
@@ -301,15 +347,11 @@ struct NativeOrbitCornerRegion: Shape {
         var path = Path()
         path.addArc(
             center: CGPoint(x: rect.midX, y: rect.midY),
-            radius: 118,
+            radius: NativeOrbitComplicationStyle.radius,
             startAngle: .degrees(self.corner.degrees - 27),
             endAngle: .degrees(self.corner.degrees + 27),
             clockwise: false)
-        var region = path.strokedPath(StrokeStyle(lineWidth: 32, lineCap: .round))
-        if self.corner == .bottomTrailing {
-            region.addEllipse(in: CGRect(x: rect.midX + 81, y: rect.midY + 81, width: 20, height: 20))
-        }
-        return region
+        return path.strokedPath(StrokeStyle(lineWidth: 32, lineCap: .round))
     }
 }
 
@@ -346,89 +388,40 @@ struct NativeOrbitResetComplication: View {
     let help: String
 
     var body: some View {
-        ZStack {
-            switch self.state {
-            case .inventory:
-                let glyphs = self.state.glyphs
-                let pitch = min(25, 90 / CGFloat(max(1, glyphs.count - 1)))
-                let iconSize = min(17, pitch * 0.85)
-                ForEach(Array(glyphs.enumerated()), id: \.offset) { index, banked in
-                    Image(systemName: banked ? Self.symbol + ".fill" : Self.symbol)
-                        .font(.system(size: iconSize, weight: .medium))
-                        .foregroundStyle(banked ? self.accent : Color.secondary.opacity(0.45))
-                        .position(Self.position(index, count: glyphs.count, pitch: pitch))
+        NativeOrbitInstrumentElement(corner: .bottomLeading, help: self.help) {
+            ZStack {
+                switch self.state {
+                case .inventory:
+                    let glyphs = self.state.glyphs
+                    let pitch = min(25, 90 / CGFloat(max(1, glyphs.count - 1)))
+                    let iconSize = min(17, pitch * 0.85)
+                    ForEach(Array(glyphs.enumerated()), id: \.offset) { index, banked in
+                        Image(systemName: banked ? Self.symbol + ".fill" : Self.symbol)
+                            .font(.system(size: iconSize, weight: .medium))
+                            .foregroundStyle(banked ? self.accent : NativeOrbitComplicationStyle.idle)
+                            .position(Self.position(index, count: glyphs.count, pitch: pitch))
+                    }
+                case .notApplicable:
+                    NativeOrbitSlashableGlyph(
+                        name: Self.symbol,
+                        size: 17,
+                        slashed: true,
+                        ink: AnyShapeStyle(NativeOrbitComplicationStyle.unavailable))
+                        .position(Self.position(0, count: 1, pitch: 25))
+                case .unknown:
+                    // The readout inks its placeholder secondary itself.
+                    NativeOrbitArcText(value: "—", corner: .bottomLeading)
                 }
-            case .notApplicable:
-                NativeOrbitSlashableGlyph(name: Self.symbol, size: 17, slashed: true, ink: AnyShapeStyle(.tertiary))
-                    .position(Self.position(0, count: 1, pitch: 25))
-            case .unknown:
-                // The readout inks its placeholder secondary itself.
-                NativeOrbitArcText(value: "—", corner: .bottomLeading)
             }
+            .frame(width: 224, height: 224)
+            .animation(self.reduceMotion ? nil : .smooth(duration: 0.22), value: self.state)
         }
-        .frame(width: 224, height: 224)
-        .animation(self.reduceMotion ? nil : .smooth(duration: 0.22), value: self.state)
-        .contentShape(NativeOrbitCornerRegion(corner: .bottomLeading))
-        .help(self.help)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(self.help)
     }
 
     private static func position(_ index: Int, count: Int, pitch: CGFloat) -> CGPoint {
-        let radius: CGFloat = 118
-        let angle = 135 * Double.pi / 180 + (Double(index) - Double(count - 1) / 2) * Double(pitch) / radius
-        return CGPoint(x: 112 + radius * cos(angle), y: 112 + radius * sin(angle))
-    }
-}
-
-/// The bottom-trailing icon: tinted while additional usage accrues, plain when it applies at zero, slashed when it
-/// does not apply (turned off, or never reported), and faint while no reading covers the instant.
-enum NativeOrbitExtraUsageIconState: Equatable {
-    case unknown
-    case notApplicable
-    case zero
-    case active
-}
-
-struct NativeOrbitExtraUsageComplication: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    static let symbol = "creditcard.rewards.fill"
-    let fraction: Double?
-    let icon: NativeOrbitExtraUsageIconState
-    let accent: Color
-    let help: String
-
-    private var ink: AnyShapeStyle {
-        switch self.icon {
-        case .active: AnyShapeStyle(self.accent)
-        case .zero: AnyShapeStyle(.secondary)
-        case .notApplicable: AnyShapeStyle(.tertiary)
-        case .unknown: AnyShapeStyle(.quaternary)
-        }
-    }
-
-    var body: some View {
-        ZStack {
-            NativeOrbitCornerGauge(fraction: 1)
-                .stroke(Color.primary.opacity(0.10), style: StrokeStyle(lineWidth: 6, lineCap: .round))
-            if let fraction, fraction.isFinite, fraction > 0 {
-                NativeOrbitCornerGauge(fraction: min(1, fraction))
-                    .stroke(self.accent, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                    .animation(self.reduceMotion ? nil : .smooth(duration: 0.22), value: fraction)
-            }
-            NativeOrbitSlashableGlyph(
-                name: Self.symbol,
-                size: 16,
-                slashed: self.icon == .notApplicable,
-                ink: self.ink)
-                .position(x: 203, y: 203)
-                .animation(self.reduceMotion ? nil : .smooth(duration: 0.22), value: self.icon)
-        }
-        .frame(width: 224, height: 224)
-        .contentShape(NativeOrbitCornerRegion(corner: .bottomTrailing))
-        .help(self.help)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(self.help)
+        let degrees = 135 + (Double(index) - Double(count - 1) / 2) * Double(pitch)
+            / NativeOrbitComplicationStyle.radius * 180 / .pi
+        return NativeOrbitComplicationStyle.point(degrees: degrees)
     }
 }
 
@@ -538,25 +531,5 @@ struct NativeOrbitSlashableGlyph: View {
         template.isTemplate = true
         self.templates[key] = template
         return template
-    }
-}
-
-private struct NativeOrbitCornerGauge: Shape {
-    var fraction: Double
-
-    var animatableData: Double {
-        get { self.fraction }
-        set { self.fraction = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.addArc(
-            center: CGPoint(x: rect.midX, y: rect.midY),
-            radius: 115,
-            startAngle: .degrees(64),
-            endAngle: .degrees(64 - 38 * self.fraction),
-            clockwise: true)
-        return path
     }
 }

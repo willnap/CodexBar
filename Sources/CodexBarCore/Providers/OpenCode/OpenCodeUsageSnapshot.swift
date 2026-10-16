@@ -128,7 +128,7 @@ public struct OpenCodeUsageSnapshot: Sendable {
                 windowMinutes: nil,
                 resetsAt: renewsAt,
                 resetDescription: nil)
-            extraWindows = [NamedRateWindow(id: "renewal", title: "Renews", window: renewalWindow)]
+            extraWindows = [NamedRateWindow(id: "renewal", title: "Renews", window: renewalWindow, usageKnown: false)]
         }
 
         return UsageSnapshot(

@@ -5,6 +5,8 @@ public struct KimiUsageSnapshot: Sendable {
     public let rateLimit: KimiUsageDetail?
     public let updatedAt: Date
     public let planName: String?
+    public let subscriptionStatus: String?
+    public let subscriptionIsActive: Bool?
     let rateLimitWindow: KimiWindow?
     let subscriptionBalance: KimiSubscriptionBalance?
     let subscriptionCodeWeeklyLimit: KimiSubscriptionRateLimit?
@@ -27,6 +29,8 @@ public struct KimiUsageSnapshot: Sendable {
         codeUsagePools: KimiCodeUsagePools? = nil,
         boosterCost: ProviderCostSnapshot? = nil,
         planName: String? = nil,
+        subscriptionStatus: String? = nil,
+        subscriptionIsActive: Bool? = nil,
         updatedAt: Date)
     {
         self.weekly = weekly
@@ -35,6 +39,8 @@ public struct KimiUsageSnapshot: Sendable {
         self.subscriptionBalance = subscriptionBalance
         self.subscriptionCodeWeeklyLimit = subscriptionCodeWeeklyLimit
         self.planName = planName
+        self.subscriptionStatus = subscriptionStatus
+        self.subscriptionIsActive = subscriptionIsActive
         self.codeUsagePools = codeUsagePools
         self.boosterCost = boosterCost
         self.updatedAt = updatedAt
@@ -210,6 +216,8 @@ extension KimiUsageSnapshot {
             extraRateWindows: extraRateWindows.isEmpty ? nil : extraRateWindows,
             providerCost: self.boosterCost,
             kimiRequestQuotas: requestQuotas.isEmpty ? nil : requestQuotas,
+            subscriptionStatus: self.subscriptionStatus,
+            subscriptionIsActive: self.subscriptionIsActive,
             subscriptionExpiresAt: ISO8601DateParser.parse(self.subscriptionBalance?.expireTime),
             updatedAt: self.updatedAt,
             identity: ProviderIdentitySnapshot(

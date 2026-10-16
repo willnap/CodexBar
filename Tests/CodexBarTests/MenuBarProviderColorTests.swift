@@ -59,6 +59,27 @@ struct MenuBarProviderColorTests {
         }
     }
 
+    @Test(arguments: ["darkAqua", "NSAppearanceNameVibrantDark"])
+    func `deep brand pigment keeps its hue while menu bar tint gains required contrast`(appearance: String) throws {
+        let pigment = ProviderAccentPalette.color(for: .codex)
+        let displayed = try #require(MenuBarLayoutRenderer.displayProviderAccent(pigment, appearanceName: appearance))
+        #expect(MenuBarLayoutRenderer.meetsAppearanceContrast(accent: displayed, appearanceName: appearance))
+        #expect(ProviderAccentPalette.color(for: .codex) == pigment)
+        // Equal scaling of channel differences preserves the hue when adding white.
+        let rawDifference = pigment.blue - pigment.red
+        let displayDifference = displayed.blue - displayed.red
+        #expect(rawDifference * displayDifference > 0)
+        #expect(abs((pigment.blue - pigment.green) / rawDifference
+                - (displayed.blue - displayed.green) / displayDifference) < 0.0001)
+        if MenuBarLayoutRenderer.meetsAppearanceContrast(accent: pigment, appearanceName: appearance) {
+            #expect(displayed == pigment)
+        } else {
+            #expect(displayed != pigment)
+            #expect(MenuBarLayoutRenderer.relativeLuminance(of: displayed)
+                > MenuBarLayoutRenderer.relativeLuminance(of: pigment))
+        }
+    }
+
     @Test
     func `contrast policy rejects low contrast colors`() {
         // Pure white (#FFFFFF) has 1.0:1 contrast against light background (fails >= 2.0:1)
@@ -281,12 +302,8 @@ struct MenuBarProviderColorTests {
         let percentColor = title.attribute(.foregroundColor, at: percentRange.location, effectiveRange: nil) as? NSColor
         let paceColor = title.attribute(.foregroundColor, at: paceRange.location, effectiveRange: nil) as? NSColor
 
-        let codexAccent = ProviderAccentPalette.color(for: .codex)
-        let expectedCodexColor = NSColor(
-            srgbRed: codexAccent.red,
-            green: codexAccent.green,
-            blue: codexAccent.blue,
-            alpha: 1.0)
+        let expectedCodexColor = try #require(MenuBarLayoutRenderer.effectiveProviderTintColor(
+            for: .codex, options: options))
         #expect(percentColor == expectedCodexColor)
         #expect(paceColor == .systemRed)
     }

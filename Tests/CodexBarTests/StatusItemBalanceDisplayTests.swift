@@ -1222,25 +1222,27 @@ extension StatusItemBalanceDisplayTests {
         }
     }
 
-    @Test
-    func `balance reset fallbacks render once beside automatic balance and remain in reset only layouts`() {
+    @Test(arguments: [100.0, 0.0])
+    func `balance reset aliases render once and remain in reset only layouts`(balance: Double) {
         let settings = self.makeSettings(suiteName: "StatusItemBalanceDisplayTests-balance-reset", provider: .deepseek)
         let (store, controller) = self.makeStoreAndController(settings: settings)
         defer { controller.releaseStatusItemsForTesting() }
         let snapshot = DeepSeekUsageSnapshot(
             isAvailable: true,
             currency: "CNY",
-            totalBalance: 100,
+            totalBalance: balance,
             grantedBalance: 0,
-            toppedUpBalance: 100,
+            toppedUpBalance: balance,
             updatedAt: Date()).toUsageSnapshot()
         store._setSnapshotForTesting(snapshot, provider: .deepseek)
+        let expectedBalance = balance == 0 ? "¥0.00" : "¥100.00"
         for lines: [[MenuBarLayoutToken]] in [
             [[.percent(window: .automatic), .separatorDot, .resetCountdown]],
             [[.resetAbsolute, .separatorDot, .percent(window: .automatic)]],
             [[.percent(window: .automatic)], [.resetCountdown]],
-            [[.resetCountdown]],
-            [[.resetAbsolute]],
+            [[.resetCountdown]], [[.resetAbsolute]],
+            [[.percent(window: .automatic), .separatorDot, .windowResetCountdown(window: .automatic)]],
+            [[.windowResetAbsolute(window: .automatic), .separatorDot, .percent(window: .automatic)]],
         ] {
             let layout = MenuBarLayout(lines: lines)
             settings.setMenuBarLayout(layout, for: nil)
@@ -1262,8 +1264,9 @@ extension StatusItemBalanceDisplayTests {
                         appearanceName: "aqua",
                         isDebugApp: false,
                         now: Date()))
-                #expect(rendered.attributedTitle.string == "¥100.00")
-                #expect(rendered.accessibilityLabel.components(separatedBy: "¥100.00").count == 2)
+                #expect(data.automatic == nil && snapshot.measuredRateWindows.isEmpty)
+                #expect(rendered.attributedTitle.string == expectedBalance)
+                #expect(rendered.accessibilityLabel.components(separatedBy: expectedBalance).count == 2)
             }
         }
     }

@@ -232,10 +232,12 @@ extension UsageStore {
     {
         if self.providerRefreshCoordinator.beginActivity(for: provider.instanceID) {
             self.refreshingProviders.insert(provider.instanceID)
+            self.beginNativeWarningRefresh(provider)
         }
         defer {
             if self.providerRefreshCoordinator.endActivity(for: provider.instanceID) {
                 self.refreshingProviders.remove(provider.instanceID)
+                self.endNativeWarningRefresh(provider)
             }
         }
         // Provider-specific by design: Claude transcripts and Kimi wires can publish while their quota fetch fails.

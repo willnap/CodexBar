@@ -8,6 +8,7 @@ public enum KimiAPIError: LocalizedError, Sendable, Equatable {
     case invalidRequest(String)
     case networkError(String)
     case apiError(String)
+    case httpError(Int)
     case parseFailed(String)
     case expiredCodeCredential
     case invalidCodeCredential
@@ -26,6 +27,8 @@ public enum KimiAPIError: LocalizedError, Sendable, Equatable {
             "Invalid request: \(message)"
         case let .networkError(message):
             "Kimi network error: \(message)"
+        case let .httpError(status):
+            "Kimi API error: HTTP \(status)"
         case let .apiError(message):
             "Kimi API error: \(message)"
         case let .parseFailed(message):

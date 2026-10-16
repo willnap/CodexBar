@@ -1,5 +1,6 @@
 import CodexBarCore
 import SwiftUI
+import Synchronization
 
 /// Which reading a corner shows: the live one, the live one before the account's first refresh, a hovered past
 /// instant, or a hovered instant ahead of now (a prediction).
@@ -45,11 +46,13 @@ struct NativeOrbitInstruments: View {
         let displayed = self.displayedMetrics
         let projected = self.future.map { $0.projection.summary(days: self.days, at: $0.date) }
         let metrics = projected?.summary ?? displayed.summary(days: self.days, now: self.now)
-        ZStack {
-            self.monetaryReading(metrics, displayed: displayed, projected: projected)
-            self.activityReading(metrics, displayed: displayed, projected: projected)
-            self.resetReading(displayed)
-            self.extraUsageReading(displayed)
+        NativeOrbitInstrumentSurface {
+            ZStack {
+                self.monetaryReading(metrics, displayed: displayed, projected: projected)
+                self.activityReading(metrics, displayed: displayed, projected: projected)
+                self.resetReading(displayed)
+                self.extraUsageReading(displayed)
+            }
         }
         .frame(width: 224, height: 224)
     }
@@ -274,18 +277,13 @@ struct NativeOrbitInstruments: View {
             + (estimated ? ", at list prices" : "")
     }
 
-    static func money(_ value: Double, currency: String) -> String {
-        if currency == "Credits" {
-            return value.formatted(.number.precision(.fractionLength(2))) + " credits"
+    nonisolated static func money(_ value: Double, currency: String, locale: Locale = .current) -> String {
+        let number = value.formatted(.number.precision(.fractionLength(2)).locale(locale))
+        if currency == "Credits" { return number + " credits" }
+        guard let symbol = NativeOrbitCurrencySymbols.shared.symbol(currency, locale: locale) else {
+            return number + " " + currency
         }
-        guard Locale.commonISOCurrencyCodes.contains(currency.uppercased()) else {
-            return value.formatted(.number.precision(.fractionLength(2))) + " " + currency
-        }
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = currency.uppercased()
-        let symbol = formatter.currencySymbol ?? currency.uppercased()
-        return symbol + value.formatted(.number.precision(.fractionLength(2)))
+        return symbol + number
     }
 
     static func compact(_ value: Int) -> String {
@@ -300,5 +298,43 @@ struct NativeOrbitInstruments: View {
         }
         guard let (divisor, suffix) = scale else { return String(value) }
         return (Double(value) / divisor).formatted(.number.precision(.fractionLength(0...1))) + suffix
+    }
+}
+
+/// NumberFormatter's currency symbol lookup builds an ICU formatter. Retain the resulting string for each actual
+/// locale snapshot instead of rebuilding it for every readout and help string during inspection.
+private final class NativeOrbitCurrencySymbols: Sendable {
+    private struct Key: Hashable, Sendable {
+        let currency: String
+        let locale: Locale
+    }
+
+    static let shared = NativeOrbitCurrencySymbols()
+    private static let currencyCodes = Set(Locale.commonISOCurrencyCodes)
+    private let symbols = Mutex<[Key: String]>([:])
+
+    private init() {
+        // This singleton and its observer live for the process. Locale preference changes invalidate cached symbols,
+        // including changes whose locale identifier stays the same.
+        _ = NotificationCenter.default.addObserver(
+            forName: NSLocale.currentLocaleDidChangeNotification, object: nil, queue: nil)
+        { [weak self] _ in self?.symbols.withLock { $0.removeAll(keepingCapacity: true) } }
+    }
+
+    func symbol(_ currency: String, locale: Locale) -> String? {
+        let code = currency.uppercased()
+        guard Self.currencyCodes.contains(code) else { return nil }
+        let key = Key(currency: code, locale: locale)
+        return self.symbols.withLock { symbols in
+            if let symbol = symbols[key] { return symbol }
+            let formatter = NumberFormatter()
+            formatter.locale = locale
+            formatter.numberStyle = .currency
+            formatter.currencyCode = code
+            let symbol = formatter.currencySymbol ?? code
+            if symbols.count >= 256 { symbols.removeAll(keepingCapacity: true) }
+            symbols[key] = symbol
+            return symbol
+        }
     }
 }

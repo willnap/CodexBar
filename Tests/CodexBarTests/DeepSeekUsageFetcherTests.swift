@@ -301,7 +301,9 @@ struct DeepSeekUsageFetcherTests {
         let snapshot = try DeepSeekUsageFetcher._parseSnapshotForTesting(Data(json.utf8))
         #expect(snapshot.isAvailable == false)
         let usage = snapshot.toUsageSnapshot()
-        #expect(usage.primary?.usedPercent == 100)
+        #expect(usage.measuredRateWindows.isEmpty)
+        #expect(usage.subscriptionStatus == nil)
+        #expect(usage.detailRow(label: "Status")?.value == "Unavailable")
         #expect(usage.primary?.resetDescription == "$0.00 — add credits at platform.deepseek.com")
         #expect(usage.identity?.loginMethod == nil)
     }

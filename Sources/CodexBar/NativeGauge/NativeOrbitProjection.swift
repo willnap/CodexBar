@@ -215,6 +215,8 @@ struct NativeOrbitAccountProjection {
     let resetInventory: NativeOrbitResetObservation?
     /// The account's live readings with its recorded history applied, made once here so hovering never redoes it.
     let liveMetrics: NativeOrbitAccountMetrics
+    /// Recorded totals depend on the fixed origin and civil-day count, not the pointer's subsecond position.
+    let summaryMemo = NativeOrbitProjectionSummaryMemo()
 
     var isActive: Bool {
         self.lastActivity != nil
@@ -243,7 +245,12 @@ struct NativeOrbitAccountProjection {
         markingEnd: Date? = nil) -> Self
     {
         let live = account.metrics.at(nil, observedAt: account.updatedAt, history: account.history)
-        let lastActivity = NativeOrbitActivity.lastActivity(lanes: lanes, metrics: live, now: now)
+        let quotaActivity = NativeOrbitActivity.lastActivity(lanes: lanes, metrics: live, now: now)
+        let moneyActivity = NativeOrbitMonetaryInspection.lastActivity(
+            metrics: live,
+            history: account.history,
+            now: now)
+        let lastActivity = [quotaActivity, moneyActivity].compactMap(\.self).max()
         let projected = lanes.compactMap { self.project($0, now: now, active: lastActivity != nil) }
         let summary = live.summary(days: days, now: now)
         let elapsed = now.timeIntervalSince(start)
@@ -428,21 +435,33 @@ extension NativeOrbitAccountProjection {
             to: calendar.startOfDay(for: date)).day ?? 0
         let recordedDays = days - max(0, ahead)
         let span = max(0, date.timeIntervalSince(max(self.now, periodStart)))
+        func projectedCount(from recorded: Int) -> Int? {
+            guard recorded >= 0, let rate = self.tokenRate, rate.isFinite, rate >= 0, span.isFinite,
+                  let forecast = Int(exactly: (rate * span).rounded()), forecast >= 0 else { return nil }
+            let total = recorded.addingReportingOverflow(forecast)
+            return total.overflow ? nil : total.partialValue
+        }
+        func projectedCost(from recorded: Double) -> Double? {
+            guard recorded.isFinite, recorded >= 0, let rate = self.costRate,
+                  rate.isFinite, rate >= 0, span.isFinite else { return nil }
+            let total = recorded + rate * span
+            return total.isFinite ? total : nil
+        }
         var result: NativeOrbitMetricSummary
         var recordedTokens: Int?
         var recordedCost: Double?
         if recordedDays >= 1 {
-            result = self.liveMetrics.summary(days: recordedDays, now: self.now, calendar: calendar)
+            result = self.summaryMemo.summary(days: recordedDays, calendar: calendar) {
+                self.liveMetrics.summary(days: recordedDays, now: self.now, calendar: calendar)
+            }
             recordedTokens = result.tokens
             recordedCost = result.cost
-            result.tokens = result.tokens.flatMap { tokens in
-                self.tokenRate.map { tokens + Int(($0 * span).rounded()) }
-            }
-            result.cost = result.cost.flatMap { cost in self.costRate.map { cost + $0 * span } }
+            result.tokens = result.tokens.flatMap { projectedCount(from: $0) }
+            result.cost = result.cost.flatMap { projectedCost(from: $0) }
         } else {
             result = self.periodSummary
-            result.tokens = self.tokenRate.map { Int(($0 * span).rounded()) }
-            result.cost = self.costRate.map { $0 * span }
+            result.tokens = projectedCount(from: 0)
+            result.cost = projectedCost(from: 0)
         }
         result.requests = nil
         return NativeOrbitProjectedSummary(

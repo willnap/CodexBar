@@ -59,7 +59,12 @@ struct ElevenLabsPluginTests {
             {"character_count":\(count),"character_limit":\(limit),"voice_slots_used":\(used),"voice_limit":10}
             """
             let usage = try await Self.fetch(body, engine: engine)
-            #expect(usage.primary?.usedPercent == expected)
+            if limit > 0 {
+                #expect(usage.primary?.usedPercent == expected)
+            } else {
+                #expect(usage.primary == nil)
+                #expect(usage.detailRow(label: "Used")?.usageValue == Double(count))
+            }
             #expect(usage.extraRateWindows?.first?.window.usedPercent == min(100, max(0, Double(used) * 10)))
             #expect(usage.primary?.resetsAt == nil)
             #expect(usage.loginMethod(for: .elevenlabs) == nil)

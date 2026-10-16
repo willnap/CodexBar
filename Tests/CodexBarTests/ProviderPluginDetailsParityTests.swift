@@ -303,7 +303,9 @@ struct ProviderPluginDetailsParityTests {
         #expect(script.primary == nil)
         #expect(script.secondary == nil)
         #expect(script.tertiary == nil)
-        #expect(script.providerCost == nil)
+        #expect(script.providerCost?.balance == 2500)
+        #expect(script.providerCost?.currencyCode == "points")
+        #expect(script.providerCost?.usageIsUnavailable == true)
         #expect(script.identity?.providerID == .poe)
         #expect(script.identity?.loginMethod == "Balance: 2,500 points")
         #expect(try script.details == [Self.section(

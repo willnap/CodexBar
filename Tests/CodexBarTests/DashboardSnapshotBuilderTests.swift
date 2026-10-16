@@ -336,7 +336,7 @@ struct DashboardSnapshotBuilderTests {
         #expect(credits["unit"] as? String == "credits")
         #expect(costObject["todayUSD"] as? Double == 1.04)
         #expect(costObject["last30DaysUSD"] as? Double == 18.22)
-        #expect(display["accentColor"] as? String == "#49A3B0")
+        #expect(display["accentColor"] as? String == "#3935F5")
         #expect(display["sortKey"] as? Int == 0)
         #expect(display["priority"] as? String == "normal")
     }

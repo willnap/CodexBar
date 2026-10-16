@@ -47,6 +47,7 @@ defineProvider({
       throw ctx.fail.parseFailure("TinyApi credits response is missing a valid available balance.");
     }
     return {
+      balance: { value: balance, unit: "credits" },
       details: [
         {
           title: "Credits",

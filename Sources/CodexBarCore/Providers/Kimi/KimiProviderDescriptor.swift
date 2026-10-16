@@ -329,7 +329,8 @@ private enum KimiCodeAPIFallbackPolicy {
         case let urlError as URLError:
             return urlError.code != .cancelled
         case KimiAPIError.missingAPIKey, KimiAPIError.expiredCodeCredential,
-             KimiAPIError.invalidCodeCredential, KimiAPIError.invalidAPIKey, KimiAPIError.apiError:
+             KimiAPIError.invalidCodeCredential, KimiAPIError.invalidAPIKey,
+             KimiAPIError.apiError, KimiAPIError.httpError:
             return true
         default:
             return error is DecodingError

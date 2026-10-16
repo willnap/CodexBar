@@ -11,6 +11,7 @@ extension ClaudeUsageSnapshot {
             extraRateWindows: extraRateWindows,
             providerCost: providerCost,
             resetCredits: self.resetCredits,
+            resetCreditsIneligibleReason: self.resetCreditsIneligibleReason,
             cloudCredits: self.cloudCredits,
             updatedAt: self.updatedAt,
             accountEmail: self.accountEmail,

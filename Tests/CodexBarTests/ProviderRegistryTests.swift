@@ -173,9 +173,9 @@ struct ProviderRegistryTests {
             ProviderColor(hex: 0x141413),
         ])
         #expect(CodexProviderDescriptor.descriptor.branding.confettiPalette == [
-            ProviderColor(hex: 0x736BD4),
-            ProviderColor(hex: 0x97A9F7),
-            ProviderColor(hex: 0xCFD4F7),
+            ProviderColor(hex: 0x3935F5),
+            ProviderColor(hex: 0x7E9BF8),
+            ProviderColor(hex: 0xBFADF9),
         ])
         #expect(OpenAIAPIProviderDescriptor.descriptor.branding.confettiPalette == [
             ProviderColor(hex: 0x000000),

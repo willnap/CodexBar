@@ -57,7 +57,7 @@ struct NativePopoverTests {
 
         #expect(first.animates, "The popup uses the standard native presentation animation")
         #expect(content.orbitState.accounts.count >= 2)
-        #expect(first.contentSize.height == 541)
+        #expect(first.contentSize.height == 551, "The host fits the account separator and flush toolbar")
         #expect(first.contentSize.width > 480, "Accounts occupy separate columns")
     }
 

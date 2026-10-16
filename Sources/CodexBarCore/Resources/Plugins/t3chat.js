@@ -108,18 +108,26 @@ defineProvider({
         .filter(Boolean)
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" ");
+    const baseUsage = data.usageFourHourPercentage;
+    const overageUsage = data.usageMonthPercentage ?? data.usagePeriodPercentage;
     return {
-      primary: {
-        usedPercent: Math.max(0, Math.min(100, Number(data.usageFourHourPercentage || 0))),
-        windowMinutes: 240,
-        resetsAt: date(data.usageFourHourNextResetAt) || date(data.usageWindowNextResetAt),
-        resetDescription: band ? `Base - ${band}` : "Base",
-      },
-      secondary: {
-        usedPercent: Math.max(0, Math.min(100, Number(data.usageMonthPercentage ?? data.usagePeriodPercentage ?? 0))),
-        resetsAt: date(data.subscription && data.subscription.currentPeriodEnd),
-        resetDescription: "Overage",
-      },
+      primary:
+        baseUsage == null
+          ? undefined
+          : {
+              usedPercent: Math.max(0, Math.min(100, baseUsage)),
+              windowMinutes: 240,
+              resetsAt: date(data.usageFourHourNextResetAt) || date(data.usageWindowNextResetAt),
+              resetDescription: band ? `Base - ${band}` : "Base",
+            },
+      secondary:
+        overageUsage == null
+          ? undefined
+          : {
+              usedPercent: Math.max(0, Math.min(100, overageUsage)),
+              resetsAt: date(data.subscription && data.subscription.currentPeriodEnd),
+              resetDescription: "Overage",
+            },
       identity: { loginMethod: plan || undefined },
     };
   },
