@@ -16,11 +16,11 @@ struct NativeOrbitGlassReadingTests {
                 for lane in 0...2 {
                     let glass = self.symbol(window, phase: phase, lane: lane).usageGlass
                     #expect(abs(glass.usageSilhouette.remaining - remaining) < 0.000001)
-                    let expected = NativeOrbitArtworkShape(lane: lane, remaining: remaining).path(in: self.rect)
+                    let expected = NativeOrbitUsageShape(lane: lane, remaining: remaining).path(in: self.rect)
                     #expect(glass.usageSilhouette.path(in: self.rect) == expected)
                     if remaining < 1 {
                         #expect(glass.usageSilhouette.path(in: self.rect)
-                            != NativeOrbitArtworkShape(lane: lane).path(in: self.rect))
+                            != NativeOrbitUsageShape(lane: lane).path(in: self.rect))
                     }
                 }
             }
@@ -34,7 +34,7 @@ struct NativeOrbitGlassReadingTests {
             glass.animatableData = presentation
             #expect(glass.usageSilhouette.remaining == presentation)
             #expect(glass.usageSilhouette.path(in: self.rect)
-                == NativeOrbitArtworkShape(lane: 0, remaining: presentation).path(in: self.rect))
+                == NativeOrbitUsageShape(lane: 0, remaining: presentation).path(in: self.rect))
         }
     }
 
@@ -150,10 +150,10 @@ struct NativeOrbitGlassReadingTests {
             let actual = glass.usageSilhouette.remaining
             #expect(abs(actual - pair.1) < 0.000001)
             #expect(glass.usageSilhouette.path(in: self.rect)
-                == NativeOrbitArtworkShape(lane: lane, remaining: actual).path(in: self.rect))
+                == NativeOrbitUsageShape(lane: lane, remaining: actual).path(in: self.rect))
             if pair.1 > 0, pair.1 < 1 {
                 #expect(glass.usageSilhouette.path(in: self.rect)
-                    != NativeOrbitArtworkShape(lane: lane).path(in: self.rect))
+                    != NativeOrbitUsageShape(lane: lane).path(in: self.rect))
                 #expect(!glass.usageSilhouette.path(in: self.rect).isEmpty)
             }
         }

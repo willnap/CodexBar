@@ -11,8 +11,8 @@ struct NativeOrbitStartupGeometryTests {
             .path(in: self.rect)
         let later = NativeOrbitCountdownShape(lane: 0, segments: 4, value: 0.35, continuous: true)
             .path(in: self.rect)
-        // 165 degrees lies beyond the 30 percent front but within the 35 percent front.
-        let front = self.point(radius: 108, degrees: 165)
+        // Between the 30 and 35 percent fronts.
+        let front = self.point(radius: 108, degrees: self.countdownAngle(0.325))
         #expect(!earlier.contains(front))
         #expect(later.contains(front))
         #expect(earlier != later)
@@ -21,8 +21,9 @@ struct NativeOrbitStartupGeometryTests {
     @Test func `startup countdown includes the next segment before its halfway rounding threshold`() {
         let path = NativeOrbitCountdownShape(lane: 0, segments: 4, value: 0.30, continuous: true)
             .path(in: self.rect)
-        #expect(path.contains(self.point(radius: 108, degrees: 162)))
-        #expect(!path.contains(self.point(radius: 108, degrees: 170)))
+        // Inside the second segment, just past its leading cut, then beyond the 30 percent front.
+        #expect(path.contains(self.point(radius: 108, degrees: self.countdownAngle(0.27))))
+        #expect(!path.contains(self.point(radius: 108, degrees: self.countdownAngle(0.38))))
     }
 
     @Test func `completed startup countdown matches the regular full extent across lanes and segment counts`() {
@@ -60,10 +61,10 @@ struct NativeOrbitStartupGeometryTests {
         let beforeSecond = NativeOrbitCountdownShape(lane: 0, segments: 4, value: 0.374).path(in: self.rect)
         #expect(!atFirst.isEmpty)
         #expect(atFirst == beforeSecond)
-        #expect(atFirst.contains(self.point(radius: 108, degrees: 150)))
-        #expect(!atFirst.contains(self.point(radius: 108, degrees: 165)))
+        #expect(atFirst.contains(self.point(radius: 108, degrees: self.countdownAngle(0.125))))
+        #expect(!atFirst.contains(self.point(radius: 108, degrees: self.countdownAngle(0.30))))
         let atSecond = NativeOrbitCountdownShape(lane: 0, segments: 4, value: 0.375).path(in: self.rect)
-        #expect(atSecond.contains(self.point(radius: 108, degrees: 170)))
+        #expect(atSecond.contains(self.point(radius: 108, degrees: self.countdownAngle(0.40))))
         #expect(atSecond != beforeSecond)
     }
 
@@ -100,6 +101,12 @@ struct NativeOrbitStartupGeometryTests {
     @Test func `countdown reveal preserves rounded and continuous readings on a fixed glass rail`() {
         for lane in 0...2 {
             let rail = NativeOrbitCountdownShape(lane: lane, segments: 1, value: 1).path(in: self.rect)
+            // On the centreline a cap's tip is a single point; containment that close is below flattening precision.
+            let tip = NativeOrbitSymbol.resetStart(lane: lane)
+            let clearOfTips = { (degree: Int) in
+                let angle = (Double(degree) + 0.37 + 360).truncatingRemainder(dividingBy: 360)
+                return abs(angle - tip) > 0.25 && abs(angle - (360 - tip)) > 0.25
+            }
             for count in [1, 7, 12, 31] {
                 for continuous in [false, true] {
                     for value in [0.0, 0.001, 0.125, 0.3, 0.5, 0.875, 0.999, 1, 2, Double.nan, .infinity] {
@@ -108,7 +115,7 @@ struct NativeOrbitStartupGeometryTests {
                         let reveal = NativeOrbitCountdownShape(
                             lane: lane, segments: count, value: value, continuous: continuous, cutsOnly: true)
                             .path(in: self.rect)
-                        let changed = (-180..<180).filter { degree in
+                        let changed = (-180..<180).filter(clearOfTips).filter { degree in
                             let point = self.point(
                                 radius: NativeOrbitSymbol.radii[lane], degrees: Double(degree) + 0.37)
                             return reference.contains(point) != (rail.contains(point) && reveal.contains(point))
@@ -141,6 +148,12 @@ struct NativeOrbitStartupGeometryTests {
                 }
             }
         }
+    }
+
+    /// The outer lane's countdown angle at a fraction of its rail.
+    private func countdownAngle(_ fraction: Double) -> Double {
+        let start = NativeOrbitSymbol.resetStart(lane: 0)
+        return start + (360 - 2 * start) * fraction
     }
 
     private func point(radius: Double, degrees: Double) -> CGPoint {

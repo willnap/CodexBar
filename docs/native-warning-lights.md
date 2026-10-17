@@ -5,8 +5,9 @@ dashboard (2026-10-14):
 
 - every light has its own spot, six down each side of the marks, and nothing shows there while it is off;
 - amber is a caution, red means the account cannot be read or used, and a lit light glows faintly;
-- the first popup opened after launch runs a bulb check: every light comes on for about a second, then the dials show
-  their own;
+- the first popup opened after launch runs a bulb check, like a car at ignition: every light comes on while the gauges
+  sweep to full, each group goes dark once its evidence has arrived, and after a dark beat the genuine warnings come back
+  on as the dial settles. A group still waiting on its evidence stays lit;
 - hovering a light gives one plain line (what is wrong, and when it helps, what to do); a light with a fix is a button.
 
 The symbols show their problems plainly. Only the quota borrows the dashboard's fuel light, which already means

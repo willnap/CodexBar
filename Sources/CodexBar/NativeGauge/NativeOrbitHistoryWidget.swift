@@ -5,6 +5,7 @@ import SwiftUI
 
 struct NativeOrbitHistoryWidget: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
     let histories: [PlanUtilizationSeriesHistory]
@@ -1157,38 +1158,41 @@ extension NativeOrbitHistoryWidget {
                     .position(x: self.plotX(marker, in: frame), y: frame.midY)
                 // The hovered moment's readings, or at rest each lane's current one on the now line.
                 let date = self.selectedDate ?? self.now
-                ForEach(lanes) { lane in
-                    if date > self.now, let projected = self.drawnProjection?.lane(lane.history.name.rawValue) {
-                        Circle()
-                            .strokeBorder(self.futureColor(lane.history), lineWidth: 1.5)
-                            .background(Circle().fill(self.futureColor(lane.history).opacity(0.25)))
-                            .frame(width: 7, height: 7)
-                            .position(x: self.plotX(date, in: frame), y: y(projected.available(at: date)))
-                    } else if date <= self.now, let point = self.markerReading(lane, at: date) {
-                        // A halo in the window's colour keeps the dot clear of the line it sits on.
-                        Circle()
-                            .fill(self.color(lane.history))
-                            .frame(width: 7, height: 7)
-                            .background(Circle().fill(Color(nsColor: .windowBackgroundColor)).padding(-1.5))
-                            .position(x: self.plotX(point.date, in: frame), y: y(point.available))
-                    }
+                let spendingBar = date <= self.now ? self.spending.flatMap { spending in
+                    spending.bar(at: date).map { (spending, $0) }
+                } : nil
+                if let spendingBar, self.selectedDate != nil, spendingBar.1.granularity != .event {
+                    let (spending, bar) = spendingBar
+                    let start = max(self.start, bar.start)
+                    let end = min(self.chartEnd, min(self.now, bar.end))
+                    let left = self.plotX(start, in: frame)
+                    let right = self.plotX(end, in: frame)
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(self.plotAccent.opacity(0.10))
+                        .overlay { RoundedRectangle(cornerRadius: 2).strokeBorder(self.plotAccent, lineWidth: 0.8) }
+                        .frame(width: max(0, right - left), height: max(1, frame.maxY - y(spending.height(bar))))
+                        .position(x: (left + right) / 2, y: (frame.maxY + y(spending.height(bar))) / 2)
                 }
-                if date <= self.now, let spending = self.spending, let bar = spending.bar(at: date) {
-                    if self.selectedDate != nil, bar.granularity != .event {
-                        let start = max(self.start, bar.start)
-                        let end = min(self.chartEnd, min(self.now, bar.end))
-                        let left = self.plotX(start, in: frame)
-                        let right = self.plotX(end, in: frame)
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(self.plotAccent.opacity(0.10))
-                            .overlay { RoundedRectangle(cornerRadius: 2).strokeBorder(self.plotAccent, lineWidth: 0.8) }
-                            .frame(width: max(0, right - left), height: max(1, frame.maxY - y(spending.height(bar))))
-                            .position(x: (left + right) / 2, y: (frame.maxY + y(spending.height(bar))) / 2)
+                // Glass beads refract the lines they sit on; close readings flow together instead of stacking.
+                GlassEffectContainer(spacing: 3) {
+                    ZStack(alignment: .topLeading) {
+                        ForEach(lanes) { lane in
+                            if date > self.now,
+                               let projected = self.drawnProjection?.lane(lane.history.name.rawValue)
+                            {
+                                self.readingBead(self.futureColor(lane.history), .projected)
+                                    .position(x: self.plotX(date, in: frame), y: y(projected.available(at: date)))
+                            } else if date <= self.now, let point = self.markerReading(lane, at: date) {
+                                self.readingBead(self.color(lane.history), .recorded)
+                                    .position(x: self.plotX(point.date, in: frame), y: y(point.available))
+                            }
+                        }
+                        if let spendingBar {
+                            let (spending, bar) = spendingBar
+                            self.readingBead(self.plotAccent, .spending(emphasizesQuota: spending.emphasizesQuota))
+                                .position(x: self.plotX(date, in: frame), y: y(spending.height(bar)))
+                        }
                     }
-                    Circle()
-                        .fill(self.plotAccent.opacity(spending.emphasizesQuota ? 0.65 : 1))
-                        .frame(width: 5, height: 5)
-                        .position(x: self.plotX(date, in: frame), y: y(spending.height(bar)))
                 }
             }
             .blur(radius: self.markerBlurRadius(at: marker))
@@ -1204,6 +1208,46 @@ extension NativeOrbitHistoryWidget {
                 value: self.selectedDate)
             .allowsHitTesting(false)
             .transition(.opacity)
+        }
+    }
+}
+
+extension NativeOrbitHistoryWidget {
+    enum ReadingBead {
+        case recorded, projected, spending(emphasizesQuota: Bool)
+    }
+
+    /// A reading on the now or hover line: a bead of the dials' tinted clear glass. A prediction is barely tinted,
+    /// as its open dot was. Reduce Transparency keeps the solid dots.
+    @ViewBuilder
+    func readingBead(_ color: Color, _ bead: ReadingBead) -> some View {
+        if self.reduceTransparency {
+            switch bead {
+            case .recorded:
+                // A halo in the window's colour keeps the dot clear of the line it sits on.
+                Circle()
+                    .fill(color)
+                    .frame(width: 7, height: 7)
+                    .background(Circle().fill(Color(nsColor: .windowBackgroundColor)).padding(-1.5))
+            case .projected:
+                Circle()
+                    .strokeBorder(color, lineWidth: 1.5)
+                    .background(Circle().fill(color.opacity(0.25)))
+                    .frame(width: 7, height: 7)
+            case let .spending(emphasizesQuota):
+                Circle()
+                    .fill(color.opacity(emphasizesQuota ? 0.65 : 1))
+                    .frame(width: 5, height: 5)
+            }
+        } else {
+            let (tint, size): (Double, CGFloat) = switch bead {
+            case .recorded: (0.6, 10)
+            case .projected: (0.2, 10)
+            case let .spending(emphasizesQuota): (emphasizesQuota ? 0.4 : 0.6, 7)
+            }
+            Color.clear
+                .frame(width: size, height: size)
+                .glassEffect(.clear.tint(color.opacity(tint)), in: Circle())
         }
     }
 }

@@ -23,9 +23,8 @@ struct NativeOrbitMoneyReading: View {
             if self.reduceTransparency || self.reading.amount == nil {
                 shape.fill(self.reading.amount == nil ? Color.secondary : ink)
             } else {
-                // Keep narrow strokes, especially the currency glyph, solid enough to read. The native
-                // material supplies the reflection; an extra bright outline closes the glyph's counters.
-                shape.fill(ink.opacity(0.80))
+                // Leave the glyph's foreground clear so the native material remains visible through its shape.
+                shape.fill(.clear)
                     .glassEffect(.regular.tint(ink.opacity(0.78)), in: shape)
                     .allowedDynamicRange(.standard)
             }

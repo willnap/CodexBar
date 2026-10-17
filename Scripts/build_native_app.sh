@@ -59,7 +59,6 @@ mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources" "$STAGE/Contents/Fr
 cp "$BIN/CodexBar" "$STAGE/Contents/MacOS/CodexBarNative"
 cp "$BIN/CodexBarCLI" "$STAGE/Contents/Helpers/CodexBarCLI"
 cp "$BIN/CodexBarClaudeWatchdog" "$STAGE/Contents/Helpers/CodexBarClaudeWatchdog"
-cp "$ROOT/Icon.icns" "$STAGE/Contents/Resources/Icon.icns"
 cp "$ROOT/LICENSE" "$STAGE/Contents/Resources/CodexBar-LICENSE.txt"
 cp "$GAUGE_SOURCE/Provider-LICENSE.txt" "$STAGE/Contents/Resources/Provider-LICENSE.txt"
 cp "$GAUGE_SOURCE/AccountIdentity-LICENSE.txt" "$STAGE/Contents/Resources/AccountIdentity-LICENSE.txt"
@@ -76,14 +75,6 @@ cp -R "$BIN/CodexBar_CodexBarCore.bundle" "$STAGE/Contents/Helpers/"
 cp -R "$BIN/Sparkle.framework" "$STAGE/Contents/Frameworks/"
 install_name_tool -add_rpath '@executable_path/../Frameworks' "$STAGE/Contents/MacOS/CodexBarNative" 2>/dev/null || true
 
-# Compile every build so deletions and restored files cannot reuse stale artwork.
-ASSET_OUTPUT="$STAGE_ROOT/GaugeAssets"
-mkdir -p "$ASSET_OUTPUT"
-xcrun actool "$GAUGE_SOURCE/ComputeGauge.xcassets" \
-    --compile "$ASSET_OUTPUT" --platform macosx \
-    --minimum-deployment-target 26.0 --output-format human-readable-text
-cp "$ASSET_OUTPUT/Assets.car" "$STAGE/Contents/Resources/Assets.car"
-
 cat > "$STAGE/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -95,7 +86,6 @@ cat > "$STAGE/Contents/Info.plist" <<'PLIST'
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
 <key>CFBundleVersion</key><string>1</string>
-<key>CFBundleIconFile</key><string>Icon</string>
 <key>LSMinimumSystemVersion</key><string>26.0</string>
 <key>LSUIElement</key><true/>
 <key>CodexBarNativeGauges</key><true/>
@@ -105,6 +95,10 @@ cat > "$STAGE/Contents/Info.plist" <<'PLIST'
 <key>NSHumanReadableCopyright</key><string>CodexBar © Peter Steinberger. MIT License. Native gauge redesign by Will.</string>
 </dict></plist>
 PLIST
+
+# Compile the authored native icon with the gauge catalog, then merge the compiler's icon metadata.
+# Keep the repository's upstream Icon.icon/Icon.icns independent of this native app's artwork.
+bash "$ROOT/Scripts/compile_native_assets.sh" "$STAGE" "$GAUGE_SOURCE/ComputeGauge.xcassets"
 
 # Opt-in development entry point for inspecting the actual status-item popup.
 if [[ -n "${NATIVE_POPUP_PREVIEW_PROVIDER:-}" ]]; then

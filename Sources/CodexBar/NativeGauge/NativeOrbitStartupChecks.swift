@@ -54,6 +54,9 @@ enum NativeOrbitStartupChecks {
         Kind.allCases.map { .init($0, $0.bulbCheckSeverity, $0.explanation) }
     }
 
+    /// Every lamp lights when the popup arms, as a car's do at ignition. Each group goes dark at its checkpoint once
+    /// its evidence has arrived, genuine warnings included, so the panel goes dark; settling relights only the
+    /// genuine warnings. A group still waiting on its evidence stays lit throughout.
     static func shown(
         realLights: [NativeOrbitWarningLight],
         phase: NativeOrbitStartupPhase,
@@ -63,12 +66,13 @@ enum NativeOrbitStartupChecks {
         let real = NativeOrbitWarningLight.reconciled(realLights)
         guard phase.testsLamps else { return real }
         let realKinds = Set(real.map(\.kind))
-        let test = Self.catalogue.filter { light in
-            guard !realKinds.contains(light.kind) else { return false }
-            let group = Self.group(for: light.kind)
+        func testing(_ kind: Kind) -> Bool {
+            let group = Self.group(for: kind)
             return phase == .armed || checkpoint < group.checkpoint || !readiness.isReady(for: group)
         }
+        let genuine = phase == .settling ? real : real.filter { testing($0.kind) }
+        let test = Self.catalogue.filter { !realKinds.contains($0.kind) && testing($0.kind) }
         // Reconciliation applies only to genuine evidence. A synthetic outage must not hide a real degradation.
-        return NativeOrbitWarningLight.merged(real + test)
+        return NativeOrbitWarningLight.merged(genuine + test)
     }
 }

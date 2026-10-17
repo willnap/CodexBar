@@ -121,6 +121,12 @@ final class NativeOrbitPopupState {
                 withAnimation(.easeOut(duration: 0.12)) { self.startupCheckpoint = checkpoint }
                 self.traceStartup("checkpoint")
             }
+            // The checked lamps stay dark for a beat before the genuine warnings come back on.
+            try await Task.sleep(for: .milliseconds(240))
+            guard self.startupGeneration == generation else {
+                self.traceStartup("runStopped.replacedGeneration")
+                return
+            }
             withAnimation(.timingCurve(0.22, 0.75, 0.2, 1, duration: 0.72)) { self.startup = .settling }
             self.traceStartup("settling")
             try await Task.sleep(for: .milliseconds(760))
@@ -854,7 +860,8 @@ struct NativeOrbitGaugeWidget: View {
                 accent: self.accent,
                 inspectionDate: self.inspectionDate,
                 projection: self.projection,
-                liveNow: self.now)
+                liveNow: self.now,
+                countsFromZero: self.startup == .armed || self.startup == .sweeping)
                 .blur(radius: self.futureBlur)
                 .modifier(NativeOrbitStartupReveal(progress: self.startup.readingsReveal))
         }

@@ -21,6 +21,8 @@ struct NativeOrbitInstruments: View {
     /// Predictions for instants after `liveNow`; without them a future instant has no readings.
     var projection: NativeOrbitAccountProjection?
     var liveNow: Date?
+    /// While the startup sweeps, each reading shows its zero; settling rolls the real values up from there.
+    var countsFromZero = false
 
     /// The prediction the corners show while the pointer is ahead of now.
     private var future: (date: Date, now: Date, projection: NativeOrbitAccountProjection)? {
@@ -90,18 +92,25 @@ struct NativeOrbitInstruments: View {
                 : "No token count for \(NativeOrbitTooltip.range(days: self.days))"
             numericValue = nil
         }
+        let zeroed = self.countsFromZero && numericValue != nil
         return NativeOrbitComplication(
-            value: value,
+            value: zeroed ? Self.compact(0) : value,
             corner: .topTrailing,
             help: help,
             monospaced: true,
-            numericValue: numericValue)
+            numericValue: zeroed ? 0 : numericValue)
     }
 
     private func resetReading(_ displayed: NativeOrbitAccountMetrics) -> some View {
         let state = NativeOrbitResetCornerState.resolve(provider: self.provider, metrics: displayed)
+        // Counting from zero, every banked reset starts outlined and fills as the dial settles.
+        let shown: NativeOrbitResetCornerState = if self.countsFromZero, case let .inventory(available, used) = state {
+            .inventory(available: 0, used: available + used)
+        } else {
+            state
+        }
         return NativeOrbitResetComplication(
-            state: state,
+            state: shown,
             accent: self.accent,
             help: Self.resetHelp(
                 state,
@@ -190,18 +199,20 @@ struct NativeOrbitInstruments: View {
         } else {
             "No spend data for \(NativeOrbitTooltip.range(days: self.days))"
         }
+        let shown = self.countsFromZero ? amount.map { _ in 0 } : amount
         return NativeOrbitComplication(
-            value: amount.map { Self.money($0, currency: currency) } ?? "—",
+            value: shown.map { Self.money($0, currency: currency) } ?? "—",
             corner: .topLeading,
             help: help,
-            numericValue: amount)
+            numericValue: shown)
     }
 
     /// The bottom-trailing corner is always the additional-usage gauge. Its arc fills only from a reported
     /// used/limit pair; amounts without a limit, a disabled window, balances and recorded credits stay in its help.
     private func extraUsageReading(_ displayed: NativeOrbitAccountMetrics) -> some View {
-        NativeOrbitExtraUsageComplication(
-            fraction: displayed.reportedSpend?.isDisabled == true ? nil : displayed.extraUsageFraction,
+        let fraction = displayed.reportedSpend?.isDisabled == true ? nil : displayed.extraUsageFraction
+        return NativeOrbitExtraUsageComplication(
+            fraction: self.countsFromZero ? fraction.map { _ in 0 } : fraction,
             icon: Self.extraUsageIcon(
                 displayed,
                 creditUsage: displayed.recordedCreditUsage(days: self.days, now: self.now),

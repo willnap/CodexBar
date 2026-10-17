@@ -30,8 +30,9 @@ struct NativeOrbitExtraUsageComplication: View {
             ZStack {
                 NativeOrbitCornerGauge(fraction: 1)
                     .stroke(Color.primary.opacity(0.035), style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                if let fraction, fraction.isFinite, fraction > 0 {
-                    NativeOrbitCornerGauge(fraction: min(1, fraction))
+                // Present at zero too, so a reading arriving draws its arc in from the origin.
+                if let fraction, fraction.isFinite {
+                    NativeOrbitCornerGauge(fraction: min(1, max(0, fraction)))
                         .stroke(self.accent, style: StrokeStyle(lineWidth: 6, lineCap: .round))
                         .animation(self.reduceMotion ? nil : .smooth(duration: 0.22), value: fraction)
                 }
@@ -60,6 +61,8 @@ private struct NativeOrbitCornerGauge: Shape {
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
+        // An empty allowance draws nothing, not a round cap's dot.
+        guard self.fraction > 0 else { return path }
         path.addArc(
             center: CGPoint(x: rect.midX, y: rect.midY),
             radius: NativeOrbitComplicationStyle.radius,

@@ -145,11 +145,14 @@ private enum NativeOrbitPreviewWindow {
     private static var window: NSWindow?
 
     static func show(_ controller: NativeServicePopoverController) -> NSWindow {
-        let window = NSWindow(
+        // Native glass draws its flat inactive appearance unless its window is key. A launch from a shell is not
+        // allowed to activate the app, so a non-activating panel takes key itself and shows the glass the popup shows.
+        let window = NativeOrbitPreviewPanel(
             contentRect: NSRect(origin: .zero, size: controller.preferredContentSize),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .nonactivatingPanel],
             backing: .buffered,
             defer: false)
+        window.hidesOnDeactivate = false
         window.title = "CodexBar · Live usage"
         window.isReleasedWhenClosed = false
         window.isOpaque = false
@@ -192,5 +195,12 @@ private enum NativeOrbitPreviewWindow {
             }
         }
         return window
+    }
+}
+
+/// Takes key without activating the app, so native glass shows its active appearance in preview captures.
+final class NativeOrbitPreviewPanel: NSPanel {
+    override var canBecomeKey: Bool {
+        true
     }
 }

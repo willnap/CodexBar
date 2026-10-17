@@ -51,16 +51,38 @@ struct NativeOrbitStartupCheckTests {
             == NativeOrbitWarningLight.Kind.allCases.count)
     }
 
-    @Test func `genuine warnings retain their evidence and severity throughout the test`() {
+    @Test func `genuine warnings keep their evidence and severity whenever they are lit`() {
         let genuine = NativeOrbitWarningLight(.billing, .caution, "Fixture billing condition", action: .dashboard)
         for phase: NativeOrbitStartupPhase in [.armed, .sweeping, .settling] {
             for checkpoint in 0...4 {
                 let shown = NativeOrbitStartupChecks.shown(
                     realLights: [genuine], phase: phase, checkpoint: checkpoint, readiness: .ready)
-                #expect(shown.first(where: { $0.kind == .billing }) == genuine)
-                #expect(shown.filter { $0.kind == .billing }.count == 1)
+                #expect(shown.filter { $0.kind == .billing }.count <= 1)
+                if let lit = shown.first(where: { $0.kind == .billing }) { #expect(lit == genuine) }
             }
         }
+    }
+
+    @Test func `genuine warnings go dark with their group and come back on as the dial settles`() {
+        let genuine = NativeOrbitWarningLight(.billing, .caution, "Fixture billing condition", action: .dashboard)
+        let checkpoint = NativeOrbitStartupChecks.group(for: .billing).checkpoint
+        func lit(_ phase: NativeOrbitStartupPhase, _ checkpoint: Int) -> Bool {
+            NativeOrbitStartupChecks.shown(
+                realLights: [genuine], phase: phase, checkpoint: checkpoint, readiness: .ready)
+                .contains { $0.kind == .billing }
+        }
+        #expect(lit(.armed, 0))
+        #expect(lit(.sweeping, checkpoint - 1))
+        #expect(!lit(.sweeping, checkpoint))
+        // Every group checked: the whole panel is dark before the genuine warning returns.
+        #expect(NativeOrbitStartupChecks.shown(
+            realLights: [genuine], phase: .sweeping, checkpoint: 4, readiness: .ready).isEmpty)
+        #expect(lit(.settling, 4))
+        #expect(lit(.live, 4))
+        // Still waiting on its evidence, the lamp's check has not passed, so it stays lit.
+        let pending = NativeOrbitStartupReadiness(readingReady: false, historyReady: true, statusReady: true)
+        #expect(NativeOrbitStartupChecks.shown(
+            realLights: [genuine], phase: .sweeping, checkpoint: 4, readiness: pending).contains { $0 == genuine })
     }
 
     @Test func `synthetic contradictory warnings never suppress a genuine condition`() {

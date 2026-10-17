@@ -36,6 +36,10 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
     private let now = Date()
 
     func applicationDidFinishLaunching(_: Notification) {
+        if CommandLine.arguments.contains("--preview-scene") {
+            NativeOrbitShowcaseScene.show()
+            return
+        }
         print("Native fixture: creating three independent status items")
         // Provider-specific by design: Fixture services cover the two-window and three-window gauge layouts.
         for provider in CommandLine.arguments.contains("--preview-monetary")
@@ -249,9 +253,10 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
             height: NativeOrbitPopupView.contentHeight(showsFooter: state.accounts.count > 1))
         self.popover = popover
         if CommandLine.arguments.contains("--preview-window") {
-            let window = NSWindow(contentViewController: hosting)
+            let window = CommandLine.arguments.contains("--preview-performance")
+                ? NSWindow(contentViewController: hosting) : Self.glassWindow(hosting, size: popover.contentSize)
             window.title = "CodexBar Native · \(provider.rawValue) Orbit Preview"
-            window.setContentSize(popover.contentSize)
+            if !CommandLine.arguments.contains("--preview-showcase") { window.setContentSize(popover.contentSize) }
             window.isReleasedWhenClosed = false
             window.center()
             if CommandLine.arguments.contains("--preview-performance") {
@@ -283,6 +288,65 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
             self.startStartup(state: state, view: hosting.view)
             self.recordPreview(popover)
         }
+    }
+
+    /// The popup's content on the popover's own material, in a panel that takes key so its glass renders active.
+    /// `--preview-showcase` instead draws the popup as a rounded card over the image at
+    /// `CODEXBAR_PREVIEW_BACKDROP`, all inside one borderless panel: its material blends within the window, so a
+    /// window capture shows only that image behind the glass, never the screen.
+    private static func glassWindow(_ hosting: NSHostingController<NativeOrbitPopupView>, size: NSSize) -> NSWindow {
+        let showcase = CommandLine.arguments.contains("--preview-showcase")
+        let margin: CGFloat = showcase ? 64 : 0
+        let panel = NativeOrbitPreviewPanel(
+            contentRect: NSRect(x: 0, y: 0, width: size.width + 2 * margin, height: size.height + 2 * margin),
+            styleMask: showcase ? [.borderless, .nonactivatingPanel] : [.titled, .closable, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false)
+        panel.hidesOnDeactivate = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        let material = NSVisualEffectView(frame: NSRect(origin: NSPoint(x: margin, y: margin), size: size))
+        material.material = .popover
+        material.blendingMode = showcase ? .withinWindow : .behindWindow
+        material.state = .active
+        hosting.view.frame = material.bounds
+        hosting.view.autoresizingMask = [.width, .height]
+        material.addSubview(hosting.view)
+        guard showcase else {
+            material.autoresizingMask = [.width, .height]
+            panel.contentView = material
+            return panel
+        }
+        let radius: CGFloat = 18
+        let mask = NSImage(size: NSSize(width: 2 * radius + 1, height: 2 * radius + 1), flipped: false) { rect in
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        mask.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        mask.resizingMode = .stretch
+        material.maskImage = mask
+        // The toolbar's glass draws outside the material's mask; round the content itself as the popover does.
+        hosting.view.wantsLayer = true
+        hosting.view.layer?.cornerRadius = radius
+        hosting.view.layer?.cornerCurve = .continuous
+        hosting.view.layer?.masksToBounds = true
+        let backdrop = NSImageView(frame: NSRect(origin: .zero, size: panel.frame.size))
+        backdrop.imageScaling = .scaleAxesIndependently
+        backdrop.image = ProcessInfo.processInfo.environment["CODEXBAR_PREVIEW_BACKDROP"]
+            .flatMap { NSImage(contentsOfFile: $0) }
+        // The popover's own lift off whatever lies beneath it.
+        let shadow = NSView(frame: material.frame)
+        shadow.wantsLayer = true
+        shadow.layer?.shadowPath = CGPath(
+            roundedRect: shadow.bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        shadow.layer?.shadowColor = NSColor.black.cgColor
+        shadow.layer?.shadowOpacity = 0.28
+        shadow.layer?.shadowRadius = 22
+        shadow.layer?.shadowOffset = CGSize(width: 0, height: -10)
+        backdrop.addSubview(shadow)
+        backdrop.addSubview(material)
+        panel.contentView = backdrop
+        return panel
     }
 
     private func orbitAccount(

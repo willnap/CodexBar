@@ -7,6 +7,18 @@ read_when:
 
 # Icon pipeline (macOS .icon → .icns without Xcodebuild)
 
+## Native redesign app
+
+`Scripts/build_native_app.sh` uses the authored `NativeIcon.icon` package copied from the supplied
+Icon Composer document. `Scripts/compile_native_assets.sh` compiles it together with the gauge
+asset catalog using `actool --app-icon NativeIcon`, then merges the compiler's partial icon metadata
+into the staged app's `Info.plist`. The combined `Assets.car` preserves the layered light, dark, and
+tinted appearances; the compiler also emits a matching `NativeIcon.icns` fallback. Keep both source
+packages (`NativeIcon.icon` and the upstream `Icon.icon`) and the upstream `Icon.icns` independent.
+Generated catalogs and fallback icons belong only in build output, not source control.
+
+## Upstream fallback pipeline
+
 We use the new macOS 26 “glass” `.icon` bundle from Icon Composer/IconStudio and convert it to `.icns` via Xcode’s hidden CLI (ictool/icontool), without an Xcode project.
 
 ## Script

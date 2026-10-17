@@ -4,7 +4,8 @@ import Testing
 struct DockIconPolicyDecisionTests {
     @Test
     func `settings window requires regular activation policy`() {
-        let ownedSettings = self.window(identifier: SettingsWindowIdentity.identifier)
+        let ownedSettings = self.window(
+            identifier: SettingsWindowIdentity.identifier, isKnownSettingsWindow: true)
         let hostedSettings = self.window(identifier: "future-settings-identifier", isKnownSettingsWindow: true)
         let miniaturizedSettings = self.window(isVisible: false, isMiniaturized: true, isKnownSettingsWindow: true)
 
@@ -12,6 +13,13 @@ struct DockIconPolicyDecisionTests {
         #expect(DockIconPolicyDecision.shouldUseRegularActivationPolicy(windows: [miniaturizedSettings]))
         #expect(DockIconPolicyDecision.shouldPromoteForPresentedWindow(ownedSettings))
         #expect(DockIconPolicyDecision.shouldPromoteForPresentedWindow(hostedSettings))
+    }
+
+    @Test
+    func `an unowned restored Settings shell cannot promote or retain the Dock`() {
+        let orphan = self.window(identifier: SettingsWindowIdentity.identifier)
+        #expect(!DockIconPolicyDecision.shouldPromoteForPresentedWindow(orphan))
+        #expect(!DockIconPolicyDecision.shouldUseRegularActivationPolicy(windows: [orphan]))
     }
 
     @Test
@@ -42,7 +50,8 @@ struct DockIconPolicyDecisionTests {
             self.window(identifier: "com_apple_SwiftUI_Settings_window", isKnownSettingsWindow: true),
             self.window(
                 identifier: SettingsWindowIdentity.identifier,
-                frameAutosaveName: "com_apple_SwiftUI_Settings_window"),
+                frameAutosaveName: "com_apple_SwiftUI_Settings_window",
+                isKnownSettingsWindow: true),
         ] {
             #expect(DockIconPolicyDecision.shouldPromoteForPresentedWindow(window))
             #expect(DockIconPolicyDecision.shouldUseRegularActivationPolicy(windows: [window]))

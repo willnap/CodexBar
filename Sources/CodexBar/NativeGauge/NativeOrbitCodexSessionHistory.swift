@@ -1,7 +1,7 @@
 import CodexBarCore
 import Foundation
 
-private struct NativeCodexQuotaHistoryLane: Hashable {
+private struct NativeCodexQuotaHistoryLane: Hashable, Sendable {
     let name: PlanUtilizationSeriesName
     let windowMinutes: Int
 }
@@ -64,11 +64,18 @@ extension UsageStore {
             guard self.settings.nativeDesignEnabled, self.isEnabled(.codex),
                   self.isCurrentProviderRefreshGeneration(.codex, generation: generation) else { return }
             let original = self.planUtilizationHistory[.codex] ?? PlanUtilizationHistoryBuckets()
-            let repaired = Self.nativeCodexRepairedHistory(
-                original,
-                observations: observations,
-                protected: self.nativeCodexPublishedHistory(projection: projection),
-                now: now)
+            let protected = self.nativeCodexPublishedHistory(projection: projection)
+            // Repairing re-sorts every recovered series. Off the main actor it no longer stalls the popup's
+            // startup animation, which plays just after launch while this backfill drains.
+            let repaired = await Task.detached(priority: .utility) {
+                Self.nativeCodexRepairedHistory(original, observations: observations, protected: protected, now: now)
+            }.value
+            guard !Task.isCancelled else { return }
+            // Provider-specific by design: an accepted Codex refresh may have changed history while repairing.
+            guard self.settings.nativeDesignEnabled, self.isEnabled(.codex),
+                  self.isCurrentProviderRefreshGeneration(.codex, generation: generation) else { return }
+            if (self.planUtilizationHistory[.codex] ?? PlanUtilizationHistoryBuckets()) != original
+                || self.nativeCodexPublishedHistory(projection: projection) != protected { continue }
             guard repaired != original else { return }
             if repaired.accounts != original.accounts {
                 let directory = self.planUtilizationHistoryStore.directoryURL
@@ -79,17 +86,12 @@ extension UsageStore {
                 // Provider-specific by design: an accepted Codex refresh may have changed history during backup.
                 guard self.settings.nativeDesignEnabled, self.isEnabled(.codex),
                       self.isCurrentProviderRefreshGeneration(.codex, generation: generation) else { return }
-                if self.planUtilizationHistory[.codex] != original { continue }
+                // A newly published independent reading must remain protected: repair again from the start.
+                if self.planUtilizationHistory[.codex] != original
+                    || self.nativeCodexPublishedHistory(projection: projection) != protected { continue }
             }
-            // Recompute after suspension: a newly published independent reading must remain protected.
-            let current = Self.nativeCodexRepairedHistory(
-                original,
-                observations: observations,
-                protected: self.nativeCodexPublishedHistory(projection: projection),
-                now: now)
-            guard current != original else { return }
             // Provider-specific by design: event owners are absent, so recovered Codex records stay unscoped.
-            self.planUtilizationHistory[.codex] = current
+            self.planUtilizationHistory[.codex] = repaired
             self.planUtilizationHistoryRevision &+= 1
             await self.planUtilizationPersistenceCoordinator.enqueue(self.planUtilizationHistory)
             return

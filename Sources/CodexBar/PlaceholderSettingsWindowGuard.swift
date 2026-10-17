@@ -1,23 +1,23 @@
 import AppKit
 import CodexBarCore
 
-/// CodexBar's preferences live in ``SettingsWindowController``. The SwiftUI `Settings` scene is an empty
-/// placeholder that only carries the app-menu command group, and because it is the app's only scene macOS
-/// presents it during launch, showing an empty "CodexBar Settings" window (#3053).
+/// Preferences belong to the explicit AppKit controller. Reject SwiftUI's empty Settings placeholder and
+/// AppKit Settings shells restored from older versions without the live controller's hosted preferences.
 enum PlaceholderSettingsWindowDecision {
     /// SwiftUI names the window of a `Settings` scene with this fragment (identifier and frame autosave name).
     static let swiftUISettingsNameFragment = "com_apple_SwiftUI_Settings"
 
-    /// A window CodexBar never wants onscreen: SwiftUI's placeholder Settings window.
+    /// An unowned Settings window that must not appear during launch or session restoration.
     static func shouldClose(identifier: String?, frameAutosaveName: String, isKnownSettingsWindow: Bool) -> Bool {
-        guard !isKnownSettingsWindow, identifier != SettingsWindowIdentity.identifier else { return false }
+        guard !isKnownSettingsWindow else { return false }
+        // A saved AppKit Settings shell is not the live controller's window and has no configured content.
+        if identifier == SettingsWindowIdentity.identifier { return true }
         if let identifier, identifier.contains(self.swiftUISettingsNameFragment) { return true }
         return frameAutosaveName.contains(self.swiftUISettingsNameFragment)
     }
 }
 
-/// Closes the empty SwiftUI `Settings` placeholder window whenever macOS presents it, so the AppKit
-/// Settings window stays CodexBar's only preferences surface.
+/// Dismisses unowned Settings windows so the explicit AppKit controller remains the only preferences surface.
 @MainActor
 final class PlaceholderSettingsWindowGuard {
     typealias WindowsProvider = @MainActor () -> [NSWindow]
@@ -87,7 +87,7 @@ final class PlaceholderSettingsWindowGuard {
         }
         if closedCount > 0 {
             self.logger.info(
-                "Closed placeholder SwiftUI Settings window",
+                "Closed unowned Settings window",
                 metadata: ["count": "\(closedCount)"])
         }
         return closedCount

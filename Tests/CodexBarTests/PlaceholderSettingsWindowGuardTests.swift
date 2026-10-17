@@ -128,6 +128,23 @@ struct PlaceholderSettingsWindowGuardTests {
     }
 
     @Test
+    func `discards an old restored Settings shell while keeping the live controller window`() {
+        _ = NSApplication.shared
+        let restored = self.makeWindow(identifier: SettingsWindowIdentity.identifier)
+        let current = self.makeWindow(identifier: SettingsWindowIdentity.identifier)
+        restored.isRestorable = true
+        var closed: [NSWindow] = []
+        let guardian = PlaceholderSettingsWindowGuard(
+            windows: { [restored, current] },
+            isKnownSettingsWindow: { $0 === current },
+            closeWindow: { closed.append($0) })
+        #expect(guardian.sweep() == 1)
+        #expect(closed.count == 1)
+        #expect(closed.first === restored)
+        #expect(!restored.isRestorable)
+    }
+
+    @Test
     func `recognizes the placeholder by frame autosave name when the identifier is missing`() {
         #expect(PlaceholderSettingsWindowDecision.shouldClose(
             identifier: nil,
@@ -136,15 +153,19 @@ struct PlaceholderSettingsWindowGuardTests {
     }
 
     @Test
-    func `never closes the registered Settings window`() {
+    func `keeps exact registered Settings ownership and rejects an orphaned saved Settings shell`() {
         #expect(!PlaceholderSettingsWindowDecision.shouldClose(
             identifier: "com_apple_SwiftUI_Settings_window",
             frameAutosaveName: "com_apple_SwiftUI_Settings_window",
             isKnownSettingsWindow: true))
-        #expect(!PlaceholderSettingsWindowDecision.shouldClose(
+        #expect(PlaceholderSettingsWindowDecision.shouldClose(
             identifier: SettingsWindowIdentity.identifier,
             frameAutosaveName: SettingsWindowIdentity.frameAutosaveName,
             isKnownSettingsWindow: false))
+        #expect(!PlaceholderSettingsWindowDecision.shouldClose(
+            identifier: SettingsWindowIdentity.identifier,
+            frameAutosaveName: SettingsWindowIdentity.frameAutosaveName,
+            isKnownSettingsWindow: true))
     }
 
     @Test

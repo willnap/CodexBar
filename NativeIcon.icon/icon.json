@@ -1,0 +1,276 @@
+{
+  "color-space-for-untagged-svg-colors" : "display-p3",
+  "features" : [
+    "refractivity"
+  ],
+  "fill" : {
+    "automatic-gradient" : "display-p3:0.79443,0.65381,0.38550,1.00000"
+  },
+  "groups" : [
+    {
+      "blend-mode" : "plus-lighter",
+      "blur-material" : null,
+      "hidden" : false,
+      "layers" : [
+        {
+          "blend-mode" : "plus-lighter",
+          "fill" : "system-light",
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "6 – Layer.svg",
+          "name" : "6 – Layer"
+        }
+      ],
+      "lighting" : "individual",
+      "name" : "Group",
+      "refractivity" : {
+        "depth" : 0,
+        "enabled" : true,
+        "strength" : -1
+      },
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 2
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    },
+    {
+      "blend-mode" : "overlay",
+      "blur-material" : null,
+      "hidden" : false,
+      "layers" : [
+        {
+          "blend-mode-specializations" : [
+            {
+              "value" : "overlay"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "overlay"
+            }
+          ],
+          "fill" : "system-light",
+          "hidden" : false,
+          "image-name" : "5 – Layer 2.svg",
+          "name" : "5 – Layer 2"
+        },
+        {
+          "blend-mode" : "overlay",
+          "fill" : "system-light",
+          "glass" : true,
+          "hidden" : true,
+          "image-name" : "5 – Layer.svg",
+          "name" : "5 – Layer"
+        },
+        {
+          "blend-mode" : "darken",
+          "fill" : {
+            "solid" : "display-p3:0.90653,0.96783,0.76657,1.00000"
+          },
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "4 – Layer 2.svg",
+          "name" : "4 – Layer 2"
+        }
+      ],
+      "name" : "Group",
+      "opacity-specializations" : [
+        {
+          "value" : 0.8
+        },
+        {
+          "appearance" : "dark",
+          "value" : 1
+        }
+      ],
+      "refractivity" : {
+        "depth" : 0.5046875,
+        "enabled" : true,
+        "strength" : -0.59375
+      },
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 1
+      },
+      "specular" : true,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.7
+      }
+    },
+    {
+      "blend-mode" : "darken",
+      "blur-material" : 0.1,
+      "hidden" : true,
+      "layers" : [
+        {
+          "fill" : {
+            "linear-gradient" : [
+              "display-p3:0.84717,0.70703,0.43042,1.00000",
+              "display-p3:0.77783,0.63770,0.37036,1.00000"
+            ]
+          },
+          "glass" : true,
+          "image-name" : "4 – Layer-3.svg",
+          "name" : "4 – Layer-3"
+        }
+      ],
+      "lighting" : "combined",
+      "name" : "Group",
+      "refractivity" : {
+        "depth" : 0.5716796875,
+        "enabled" : true,
+        "strength" : 0.0101171875
+      },
+      "shadow" : {
+        "kind" : "none",
+        "opacity" : 0.5
+      },
+      "specular" : false,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 1
+      }
+    },
+    {
+      "blur-material" : null,
+      "layers" : [
+        {
+          "blend-mode-specializations" : [
+            {
+              "appearance" : "dark",
+              "value" : "multiply"
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "plus-darker"
+            }
+          ],
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "srgb:0.96863,0.43137,0.00000,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "display-p3:0.96863,0.54100,0.00000,1.00000"
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : "system-dark"
+            }
+          ],
+          "hidden" : false,
+          "image-name" : "5 – Layer-2.svg",
+          "name" : "5 – Layer-2",
+          "opacity-specializations" : [
+            {
+              "appearance" : "dark",
+              "value" : 1
+            }
+          ]
+        },
+        {
+          "blend-mode-specializations" : [
+            {
+              "value" : "normal"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "soft-light"
+            }
+          ],
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "display-p3:0.93516,0.77412,0.34978,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "srgb:0.98824,0.60784,0.00000,1.00000"
+              }
+            }
+          ],
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "3 – Layer-2.svg",
+          "name" : "3 – Layer-2"
+        },
+        {
+          "blend-mode" : "soft-light",
+          "fill" : {
+            "automatic-gradient" : "display-p3:0.81641,0.53966,0.18951,0.75285"
+          },
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "2 – Layer 2.svg",
+          "name" : "2 – Layer 2"
+        }
+      ],
+      "lighting" : "individual",
+      "name" : "Group",
+      "opacity" : 1,
+      "refractivity" : {
+        "depth" : 0.6105859375,
+        "enabled" : true,
+        "strength" : -1
+      },
+      "shadow" : {
+        "kind" : "none",
+        "opacity" : 0.5
+      },
+      "specular" : false,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.4
+      }
+    },
+    {
+      "blend-mode" : "normal",
+      "blur-material" : null,
+      "hidden" : false,
+      "layers" : [
+        {
+          "blend-mode" : "overlay",
+          "fill" : {
+            "automatic-gradient" : "display-p3:0.65098,0.48039,0.23187,0.19741"
+          },
+          "glass" : false,
+          "hidden" : false,
+          "image-name" : "1 – Layer.svg",
+          "name" : "1 – Layer"
+        }
+      ],
+      "lighting" : "combined",
+      "name" : "Group",
+      "refractivity" : {
+        "depth" : 1,
+        "enabled" : true,
+        "strength" : -1
+      },
+      "shadow" : {
+        "kind" : "none",
+        "opacity" : 0.5
+      },
+      "specular" : false,
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}

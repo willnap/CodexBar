@@ -120,10 +120,11 @@ final class SettingsWindowController: NSWindowController {
             window = retainedWindow
             outcome = .reused
         } else if let createdWindow = self.makeWindow() {
-            createdWindow.identifier = NSUserInterfaceItemIdentifier(SettingsWindowIdentity.identifier)
-            SettingsWindowStageBehavior.applyCollectionBehavior(createdWindow)
+            // Publish ownership before metadata changes can synchronously notify the restoration guard.
             self.retainedWindow = createdWindow
             self.window = createdWindow
+            createdWindow.identifier = NSUserInterfaceItemIdentifier(SettingsWindowIdentity.identifier)
+            SettingsWindowStageBehavior.applyCollectionBehavior(createdWindow)
             window = createdWindow
             outcome = .created
         } else {
@@ -132,6 +133,9 @@ final class SettingsWindowController: NSWindowController {
             return .failed
         }
 
+        // Preferences are opened explicitly; saved geometry remains useful without restoring an empty shell
+        // during login or app-state restoration, before its hosted preferences have been configured.
+        window.isRestorable = false
         self.registerWindow(window)
         self.presentWindow(window)
         self.didPresentWindow(window)

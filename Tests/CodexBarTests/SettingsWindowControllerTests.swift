@@ -21,6 +21,7 @@ struct SettingsWindowControllerTests {
             registerWindow: { registeredWindow in
                 #expect(registeredWindow === window)
                 #expect(registeredWindow.identifier?.rawValue == SettingsWindowIdentity.identifier)
+                #expect(!registeredWindow.isRestorable)
                 events.append("register")
             },
             presentWindow: { presentedWindow in
@@ -62,6 +63,7 @@ struct SettingsWindowControllerTests {
             presentationFailed: {})
 
         let firstOutcome = controller.open(pane: .about)
+        window.isRestorable = true
         let secondOutcome = controller.open(pane: .general)
 
         #expect(firstOutcome == .created)
@@ -71,6 +73,41 @@ struct SettingsWindowControllerTests {
         #expect(registeredWindows.allSatisfy { $0 === window })
         #expect(presentedPanes == [.about, .general])
         #expect(selection.pane == .general)
+        #expect(!window.isRestorable)
+    }
+
+    @Test
+    func `explicit Settings ownership is visible before its identifier can trigger the restoration guard`() {
+        _ = NSApplication.shared
+        let selection = self.makeSelection()
+        let window = SettingsIdentityObservingWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 400),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false)
+        window.isReleasedWhenClosed = false
+        var controller: SettingsWindowController?
+        var observedOwnership = false
+        let guardian = PlaceholderSettingsWindowGuard(
+            windows: { [window] },
+            isKnownSettingsWindow: { $0 === controller?.window },
+            closeWindow: { _ in Issue.record("Explicit Settings was mistaken for a restored shell") })
+        window.identifierDidChange = {
+            guard window.identifier?.rawValue == SettingsWindowIdentity.identifier else { return }
+            observedOwnership = controller?.window === window
+            #expect(guardian.sweep() == 0)
+        }
+        controller = SettingsWindowController(
+            selection: selection,
+            makeWindow: { window },
+            prepareToPresent: {},
+            registerWindow: { _ in },
+            presentWindow: { _ in },
+            didPresentWindow: { _ in },
+            presentationFailed: {})
+        #expect(controller?.open(pane: .general) == .created)
+        #expect(observedOwnership)
+        #expect(!window.isRestorable)
     }
 
     @Test
@@ -105,5 +142,18 @@ struct SettingsWindowControllerTests {
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false)
+    }
+}
+
+@MainActor
+private final class SettingsIdentityObservingWindow: NSWindow {
+    var identifierDidChange: (() -> Void)?
+
+    override var identifier: NSUserInterfaceItemIdentifier? {
+        get { super.identifier }
+        set {
+            super.identifier = newValue
+            self.identifierDidChange?()
+        }
     }
 }
