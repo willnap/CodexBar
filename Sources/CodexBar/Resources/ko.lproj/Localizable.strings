@@ -2594,3 +2594,17 @@
 "Last 7 days" = "지난 7일";
 
 "Use" = "사용";
+
+/* Combined account paging (English fallback). */
+"Account pages" = "Account pages";
+"All connected accounts" = "All connected accounts";
+"Average of each account’s most constrained quota. Account limits reset independently." = "Average of each account’s most constrained quota. Account limits reset independently.";
+"Combined usage overview" = "Combined usage overview";
+"Connected accounts" = "Connected accounts";
+"Known cost; currencies are kept separate" = "Known cost; currencies are kept separate";
+"Known requests across accounts" = "Known requests across accounts";
+"Known tokens across accounts" = "Known tokens across accounts";
+"Known totals · Partial data" = "Known totals · Partial data";
+"Mean quota left" = "Mean quota left";
+"Multi" = "Multi";
+"No token history for this range" = "No token history for this range";

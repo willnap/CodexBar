@@ -2630,3 +2630,17 @@
 "Last 7 days" = "Ultimi 7 giorni";
 
 "Use" = "Usa";
+
+/* Pagine degli account combinati. */
+"Account pages" = "Pagine degli account";
+"All connected accounts" = "Tutti gli account collegati";
+"Average of each account’s most constrained quota. Account limits reset independently." = "Media della quota più limitata di ogni account. I limiti degli account si azzerano indipendentemente.";
+"Combined usage overview" = "Panoramica dell’utilizzo combinato";
+"Connected accounts" = "Account collegati";
+"Known cost; currencies are kept separate" = "Costo noto; le valute restano separate";
+"Known requests across accounts" = "Richieste note tra gli account";
+"Known tokens across accounts" = "Token noti tra gli account";
+"Known totals · Partial data" = "Totali noti · Dati parziali";
+"Mean quota left" = "Quota media rimanente";
+"Multi" = "Più valute";
+"No token history for this range" = "Nessuna cronologia dei token per questo intervallo";

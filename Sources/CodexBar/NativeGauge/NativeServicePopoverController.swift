@@ -52,6 +52,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     private var claudeFileArchiveHistory: [PlanUtilizationSeriesHistory] = []
     /// Store changes arrive continuously from background scans. A closed popup coalesces them so clicks never
     /// wait behind presentation rebuilds; an open popup follows them promptly.
+    private var isInCombinedPresentation = false
     private var presentationDirty = false
     private var presentationRefreshTask: Task<Void, Never>?
     private let startupOwner = UUID()
@@ -153,7 +154,8 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     private func schedulePresentationRefresh() {
         self.presentationDirty = true
         guard self.presentationRefreshTask == nil else { return }
-        let delay: Duration = self.popover?.isShown == true ? .milliseconds(150) : .seconds(3)
+        let delay: Duration = (self.popover?.isShown == true || self.isInCombinedPresentation) ? .milliseconds(150) :
+            .seconds(3)
         self.presentationRefreshTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: delay)
             guard let self, !Task.isCancelled else { return }
@@ -240,7 +242,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
             width: min(CGFloat(count * 240 + (count - 1)), availableWidth - 40),
             height: NativeOrbitPopupView.contentHeight(showsFooter: showsFooter))
         self.popover?.contentSize = self.preferredContentSize
-        if !self.startupLaunch.hasShown, self.popover?.isShown != true {
+        if !self.startupLaunch.hasShown, self.popover?.isShown != true, !self.isInCombinedPresentation {
             self.orbitState.prepareStartupArtwork(
                 screen: self.statusButton?.window?.screen,
                 appearance: self.isViewLoaded ? self.view.effectiveAppearance : nil)
@@ -257,6 +259,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
 
     private var startupAccountOwner: String? {
         guard let account = self.orbitState.accounts.first(where: \.isActive) else { return nil }
+        // Provider-specific by design: Codex profiles and ClaudeSwap slots have different stable owner-key schemes.
         switch account.selection {
         case let .codex(owner): return UsageStore.widgetCodexAccountID(owner) ?? account.id
         case let .claudeSwap(owner): return UsageStore.nativeOrbitClaudeHistoryKey(owner)
@@ -436,6 +439,41 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
             self.claudeFileArchiveHistory = NativeOrbitClaudeLocalArchive.histories(points)
             self.refreshPresentation()
         }
+    }
+
+    /// Combined pages share the prepared account model and the provider's existing action routes.
+    func combinedSource() -> NativeCombinedAccountSource {
+        .init(
+            provider: self.provider,
+            state: self.orbitState,
+            activate: { [weak self] in self?.activateAccount(id: $0) },
+            lightAction: { [weak self] id, action in self?.handleLight(action, accountID: id) },
+            refresh: { [weak self] in self?.refreshUsage() },
+            settings: { [weak self] in self?.openSettings() })
+    }
+
+    func beginCombinedPresentation() {
+        self.isInCombinedPresentation = true
+        self.cancelStartup()
+        if self.presentationDirty { self.observePresentation() }
+        self.orbitState.now = Date()
+        self.reloadClaudeLocalArchive()
+        self.presentationClockTask?.cancel()
+        self.presentationClockTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                guard !Task.isCancelled else { return }
+                self?.refreshPresentation()
+                self?.reloadClaudeLocalArchive()
+            }
+        }
+    }
+
+    func endCombinedPresentation() {
+        self.isInCombinedPresentation = false
+        self.presentationClockTask?.cancel()
+        self.presentationClockTask = nil
+        self.orbitState.inspectionDate = nil
     }
 
     func activateAccount(id: String) {

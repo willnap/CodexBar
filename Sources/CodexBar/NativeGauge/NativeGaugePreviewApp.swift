@@ -40,6 +40,10 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
             NativeOrbitShowcaseScene.show()
             return
         }
+        if CommandLine.arguments.contains("--preview-combined") {
+            self.showCombinedPreview()
+            return
+        }
         print("Native fixture: creating three independent status items")
         // Provider-specific by design: Fixture services cover the two-window and three-window gauge layouts.
         for provider in CommandLine.arguments.contains("--preview-monetary")
@@ -294,7 +298,7 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
     /// `--preview-showcase` instead draws the popup as a rounded card over the image at
     /// `CODEXBAR_PREVIEW_BACKDROP`, all inside one borderless panel: its material blends within the window, so a
     /// window capture shows only that image behind the glass, never the screen.
-    private static func glassWindow(_ hosting: NSHostingController<NativeOrbitPopupView>, size: NSSize) -> NSWindow {
+    private static func glassWindow(_ hosting: NSHostingController<some View>, size: NSSize) -> NSWindow {
         let showcase = CommandLine.arguments.contains("--preview-showcase")
         let margin: CGFloat = showcase ? 64 : 0
         let panel = NativeOrbitPreviewPanel(
@@ -338,7 +342,10 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
         let shadow = NSView(frame: material.frame)
         shadow.wantsLayer = true
         shadow.layer?.shadowPath = CGPath(
-            roundedRect: shadow.bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
+            roundedRect: shadow.bounds,
+            cornerWidth: radius,
+            cornerHeight: radius,
+            transform: nil)
         shadow.layer?.shadowColor = NSColor.black.cgColor
         shadow.layer?.shadowOpacity = 0.28
         shadow.layer?.shadowRadius = 22
@@ -349,6 +356,142 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
         return panel
     }
 
+    /// Uses the production pager with synthetic accounts; never initializes a credential store.
+    private func showCombinedPreview() {
+        NativePageControlMotionTrace.enabled = CommandLine.arguments.contains("--preview-control-check")
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        // Provider-specific by design: These fixtures cover paired, scoped, monthly, and single-provider quotas.
+        let providers: [UsageProvider] = [.codex, .claude, .kimi, .gemini]
+        let sources = providers.enumerated().map { providerIndex, provider in
+            let state = NativeOrbitPopupState()
+            state.accounts = (0..<(providerIndex < 2 ? 3 : 1)).map { index in
+                var account = self.orbitAccount(provider, index: index, active: index == 0, dayFormatter: formatter)
+                account.symbol = ["house", "briefcase", "leaf"][index]
+                account.metrics
+                    .quotaConsumption = [self.now.addingTimeInterval(-Double(providerIndex * 600 + index * 60))]
+                return account
+            }
+            state.badges = Dictionary(uniqueKeysWithValues: state.accounts.map { ($0.id, $0.symbol) })
+            return NativeCombinedAccountSource(provider: provider, state: state)
+        }
+        let toolbar = NativeOrbitPopupState()
+        toolbar.accounts = sources.flatMap(\.state.accounts)
+        let model = NativeCombinedAccounts(connections: sources.map {
+            .init(provider: $0.provider, accounts: $0.state.accounts)
+        }, now: self.now)
+        self.exportCombinedIndicatorArtwork(model)
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.button?.image = NativeCombinedStatusImage.make(model.recentAccounts)
+        item.button?.setAccessibilityLabel("All accounts · Preview")
+        // Provider-specific by design: The fixture inventory retains its sole combined status item in Codex’s slot.
+        self.items[.codex] = item
+        let initialID = CommandLine.arguments.contains("--preview-overview") ? NativeCombinedAccounts.overviewID : nil
+        let host = NSHostingController(rootView: NativeCombinedPopupView(
+            sources: sources,
+            toolbar: toolbar,
+            initialID: initialID))
+        let popover = NSPopover()
+        popover.contentViewController = host
+        popover.contentSize = NativeCombinedPopupView.contentSize
+        self.popover = popover
+        let window = Self.glassWindow(host, size: popover.contentSize)
+        self.previewWindow = window
+        window.center()
+        window.orderFrontRegardless()
+        NSApp.activate()
+        window.makeKey()
+        self.recordPreview(popover)
+        if CommandLine.arguments.contains("--preview-control-check"),
+           let argument = CommandLine.arguments.firstIndex(of: "--preview-output"),
+           CommandLine.arguments.indices.contains(argument + 1)
+        {
+            let directory = URL(fileURLWithPath: CommandLine.arguments[argument + 1], isDirectory: true)
+            Task { await NativePageControlPreviewCheck.run(view: host.view, model: model, directory: directory) }
+        }
+    }
+
+    /// Render only synthetic symbol controls, without sampling a window or the user's screen.
+    private func exportCombinedIndicatorArtwork(_ model: NativeCombinedAccounts) {
+        guard let argument = CommandLine.arguments.firstIndex(of: "--preview-output"),
+              CommandLine.arguments.indices.contains(argument + 1) else { return }
+        let directory = URL(fileURLWithPath: CommandLine.arguments[argument + 1], isDirectory: true)
+        let ids = [NativeCombinedAccounts.overviewID] + model.pages.map(\.id)
+        let artwork = VStack(alignment: .leading, spacing: 8) {
+            ForEach(ids, id: \.self) { id in
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(id).font(.system(size: 10)).foregroundStyle(.secondary)
+                    let indicators = model.indicators(selectedID: id)
+                    NativePageControlArtwork(
+                        indicators: indicators,
+                        layout: NativePageControlLayout(
+                            count: indicators.count,
+                            selection: indicators.firstIndex(where: \.selected) ?? 0,
+                            availableLength: 240,
+                            pitch: 22,
+                            symbolWidths: indicators.map {
+                                NativePageControlSymbol($0, configuration: .init()).size.width
+                            }))
+                }
+            }
+        }
+        .padding(16)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .environment(\.colorScheme, CommandLine.arguments.contains("--preview-dark") ? .dark : .light)
+        let renderer = ImageRenderer(content: artwork)
+        renderer.scale = 3
+        guard let image = renderer.cgImage,
+              let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: directory.appendingPathComponent("indicator-symbols.png"))
+            self.exportPageControlComparison(directory: directory)
+        } catch {
+            print("Native symbol fixture output failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func exportPageControlComparison(directory: URL) {
+        let symbols = [
+            "square.stack.3d.up",
+            "circle.hexagongrid.fill",
+            "house.fill",
+            "briefcase.fill",
+            "leaf.fill",
+            "sparkles",
+            "moon.fill",
+            "sun.max.fill",
+        ]
+        let indicators = symbols.enumerated().map { index, symbol in
+            NativeCombinedAccounts.Indicator(
+                id: String(index),
+                targetID: String(index),
+                provider: nil,
+                symbol: symbol,
+                label: symbol,
+                selected: index == 2)
+        }
+        let artwork = NativePageControlArtwork(
+            indicators: indicators,
+            layout: NativePageControlLayout(
+                count: indicators.count,
+                selection: 2,
+                availableLength: 240,
+                pitch: 22,
+                symbolWidths: indicators.map { NativePageControlSymbol($0, configuration: .init()).size.width }),
+            configuration: NativePageControlConfiguration(
+                indicatorTint: .black.opacity(0.3),
+                currentIndicatorTint: .black))
+            .background(Color(white: 0.94))
+            .environment(\.colorScheme, .light)
+        let renderer = ImageRenderer(content: artwork)
+        renderer.scale = 2
+        guard let image = renderer.cgImage,
+              let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return }
+        try? data.write(to: directory.appendingPathComponent("page-control-port-reference.png"))
+    }
+
     private func orbitAccount(
         _ provider: UsageProvider,
         index: Int,
@@ -357,7 +500,8 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
     {
         let snapshot = self.orbitSnapshot(provider: provider, index: index)
         let gauge = NativeUsageGaugeProjection.state(
-            provider: provider, snapshot: snapshot)
+            provider: provider,
+            snapshot: snapshot)
         let entry = CostUsageDailyReport.Entry(
             date: dayFormatter.string(from: self.now),
             inputTokens: nil,
@@ -462,8 +606,15 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
               CommandLine.arguments.indices.contains(argument + 1) else { return }
         let directory = URL(fileURLWithPath: CommandLine.arguments[argument + 1], isDirectory: true)
         Task { @MainActor in
+            // A lazy pager applies its initial native scroll position on the first display pass.
+            // Export after that pass, so the fixture records the visible page rather than its empty first layout.
+            if CommandLine.arguments.contains("--preview-combined") {
+                try? await Task.sleep(for: .seconds(1))
+            }
             guard let view = popover.contentViewController?.view else { return }
             view.layoutSubtreeIfNeeded()
+            view.window?.displayIfNeeded()
+            CATransaction.flush()
             let report: [String: Any] = [
                 "popoverShown": popover.isShown,
                 "previewWindowShown": self.previewWindow?.isVisible == true,
@@ -512,7 +663,10 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
             metrics.reportedSpend = snapshot.providerCost
             if index == 0 {
                 metrics.reportedBalance = .init(
-                    value: 48.30, unit: "USD", isWorkspace: false, updatedAt: self.now)
+                    value: 48.30,
+                    unit: "USD",
+                    isWorkspace: false,
+                    updatedAt: self.now)
             }
         }
         metrics.bankedResets = 2

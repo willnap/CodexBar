@@ -175,6 +175,7 @@ extension UsageStore {
                     context = .account(accountContext)
                 }
                 suppressGaugeUsage = account.usesLastKnownUsage
+                    || self.claudeSwapTransientState.switchPhase != nil
             } else {
                 context = .account(.init(error: L("No active account"), info: AccountInfo(email: nil, plan: nil)))
                 suppressGaugeUsage = true

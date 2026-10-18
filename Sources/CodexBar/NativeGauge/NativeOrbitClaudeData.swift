@@ -52,6 +52,7 @@ extension UsageStore {
         let owner = NativeOrbitLastKnownUsageStore.ownerDigest([
             historyKey, account.sourceOrganizationID ?? "", self.settings.claudeSwapExecutablePath,
         ])
+        // Provider-specific by design: ClaudeSwap’s verified owner bucket retains only Claude adjunct readings.
         let retained = self.nativeLastKnownUsage.accountSnapshot(.claude, owner: owner)
         // The newest accepted reading owns adjuncts. An older adapter payload after switching cannot replace a
         // newer ambient observation; at equal measurement times the current receipt wins.
@@ -61,6 +62,7 @@ extension UsageStore {
             Self.nativeOrbitClaudeMergedSnapshot(adapter: retained, ambient: current)
         }
         if let snapshot {
+            // Provider-specific by design: Publish the merged Claude receipt back to that same verified owner.
             self.nativeLastKnownUsage.recordAccountSnapshot(.claude, owner: owner, snapshot: snapshot)
         }
         return snapshot

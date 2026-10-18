@@ -404,6 +404,9 @@ struct NativeOrbitPopupView: View {
     var lightAction: (String, NativeOrbitWarningLight.Action) -> Void = { _, _ in }
     /// Offline performance fixtures drive inspection themselves, independently of the user's pointer.
     var acceptsHoverInspection = true
+    /// A combined popup reuses this exact column, with its own pager and shared toolbar.
+    var displayedAccountID: String?
+    var showsToolbar = true
 
     /// Each column owns its observation reads, so inspecting one moment does not invalidate the account list.
     private struct AccountColumn: View {
@@ -428,23 +431,31 @@ struct NativeOrbitPopupView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 0) {
-                    ForEach(Array(self.state.accounts.enumerated()), id: \.element.id) { index, account in
-                        if index > 0 {
-                            Divider().frame(height: 464).padding(.top, 12)
-                        }
-                        AccountColumn(popup: self, account: account)
-                    }
+            if let displayedAccountID {
+                if let account = self.state.accounts.first(where: { $0.id == displayedAccountID }) {
+                    AccountColumn(popup: self, account: account)
                 }
-                // Startup places complete columns before revealing them. Ordinary account updates move the active
-                // column and its highlight together, after the native chart hosts have finished their reveal.
-                .animation(
-                    self.reduceMotion || self.state.startup.isActive ? nil : .smooth(duration: 0.45),
-                    value: self.state.accounts.map { $0.id + ($0.isActive ? "|active" : "") })
+            } else {
+                ScrollView(.horizontal) {
+                    HStack(alignment: .top, spacing: 0) {
+                        ForEach(Array(self.state.accounts.enumerated()), id: \.element.id) { index, account in
+                            if index > 0 {
+                                Divider().frame(height: 464).padding(.top, 12)
+                            }
+                            AccountColumn(popup: self, account: account)
+                        }
+                    }
+                    // Startup places complete columns before revealing them. Ordinary account updates move the active
+                    // column and its highlight together, after the native chart hosts have finished their reveal.
+                    .animation(
+                        self.reduceMotion || self.state.startup.isActive ? nil : .smooth(duration: 0.45),
+                        value: self.state.accounts.map { $0.id + ($0.isActive ? "|active" : "") })
+                }
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
-            NativeOrbitToolbar(state: self.state, refresh: self.refresh, settings: self.settings)
+            if self.showsToolbar {
+                NativeOrbitToolbar(state: self.state, refresh: self.refresh, settings: self.settings)
+            }
         }
         .tint(self.state.accent)
         .fixedSize(horizontal: false, vertical: true)
@@ -551,7 +562,9 @@ struct NativeOrbitPopupView: View {
                     dataDays: NativeOrbitPopupState.dataDays,
                     startup: self.state.startup)
             }
-            if self.state.accounts.count > 1 || (account.updatedAt == nil && self.signIn != nil) {
+            if self.displayedAccountID != nil || self.state.accounts.count > 1
+                || (account.updatedAt == nil && self.signIn != nil)
+            {
                 self.columnSeparator
                 self.footer(account)
             }
@@ -627,7 +640,7 @@ struct NativeOrbitPopupView: View {
     /// Names and equal-sized Active/Use capsules share the column inset, with breathing room above the toolbar.
     private func footer(_ account: NativeOrbitAccountPresentation) -> some View {
         HStack(spacing: 8) {
-            if self.state.accounts.count > 1 {
+            if self.displayedAccountID != nil || self.state.accounts.count > 1 {
                 self.accountName(account)
                 Spacer(minLength: 0)
                 self.accountStatus(account)

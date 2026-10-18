@@ -154,6 +154,7 @@ enum NativeOrbitShowcaseScene {
             tokensPerDay: 1_400_000,
             dollarsPerMillion: 1.8,
             seed: 62)
+        // Provider-specific by design: This offline showcase deliberately samples these distinct quota layouts.
         return [
             Card(provider: .amp, accounts: [amp]),
             Card(provider: .codebuff, accounts: [codebuff], days: 7),

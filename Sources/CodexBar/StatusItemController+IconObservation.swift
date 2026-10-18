@@ -27,7 +27,14 @@ extension StatusItemController {
 
     func storeIconObservationSignature() -> String {
         if self.settings.usesNativeGauges {
-            return UsageProvider.allCases.filter { self.isVisible($0) }.map {
+            let connections = self.store.nativeCombinedConnections()
+            let accounts = connections.map { connection in
+                connection.provider.rawValue + "=\(connection.isConnected):" + connection.accounts.map { account in
+                    let activity = NativeCombinedAccounts.lastActivity(account, now: Date())?.timeIntervalSince1970 ?? 0
+                    return account.id + ":\(account.isActive):\(activity)"
+                }.joined(separator: ",")
+            }.joined(separator: "|")
+            return accounts + "||" + UsageProvider.allCases.filter { self.isVisible($0) }.map {
                 "\($0.rawValue)=\(self.store.nativeServicePresentation(for: $0).iconSignature)"
             }.joined(separator: "||")
         }

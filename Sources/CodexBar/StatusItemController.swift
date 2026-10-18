@@ -143,6 +143,8 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     var statusItem: NSStatusItem
     var statusItems: [ProviderInstanceID: NSStatusItem] = [:]
     var nativeGaugeHosts: [ProviderInstanceID: NativeGaugeHostingView] = [:]
+    var nativeCombinedProviders: [UsageProvider] = []
+    var nativeCombinedPopover: NSPopover?
     var nativeUsagePopover: NSPopover?
     var nativeServicePopovers: [ProviderInstanceID: NSPopover] = [:]
     let nativePopoverRefreshScheduler = NativePopoverRefreshScheduler()
@@ -711,6 +713,12 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         }
         // Avoid flicker: when an animation driver is active, store updates can call `updateIcons()` and
         // briefly overwrite the animated frame with the static (phase=nil) icon.
+        if self.settings.usesNativeGauges {
+            self.updateNativeAccountVisibility()
+            self.updateAnimationState()
+            self.updateBlinkingState()
+            return
+        }
         let phase: Double? = self.activeLoadingAnimationPhase()
         if self.shouldMergeIcons {
             let skippedMergedRender = self.applyIcon(phase: phase)
@@ -763,6 +771,10 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         #if DEBUG
         guard !self.isReleasedForTesting else { return }
         #endif
+        if self.settings.usesNativeGauges {
+            self.updateNativeAccountVisibility()
+            return
+        }
         let anyEnabled = !self.store.enabledProvidersForDisplay().isEmpty
         let force = self.store.debugForceAnimation
         let mergeIcons = self.shouldMergeIcons

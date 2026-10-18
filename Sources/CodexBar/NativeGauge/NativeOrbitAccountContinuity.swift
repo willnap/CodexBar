@@ -21,6 +21,7 @@ extension UsageStore {
         guard self.nativeCodexAccountSwitchPresentation?.token == token else { return }
         // Explicit activation may invalidate inventory. Resolve it once and migrate verified aliases even when
         // no popup frame rendered during a fast switch; rendering itself never reads authentication files.
+        // Provider-specific by design: Only the Codex importer reconciles these retained profile-to-managed aliases.
         self.prepareNativeAccountInventory(for: .codex)
         if let projection = self.nativeCodexAccountProjection {
             _ = self.nativeCodexSwitchLocalUsages(for: projection)
@@ -34,6 +35,7 @@ extension UsageStore {
         let rows = self.nativeOrbitCodexAccounts(projection)
         let contexts = rows.compactMap { row
             -> (account: CodexVisibleAccount, history: [PlanUtilizationSeriesHistory], snapshot: UsageSnapshot?)? in
+            // Provider-specific by design: This attribution pass consumes Codex profile identities only.
             guard case let .codex(account) = row.selection else { return nil }
             return (
                 account: account,

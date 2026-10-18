@@ -84,6 +84,8 @@ extension StatusItemController {
         guard !self.settings.usesNativeGauges else { return }
         self.closeNativeServicePopover()
         self.nativeServicePopovers.removeAll()
+        self.nativeCombinedPopover = nil
+        self.nativeCombinedProviders = []
         for host in self.nativeGaugeHosts.values {
             host.removeFromSuperview()
         }
