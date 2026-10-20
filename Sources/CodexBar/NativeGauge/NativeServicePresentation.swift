@@ -255,19 +255,23 @@ extension UsageStore {
         }
         // Provider-specific by design: ClaudeSwap owns opaque account errors; never classify its strings or
         // borrow ambient credentials. Ambient Claude uses its prompt-free owner-selected account config.
-        if provider == .claude {
-            let environment = ProviderRegistry.makeEnvironment(
-                base: self.environmentBase, provider: provider, settings: self.settings, tokenOverride: nil)
-            if let identity = Self.activeClaudeAccountIdentity(environment: environment) {
-                let account = "claude-account:\(identity)"
-                return self.claudeCredentialNotificationScopes[account] ?? account
-            }
-            guard let witness = self.nativeClaudeCredentialPresentationScope,
-                  witness.source == self.settings.claudeUsageDataSource.rawValue,
-                  witness.profile == self.nativeClaudeCredentialProfileIdentifier else { return nil }
-            return witness.scope
-        }
+        if provider == .claude { return self.nativeClaudeAmbientCredentialScope() }
         return "default"
+    }
+
+    /// The scope this Mac's own Claude reads record their outcomes under: the live login's account, from its
+    /// prompt-free config. A switch changes the account, so an earlier login's fault never follows it.
+    func nativeClaudeAmbientCredentialScope() -> String? {
+        let environment = ProviderRegistry.makeEnvironment(
+            base: self.environmentBase, provider: .claude, settings: self.settings, tokenOverride: nil)
+        if let identity = Self.activeClaudeAccountIdentity(environment: environment) {
+            let account = "claude-account:\(identity)"
+            return self.claudeCredentialNotificationScopes[account] ?? account
+        }
+        guard let witness = self.nativeClaudeCredentialPresentationScope,
+              witness.source == self.settings.claudeUsageDataSource.rawValue,
+              witness.profile == self.nativeClaudeCredentialProfileIdentifier else { return nil }
+        return witness.scope
     }
 
     var nativeClaudeCredentialProfileIdentifier: String {

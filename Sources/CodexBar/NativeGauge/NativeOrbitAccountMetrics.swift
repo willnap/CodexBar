@@ -97,6 +97,8 @@ struct NativeOrbitAccountMetrics {
     var reportedSpend: ProviderCostSnapshot?
     /// Absolute provider request allowances retain their quota period; they are not calendar-period usage totals.
     var reportedQuotaUsage: [KimiRequestQuota] = []
+    /// The plan the provider names for this login, kept for checks that run on a rebuilt snapshot.
+    var reportedPlan: String?
     var reportedPlanExpiry: Date?
     var usedResets = 0
     /// Instants where the account's own quota readings rose: measured consumption, wherever it happened.
@@ -542,7 +544,10 @@ struct NativeOrbitAccountMetrics {
         var result = Self(usage: usage)
         result.quotaConsumption = NativeOrbitActivity.consumptionDates(quotaHistory)
         result.resetInventoryObservedAt = snapshot?.updatedAt
-        result.reportedPlanExpiry = snapshot?.subscriptionExpiresAt
+        result.reportedPlan = snapshot?.loginMethod(for: provider)
+        // Provider-specific by design: Kimi's subscription expiry is its monthly pool's renewal, which recurs and is
+        // already shown as that pool's reset; it never means the plan ends.
+        result.reportedPlanExpiry = provider == .kimi ? nil : snapshot?.subscriptionExpiresAt
         // Provider-specific by design: Kimi alone publishes typed request allowances; retain their request units.
         if provider == .kimi, snapshot?.identity(for: .kimi) != nil {
             result.reportedQuotaUsage = (snapshot?.kimiRequestQuotas ?? []).filter { $0.used >= 0 && $0.limit > 0 }

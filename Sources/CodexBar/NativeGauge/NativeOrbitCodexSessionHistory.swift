@@ -1,7 +1,7 @@
 import CodexBarCore
 import Foundation
 
-private struct NativeCodexQuotaHistoryLane: Hashable, Sendable {
+struct NativeCodexQuotaHistoryLane: Hashable, Sendable {
     let name: PlanUtilizationSeriesName
     let windowMinutes: Int
 }
@@ -65,6 +65,8 @@ extension UsageStore {
                   self.isCurrentProviderRefreshGeneration(.codex, generation: generation) else { return }
             let original = self.planUtilizationHistory[.codex] ?? PlanUtilizationHistoryBuckets()
             let protected = self.nativeCodexPublishedHistory(projection: projection)
+            if let last = self.nativeCodexSessionAttribution.unchangedRepair, last.original == original,
+               last.protected == protected, last.observations == observations { return }
             // Repairing re-sorts every recovered series. Off the main actor it no longer stalls the popup's
             // startup animation, which plays just after launch while this backfill drains.
             let repaired = await Task.detached(priority: .utility) {
@@ -76,7 +78,10 @@ extension UsageStore {
                   self.isCurrentProviderRefreshGeneration(.codex, generation: generation) else { return }
             if (self.planUtilizationHistory[.codex] ?? PlanUtilizationHistoryBuckets()) != original
                 || self.nativeCodexPublishedHistory(projection: projection) != protected { continue }
-            guard repaired != original else { return }
+            guard repaired != original else {
+                self.nativeCodexSessionAttribution.unchangedRepair = (observations, original, protected)
+                return
+            }
             if repaired.accounts != original.accounts {
                 let directory = self.planUtilizationHistoryStore.directoryURL
                 let backedUp = await Task.detached(priority: .utility) {
@@ -172,7 +177,9 @@ extension UsageStore {
                 $0.capturedAt >= now.addingTimeInterval(-32 * 86400) && $0.capturedAt <= now
             }
             let history = PlanUtilizationSeriesHistory(
-                name: lane.name, windowMinutes: lane.windowMinutes, entries: Array(entries))
+                name: lane.name,
+                windowMinutes: lane.windowMinutes,
+                entries: Self.nativeOrbitThinnedObservations(entries))
             if let index { histories[index] = history } else { histories.append(history) }
         }
         buckets.setHistories(histories, for: nil)

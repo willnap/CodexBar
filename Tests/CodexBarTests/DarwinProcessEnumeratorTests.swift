@@ -190,6 +190,47 @@ struct DarwinProcessEnumeratorTests {
     }
 
     @Test
+    func `process scans read a settled process's arguments once`() {
+        let cache = DarwinProcessRecordCache()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var starts: [Int32: Date] = [1: now.addingTimeInterval(-3600), 2: now.addingTimeInterval(-3600)]
+        starts[3] = now.addingTimeInterval(-5)
+        var parents: [Int32: Int32] = [1: 0, 2: 1, 3: 1]
+        var reads: [Int32] = []
+        func scan(_ pids: [Int32]) -> [AgentProcessRecord] {
+            cache.records(
+                pids: pids,
+                now: now,
+                bsdInfo: { pid in starts[pid].map { (ppid: parents[pid] ?? 1, startTime: $0) } },
+                read: { pid in
+                    reads.append(pid)
+                    return starts[pid].map {
+                        AgentProcessRecord(
+                            pid: pid,
+                            ppid: parents[pid] ?? 1,
+                            startedAt: $0,
+                            command: "pi \(pid)",
+                            arguments: ["pi", "\(pid)"])
+                    }
+                })
+        }
+        #expect(scan([1, 2, 3]).map(\.pid) == [1, 2, 3])
+        #expect(reads == [1, 2, 3])
+        // Only the young process is read again; a reparented one keeps its arguments under its new parent.
+        reads = []
+        parents[2] = 9
+        let second = scan([1, 2, 3])
+        #expect(reads == [3])
+        #expect(second.first { $0.pid == 2 }?.ppid == 9)
+        #expect(second.first { $0.pid == 2 }?.arguments == ["pi", "2"])
+        // A reused pid is a new process.
+        reads = []
+        starts[1] = now.addingTimeInterval(-120)
+        #expect(scan([1, 2]).map(\.pid) == [1, 2])
+        #expect(reads == [1])
+    }
+
+    @Test
     func `darwin process record keeps agent argv when the executable was deleted`() throws {
         // proc_pidpath returns ENOENT after an updater removes the package directory of a running binary.
         let record = try #require(LocalAgentSessionScanner.darwinProcessRecord(

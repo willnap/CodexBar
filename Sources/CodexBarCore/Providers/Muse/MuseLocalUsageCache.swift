@@ -11,7 +11,7 @@ import Musl
 ///
 /// Completed files retain their events with device/inode identity and precise modification/change
 /// timestamps. Root and timezone changes require a fresh scan; numeric totals never imply pricing.
-struct MuseLocalUsageCache: Codable {
+struct MuseLocalUsageCache: Codable, Equatable {
     struct DayTotals: Codable, Equatable {
         var inputTokens: Int
         var outputTokens: Int
@@ -108,7 +108,7 @@ struct MuseLocalUsageCache: Codable {
         }
     }
 
-    struct FileEntry: Codable {
+    struct FileEntry: Codable, Equatable {
         var stamp: FileStamp?
         var events: [Event]
         var isComplete: Bool
@@ -148,10 +148,7 @@ enum MuseLocalUsageCacheIO {
         untilDayKey: String? = nil) -> MuseLocalUsageCache
     {
         let url = self.cacheFileURL(cacheRoot: cacheRoot)
-        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-              size <= self.maximumBytes,
-              let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode(MuseLocalUsageCache.self, from: data),
+        guard let decoded = self.read(url),
               decoded.version == Self.artifactVersion,
               // Day keys are timezone-dependent, so a moved machine must rebucket from scratch.
               decoded.timeZoneIdentifier == calendar.timeZone.identifier,
@@ -162,6 +159,36 @@ enum MuseLocalUsageCacheIO {
         else {
             return MuseLocalUsageCache(version: Self.artifactVersion)
         }
+        return decoded
+    }
+
+    /// The cache as last read or written, kept by its file's stamp: decoding it again on every refresh cost as much
+    /// as the scan it saves.
+    private final class Memo: @unchecked Sendable {
+        private let lock = NSLock()
+        private var entry: (path: String, stamp: FileContentStamp, cache: MuseLocalUsageCache)?
+
+        func cache(at url: URL, stamp: FileContentStamp) -> MuseLocalUsageCache? {
+            self.lock.withLock {
+                guard let entry = self.entry, entry.path == url.path, entry.stamp == stamp else { return nil }
+                return entry.cache
+            }
+        }
+
+        func store(_ cache: MuseLocalUsageCache, at url: URL) {
+            let stamp = FileContentStamp(url)
+            self.lock.withLock { self.entry = stamp.map { (url.path, $0, cache) } }
+        }
+    }
+
+    private static let memo = Memo()
+
+    private static func read(_ url: URL) -> MuseLocalUsageCache? {
+        guard let stamp = FileContentStamp(url), stamp.size <= self.maximumBytes else { return nil }
+        if let cache = self.memo.cache(at: url, stamp: stamp) { return cache }
+        guard let data = try? Data(contentsOf: url),
+              let decoded = try? JSONDecoder().decode(MuseLocalUsageCache.self, from: data) else { return nil }
+        self.memo.store(decoded, at: url)
         return decoded
     }
 
@@ -187,7 +214,8 @@ enum MuseLocalUsageCacheIO {
         guard self.fitsEncodingBudget(cache, maximumBytes: maximumBytes),
               let data = try? JSONEncoder().encode(cache), data.count <= maximumBytes
         else { return }
-        try? data.write(to: url, options: [.atomic])
+        guard (try? data.write(to: url, options: [.atomic])) != nil else { return }
+        self.memo.store(cache, at: url)
     }
 
     /// Conservative JSON upper bound, including worst-case string escaping, checked before encoding allocates Data.

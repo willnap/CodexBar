@@ -31,6 +31,30 @@ struct AntigravityLocalScanTests {
     }
 
     @Test
+    func `an unchanged database is reused with the same report and charges while a changed one is reread`() throws {
+        let fixture = try Fixture()
+        let first = try fixture.database("first", blobs: [Fixture.blob()])
+        let read = try fixture.report()
+        let reused = try fixture.report()
+        #expect(reused.coverage == .complete)
+        #expect(reused.report.summary?.totalTokens == read.report.summary?.totalTokens)
+        #expect(reused.report.summary?.totalTokens == 187)
+        for path in [
+            \AntigravityLocalReader.Statistics.files, \.rows, \.attemptedBytes, \.materializedPayloadBytes,
+            \.schemaBytes, \.sqliteHandlesOpened, \.sqliteHandlesClosed,
+        ] {
+            #expect(reused.statistics[keyPath: path] == read.statistics[keyPath: path])
+        }
+
+        try FileManager.default.removeItem(at: first)
+        try fixture.database("first", blobs: [Fixture.blob(), Fixture.blob()])
+        try fixture.database("second", blobs: [Fixture.blob()])
+        let changed = try fixture.report()
+        #expect(changed.report.summary?.totalTokens == 561)
+        #expect(changed.statistics.files == 2)
+    }
+
+    @Test
     func `exceeding the database cap with valid history withholds the truncated report`() throws {
         let fixture = try Fixture()
         try fixture.database("first", blobs: [Fixture.blob()])

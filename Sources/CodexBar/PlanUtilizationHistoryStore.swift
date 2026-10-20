@@ -418,10 +418,16 @@ struct PlanUtilizationHistoryStore: Sendable {
         }
     }
 
+    /// Writes each provider's document; `onlyInstanceIDs` limits the pass to those providers and leaves the
+    /// other files as they are.
     @discardableResult
-    func save(_ providers: [ProviderInstanceID: PlanUtilizationHistoryBuckets]) -> Set<ProviderInstanceID> {
+    func save(
+        _ providers: [ProviderInstanceID: PlanUtilizationHistoryBuckets],
+        onlyInstanceIDs: Set<ProviderInstanceID>? = nil) -> Set<ProviderInstanceID>
+    {
         guard let directoryURL = self.directoryURL else { return [] }
         let knownInstanceIDs = Set(UsageProvider.allCases.map(\.instanceID)).union(providers.keys)
+            .filter { onlyInstanceIDs?.contains($0) ?? true }
         do {
             try FileManager.default.createDirectory(
                 at: directoryURL,

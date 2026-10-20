@@ -86,6 +86,7 @@ struct NativePopoverTests {
         let popup = controller.nativePopover(for: .kimi, button: button)
         let viewController = try #require(popup.contentViewController as? NativeServicePopoverController)
         let root = viewController.view
+        viewController.hiddenPresentationDelay = .milliseconds(200)
         store.snapshots[.kimi] = UsageSnapshot(
             primary: RateWindow(
                 usedPercent: 73,
@@ -94,7 +95,7 @@ struct NativePopoverTests {
                 resetDescription: nil),
             secondary: nil,
             updatedAt: Date())
-        // A closed popup coalesces background updates (up to a few seconds) so clicks never wait behind them.
+        // A closed popup coalesces background updates so clicks never wait behind them.
         for _ in 0..<120 {
             if viewController.orbitState.accounts.first?.gauge.resolvedWindows.first?.usedFraction == 0.73 { break }
             try? await Task.sleep(for: .milliseconds(50))

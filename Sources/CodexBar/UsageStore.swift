@@ -234,6 +234,7 @@ final class UsageStore {
     var probeLogs: [ProviderInstanceID: String] = [:]
     var historicalPaceRevision: Int = 0
     var planUtilizationHistoryRevision: Int = 0
+    @ObservationIgnored let nativeOrbitAccountsMemo = NativeOrbitAccountsMemo()
     var providerStorageFootprints: [ProviderInstanceID: ProviderStorageFootprint] = [:]
     @ObservationIgnored var lastCreditsSnapshot: CreditsSnapshot?
     @ObservationIgnored var lastCreditsSnapshotAccountKey: String?
@@ -594,7 +595,8 @@ final class UsageStore {
             widgetStore?.save([:])
         }
         self.planUtilizationPersistenceCoordinator = PlanUtilizationHistoryPersistenceCoordinator(
-            store: planHistoryStore)
+            store: planHistoryStore,
+            debounce: self.startupBehavior.automaticallyStartsBackgroundWork ? .seconds(10) : .zero)
         self.providerMetadata = registry.metadata
         self
             .failureGates = Dictionary(
@@ -1028,7 +1030,9 @@ final class UsageStore {
         case antigravityQuotaSummary
         case antigravityLegacy
     }
+}
 
+extension UsageStore {
     func postQuotaWarning(_ event: QuotaWarningEvent, provider: UsageProvider) {
         self.sessionQuotaNotifier.postQuotaWarning(
             event: event,
@@ -1045,9 +1049,7 @@ final class UsageStore {
             onScreenAlertEnabled: self.settings.quotaWarningOnScreenAlertEnabled,
             now: now)
     }
-}
 
-extension UsageStore {
     func dumpLog(toFileFor provider: UsageProvider) async -> URL? {
         let text = await self.debugLog(for: provider)
         let filename = "codexbar-\(provider.rawValue)-probe.txt"

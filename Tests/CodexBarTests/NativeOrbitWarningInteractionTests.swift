@@ -7,7 +7,7 @@ struct NativeOrbitWarningInteractionTests {
     @Test func `detail tooltips explain the condition without a redundant explain action`() {
         let light = NativeOrbitWarningLight(.behindPace, .opportunity, "Weekly usage is below pace.")
         #expect(!light.tooltip(account: "Work").contains("Explain"))
-        #expect(light.tooltip(account: "Work") == "Usage below even pace.")
+        #expect(light.tooltip(account: "Work") == "Less of the limit used than of its time.")
         #expect(light.tooltip(account: "Work", includesAction: false) == light.tooltip(account: nil))
     }
 
@@ -38,10 +38,10 @@ struct NativeOrbitWarningInteractionTests {
         }
     }
 
-    @Test func `curated specifics survive projection without diagnostic text`() {
+    @Test func `curated specifics survive projection without diagnostic text or a caption`() {
         let light = NativeOrbitWarningLight(
             .limit, .caution, "Projected: internal detail", tooltipDetail: "Weekly limit may run out in 2 hours.")
-        #expect(light.tooltip(account: "Work") == "Projected: Weekly limit may run out in 2 hours.")
+        #expect(light.tooltip(account: "Work") == "Weekly limit may run out in 2 hours.")
     }
 
     @Test func `the all light proof explains each condition rather than repeating its name`() {

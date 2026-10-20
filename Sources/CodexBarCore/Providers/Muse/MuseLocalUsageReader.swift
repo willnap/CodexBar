@@ -195,6 +195,7 @@ enum MuseLocalUsageReader {
             calendar: calendar,
             sinceDayKey: sinceDayKey,
             untilDayKey: untilDayKey)
+        let loaded = cache
         if forceRescan { cache.files = [:] }
         var isComplete = true
         var scannedPaths = Set<String>()
@@ -239,13 +240,16 @@ enum MuseLocalUsageReader {
                 cache.files.removeValue(forKey: path)
             }
         }
-        MuseLocalUsageCacheIO.save(
-            cache: cache,
-            sessionsRoot: context.sessionsRoot,
-            cacheRoot: cacheRoot,
-            calendar: calendar,
-            sinceDayKey: sinceDayKey,
-            untilDayKey: untilDayKey)
+        // A refresh that found nothing new leaves the cache file as it is.
+        if cache.files != loaded.files || loaded.sessionsRoot == nil {
+            MuseLocalUsageCacheIO.save(
+                cache: cache,
+                sessionsRoot: context.sessionsRoot,
+                cacheRoot: cacheRoot,
+                calendar: calendar,
+                sinceDayKey: sinceDayKey,
+                untilDayKey: untilDayKey)
+        }
         return self.result(days: days, isComplete: isComplete)
     }
 

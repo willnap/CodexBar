@@ -38,6 +38,28 @@ struct OpenCodeGoLocalUsageReaderTests {
     }
 
     @Test
+    func `a later fetch sees rows written since the last one`() throws {
+        let env = try Self.makeEnvironment()
+        defer { try? FileManager.default.removeItem(at: env.root) }
+
+        try Self.writeAuth(to: env.authURL)
+        try Self.createDatabase(at: env.databaseURL)
+        try Self.insertMessage(
+            databaseURL: env.databaseURL,
+            createdMs: Self.ms("2026-03-06T11:00:00.000Z"),
+            cost: 3.0)
+        let reader = OpenCodeGoLocalUsageReader(authURL: env.authURL, databaseURL: env.databaseURL)
+        let now = Date(timeIntervalSince1970: 1_772_798_400)
+        #expect(try reader.fetch(now: now).rollingUsagePercent == 25)
+        #expect(try reader.fetch(now: now).rollingUsagePercent == 25)
+        try Self.insertMessage(
+            databaseURL: env.databaseURL,
+            createdMs: Self.ms("2026-03-06T11:30:00.000Z"),
+            cost: 3.0)
+        #expect(try reader.fetch(now: now).rollingUsagePercent == 50)
+    }
+
+    @Test
     func `reads idle WAL database without creating sidecars`() throws {
         let env = try Self.makeEnvironment()
         defer { try? FileManager.default.removeItem(at: env.root) }

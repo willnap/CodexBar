@@ -12,27 +12,23 @@ struct NativeOrbitWarningReconciliationTests {
         #expect(lights.isEmpty)
     }
 
-    @Test func `forecast delays use readable days hours and minutes rather than large minute counts`() {
-        for (minutes, used, reset, expected) in [
-            (10080, 60.0, 4.0 * 86400, "2d"),
-            (300, 60, 9000, "1h 40m"),
-            (300, 95, 9000, "8m"),
+    @Test func `the fuel light says how much of the window is left`() {
+        for (minutes, used, expected) in [
+            (43200, 96.0, "Monthly limit: 4% left."),
+            (10080, 90, "Weekly limit: 10% left."),
+            (300, 95, "Session limit: 5% left."),
         ] {
             let snapshot = UsageSnapshot(
                 primary: .init(
                     usedPercent: used,
                     windowMinutes: minutes,
-                    resetsAt: self.now.addingTimeInterval(reset),
+                    resetsAt: self.now.addingTimeInterval(3600),
                     resetDescription: nil),
                 secondary: nil,
                 updatedAt: self.now)
             let lights = NativeOrbitWarningSignals.account(
                 provider: .claude, snapshot: snapshot, metrics: .empty, history: [], now: self.now)
-            let forecast = lights.first { $0.kind == .limit && $0.severity == .caution }
-            #expect(forecast?.detail.contains("in \(expected).") == true)
-            #expect(forecast?.detail.contains(" min") == false)
-            let title = minutes == 10080 ? "Weekly limit" : "Session limit"
-            #expect(forecast?.tooltip(account: "Work") == "\(title) may run out in \(expected).")
+            #expect(lights.first { $0.kind == .limit && $0.severity == .caution }?.tooltip(account: "Work") == expected)
         }
     }
 
@@ -51,7 +47,44 @@ struct NativeOrbitWarningReconciliationTests {
             provider: .claude, snapshot: snapshot, metrics: .empty, history: [], now: self.now).isEmpty)
     }
 
-    @Test func `run-out timing replaces conflicting or redundant pace lamps`() {
+    @Test func `the fuel light is the allowance left while the hare and flame report pace`() {
+        func kinds(
+            _ used: Double,
+            untilReset: TimeInterval,
+            reserve: NativeOrbitWarningSignals.FuelReserve = .standard) -> Set<NativeOrbitWarningLight.Kind>
+        {
+            let snapshot = UsageSnapshot(
+                primary: nil,
+                secondary: RateWindow(
+                    usedPercent: used,
+                    windowMinutes: 10080,
+                    resetsAt: self.now.addingTimeInterval(untilReset),
+                    resetDescription: nil),
+                updatedAt: self.now)
+            return Set(NativeOrbitWarningSignals.account(
+                provider: .codex,
+                snapshot: snapshot,
+                metrics: .empty,
+                history: [],
+                now: self.now,
+                fuelReserve: reserve).map(\.kind))
+        }
+        // Four hours into the week and a hair above even: noise.
+        #expect(kinds(2.62, untilReset: 163.85 * 3600).isEmpty)
+        // A third of the week used six hours in: burning fast with two thirds of the tank left.
+        #expect(kinds(33, untilReset: 7 * 86400 - 6 * 3600) == [.farAheadPace])
+        #expect(kinds(60, untilReset: 4 * 86400) == [.farAheadPace])
+        #expect(kinds(50, untilReset: 3.5 * 86400 + 6 * 3600) == [.aheadOfPace])
+        // At or below the lowest quota warning threshold (20% by default): fuel alone, whatever the pace.
+        #expect(kinds(81, untilReset: 6.5 * 86400) == [.limit])
+        #expect(kinds(90, untilReset: 30 * 3600) == [.limit])
+        #expect(kinds(55, untilReset: 2 * 86400, reserve: .init(session: 20, weekly: 50)) == [.limit])
+        #expect(NativeOrbitWarningSignals.FuelReserve(thresholds: [50, 20], weekly: [0]).weekly == 20)
+        #expect(NativeOrbitWarningSignals.FuelReserve(thresholds: [60, 30], weekly: [40]) == .init(
+            session: 30, weekly: 40))
+    }
+
+    @Test func `a lit fuel light replaces the pace lamps`() {
         let lights = self.lights(windows: [self.window(5, reset: 9000), self.window(80, reset: 9000)])
         #expect(lights.contains { $0.kind == .limit && $0.severity == .caution })
         #expect(Set(lights.map(\.kind)).isDisjoint(with: [.behindPace, .aheadOfPace, .farAheadPace]))

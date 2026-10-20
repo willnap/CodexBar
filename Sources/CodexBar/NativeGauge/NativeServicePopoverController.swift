@@ -151,11 +151,16 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         self.presentationDirty = true
     }
 
+    /// How long a closed popover gathers changes before rebuilding its columns. A refresh publishes many changes over
+    /// a minute or two, and each rebuild re-renders every column nobody sees; opening applies any pending change at
+    /// once.
+    var hiddenPresentationDelay: Duration = .seconds(30)
+
     private func schedulePresentationRefresh() {
         self.presentationDirty = true
         guard self.presentationRefreshTask == nil else { return }
         let delay: Duration = (self.popover?.isShown == true || self.isInCombinedPresentation) ? .milliseconds(150) :
-            .seconds(3)
+            self.hiddenPresentationDelay
         self.presentationRefreshTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: delay)
             guard let self, !Task.isCancelled else { return }

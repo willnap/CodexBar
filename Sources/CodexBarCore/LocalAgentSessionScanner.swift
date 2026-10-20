@@ -481,9 +481,7 @@ public struct LocalAgentSessionScanner: Sendable {
             }
         }
         #if canImport(Darwin)
-        return DarwinProcessEnumerator.allPIDs().compactMap { pid in
-            Self.darwinProcessRecord(pid: pid)
-        }
+        return DarwinProcessRecordCache.shared.records(pids: DarwinProcessEnumerator.allPIDs())
         #else
         let records = await AgentPSOutputParser.parse(self.processOutput(environment: environment))
         #if os(Linux)

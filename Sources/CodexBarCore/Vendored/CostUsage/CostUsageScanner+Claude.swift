@@ -43,12 +43,12 @@ extension CostUsageScanner {
 
     // MARK: - Claude
 
-    private struct ClaudeDayModelKey: Hashable {
+    struct ClaudeDayModelKey: Hashable {
         let day: String
         let model: String
     }
 
-    private enum ClaudeRowKey: Hashable, Comparable {
+    enum ClaudeRowKey: Hashable, Comparable {
         case request(messageId: String, requestId: String)
         case session(sessionId: String, messageId: String)
 
@@ -66,7 +66,7 @@ extension CostUsageScanner {
         }
     }
 
-    private struct ClaudeReportAggregate {
+    struct ClaudeReportAggregate {
         var total: Double = 0
         var sampleCount: Int = 0
         var unresolved = false
@@ -379,7 +379,7 @@ extension CostUsageScanner {
         fileURL.path.contains("/subagents/") ? .subagent : .parent
     }
 
-    private static func claudeCanonicalRowKey(_ row: ClaudeUsageRow) -> ClaudeRowKey? {
+    static func claudeCanonicalRowKey(_ row: ClaudeUsageRow) -> ClaudeRowKey? {
         guard let messageId = row.messageId else { return nil }
         if let requestId = row.requestId {
             return .request(messageId: messageId, requestId: requestId)
@@ -518,7 +518,7 @@ extension CostUsageScanner {
         cache.days = days
     }
 
-    private static func addClaudeRow(_ row: ClaudeUsageRow, to packed: inout [Int]) -> Bool {
+    static func addClaudeRow(_ row: ClaudeUsageRow, to packed: inout [Int]) -> Bool {
         // Retain incomplete day/models without treating their missing usage as zero activity.
         guard row.isIncomplete != true else { return true }
         let delta = [
@@ -803,6 +803,7 @@ extension CostUsageScanner {
         return inventory
     }
 
+    // swiftlint:disable:next function_body_length
     static func loadClaudeDaily(
         provider: UsageProvider,
         range: CostUsageDayRange,
@@ -926,10 +927,18 @@ extension CostUsageScanner {
             }
         }
 
-        // Keep the same winner and summation order for both projections of this cache snapshot.
-        let rows = Self.reconciledClaudeRows(cache: cache)
+        // Keep the same winner and summation order for both projections of this cache snapshot. The engine replays
+        // only the transcripts that changed since its last scan of this cache.
+        let engine = ClaudeReportEngine.Registry.shared.engine(cachePath: canonicalCachePath, organizationID: nil)
+        let incremental = engine.report(
+            cache: cache, range: range, pricingResolver: pricingResolver, includeRequestCounts: false)
+        let rows = incremental == nil ? Self.reconciledClaudeRows(cache: cache) : []
         if shouldMutateCache {
-            Self.rebuildClaudeDays(cache: &cache, rows: rows)
+            if let incremental {
+                cache.days = incremental.days
+            } else {
+                Self.rebuildClaudeDays(cache: &cache, rows: rows)
+            }
             Self.pruneDays(cache: &cache, sinceKey: range.scanSinceKey, untilKey: range.scanUntilKey)
             cache.scanSinceKey = range.scanSinceKey
             cache.scanUntilKey = range.scanUntilKey
@@ -939,7 +948,7 @@ extension CostUsageScanner {
             }
         }
 
-        let report = Self.buildClaudeReportFromCache(
+        let report = incremental?.report ?? Self.buildClaudeReportFromCache(
             cache: cache,
             rows: rows,
             range: range,
@@ -947,7 +956,27 @@ extension CostUsageScanner {
         try checkCancellation?()
 
         artifact.usage = cache
-        let committedCacheStamp: CostUsageClaudeFileStamp? = if shouldMutateCache {
+        // An ordinary refresh appends a few rows; the app writes such changes at most every few minutes and keeps them
+        // in memory, where the next scan reads them, in between (`WriteSchedule`).
+        let retainedStamp: CostUsageClaudeFileStamp? = if shouldMutateCache, !options.forceRescan, !forceFullScan,
+                                                          !windowRolledForward, !needsWindowScopedRebuild,
+                                                          !cacheArtifactChanged,
+                                                          CostUsageClaudeCacheIO.WriteSchedule.shared.shouldDefer(
+                                                              canonicalCachePath,
+                                                              now: Date())
+        {
+            CostUsageClaudeCacheIO.retainUnsaved(
+                provider: provider,
+                cache: artifact,
+                cacheRoot: options.cacheRoot,
+                reportContext: cacheContext,
+                calendar: range.calendar)
+        } else {
+            nil
+        }
+        let committedCacheStamp: CostUsageClaudeFileStamp? = if let retainedStamp {
+            retainedStamp
+        } else if shouldMutateCache {
             try CostUsageClaudeCacheIO.save(
                 provider: provider,
                 cache: artifact,
@@ -975,7 +1004,8 @@ extension CostUsageScanner {
                 sourceInventory: sourceInventory,
                 reportKey: reportKey,
                 report: report,
-                hasWindowScopedRows: hasWindowScopedBaseline || (shouldMutateCache && forceFullScan))
+                hasWindowScopedRows: hasWindowScopedBaseline || (shouldMutateCache && forceFullScan),
+                persisting: retainedStamp == nil)
         }
         return report
     }
@@ -1045,8 +1075,33 @@ extension CostUsageScanner {
         pricingResolver: CostUsagePricing.ClaudeResolver,
         includeRequestCounts: Bool = false) -> CostUsageDailyReport
     {
-        var entries: [CostUsageDailyReport.Entry] = []
         var temporalBuckets = TemporalBuckets()
+        let repricedCosts = self.claudeTemporalPricing(
+            rows: rows,
+            range: range,
+            pricingResolver: pricingResolver,
+            temporalBuckets: &temporalBuckets)
+        return self.assembleClaudeReport(
+            repricedCosts: repricedCosts,
+            timeline: (
+                self.sortedHourlyEntries(temporalBuckets.hourly),
+                self.sortedQuotaSlices(temporalBuckets.quotaSlices)),
+            packedDays: !cache.files.isEmpty && cache.files.values.allSatisfy { $0.claudeRows != nil }
+                ? nil : cache.days,
+            range: range,
+            includeRequestCounts: includeRequestCounts)
+    }
+
+    /// The report from its day/model totals and time-ordered bucket entries, however they were summed. `packedDays`
+    /// stands in for the day/model totals of a cache whose transcripts do not all have rows; nil when they do.
+    static func assembleClaudeReport(
+        repricedCosts: [ClaudeDayModelKey: ClaudeReportAggregate],
+        timeline: (hourly: [CostUsageHourlyEntry], quotaSlices: [CostUsageTimedEntry]),
+        packedDays: [String: [String: [Int]]]?,
+        range: CostUsageDayRange,
+        includeRequestCounts: Bool) -> CostUsageDailyReport
+    {
+        var entries: [CostUsageDailyReport.Entry] = []
         var totalInput = CostUsageDailyReport.OptionalCountAccumulator(0)
         var totalOutput = CostUsageDailyReport.OptionalCountAccumulator(0)
         var totalCacheRead = CostUsageDailyReport.OptionalCountAccumulator(0)
@@ -1055,16 +1110,11 @@ extension CostUsageScanner {
         var totalCost: Double = 0
         var costSeen = false
         var hasTokens = false
-        let repricedCosts = self.claudeTemporalPricing(
-            rows: rows,
-            range: range,
-            pricingResolver: pricingResolver,
-            temporalBuckets: &temporalBuckets)
 
-        let hasCompleteRows = !cache.files.isEmpty && cache.files.values.allSatisfy { $0.claudeRows != nil }
+        let hasCompleteRows = packedDays == nil
         let modelsByDay = hasCompleteRows
             ? Dictionary(grouping: repricedCosts.keys, by: \.day).mapValues { $0.map(\.model).sorted() }
-            : cache.days.mapValues { $0.keys.sorted() }
+            : (packedDays ?? [:]).mapValues { $0.keys.sorted() }
         let dayKeys = modelsByDay.keys.sorted().filter {
             CostUsageDayRange.isInRange(dayKey: $0, since: range.sinceKey, until: range.untilKey)
         }
@@ -1089,7 +1139,7 @@ extension CostUsageScanner {
                 let repricedCost = repricedCosts[ClaudeDayModelKey(day: day, model: model)]
                 let counts = hasCompleteRows
                     ? repricedCost ?? ClaudeReportAggregate()
-                    : ClaudeReportAggregate(packed: cache.days[day]?[model] ?? [])
+                    : ClaudeReportAggregate(packed: packedDays?[day]?[model] ?? [])
                 let sampleCount = counts.sampleCount
                 daySampleCount.add(sampleCount)
                 dayHasTokens = dayHasTokens || sampleCount > 0
@@ -1179,8 +1229,8 @@ extension CostUsageScanner {
         return CostUsageDailyReport(
             data: entries,
             summary: summary,
-            hourly: self.sortedHourlyEntries(temporalBuckets.hourly),
-            quotaSlices: self.sortedQuotaSlices(temporalBuckets.quotaSlices))
+            hourly: timeline.hourly,
+            quotaSlices: timeline.quotaSlices)
     }
 
     private static func claudeTemporalPricing(
@@ -1189,7 +1239,6 @@ extension CostUsageScanner {
         pricingResolver: CostUsagePricing.ClaudeResolver,
         temporalBuckets: inout TemporalBuckets) -> [ClaudeDayModelKey: ClaudeReportAggregate]
     {
-        let costScale = 1_000_000_000.0
         var repricedCosts: [ClaudeDayModelKey: ClaudeReportAggregate] = [:]
         if !rows.isEmpty {
             pricingResolver.prepareCatalog()
@@ -1201,46 +1250,52 @@ extension CostUsageScanner {
             #endif
             let key = ClaudeDayModelKey(day: row.dayKey, model: row.model)
             var aggregate = repricedCosts[key] ?? ClaudeReportAggregate()
-            if row.isIncomplete == true {
-                aggregate.incompleteRequestCount += 1
-                repricedCosts[key] = aggregate
-                continue
-            }
-            aggregate.sampleCount += 1
-            aggregate.input.add(row.input)
-            aggregate.output.add(row.output)
-            aggregate.cacheRead.add(row.cacheRead)
-            aggregate.cacheCreate.add(row.cacheCreate)
-            let isPriced = row.costPriced ?? (row.costNanos > 0)
-            let currentPricingCost = pricingResolver.costUSD(
-                model: row.model,
-                inputTokens: row.input,
-                cacheReadInputTokens: row.cacheRead,
-                cacheCreationInputTokens: row.cacheCreate,
-                cacheCreationInputTokens1h: row.cacheCreate1h ?? 0,
-                outputTokens: row.output,
-                pricingDate: row.timestampUnixMs.map {
-                    Date(timeIntervalSince1970: Double($0) / 1000)
-                })
-            let cost: Double? = if isPriced, row.costNanos == 0 {
-                0
-            } else if let currentPricingCost {
-                currentPricingCost
-            } else if isPriced {
-                Double(row.costNanos) / costScale
-            } else {
-                nil
-            }
-            if let cost {
-                aggregate.total += cost
-            } else {
-                aggregate.unresolved = true
-            }
+            let cost = row.isIncomplete == true ? nil : self.claudeRowCost(row, pricingResolver: pricingResolver)
+            self.accumulateClaudeRow(row, cost: cost, into: &aggregate)
             repricedCosts[key] = aggregate
-
-            self.addClaudeTemporal(row: row, costUSD: cost, range: range, into: &temporalBuckets)
+            if row.isIncomplete != true {
+                self.addClaudeTemporal(row: row, costUSD: cost, range: range, into: &temporalBuckets)
+            }
         }
 
         return repricedCosts
+    }
+
+    /// A complete row's cost at current prices; a row whose transcript recorded its price keeps it when the
+    /// catalogue has none. Nil when no price is known.
+    static func claudeRowCost(_ row: ClaudeUsageRow, pricingResolver: CostUsagePricing.ClaudeResolver) -> Double? {
+        let isPriced = row.costPriced ?? (row.costNanos > 0)
+        let currentPricingCost = pricingResolver.costUSD(
+            model: row.model,
+            inputTokens: row.input,
+            cacheReadInputTokens: row.cacheRead,
+            cacheCreationInputTokens: row.cacheCreate,
+            cacheCreationInputTokens1h: row.cacheCreate1h ?? 0,
+            outputTokens: row.output,
+            pricingDate: row.timestampUnixMs.map {
+                Date(timeIntervalSince1970: Double($0) / 1000)
+            })
+        if isPriced, row.costNanos == 0 { return 0 }
+        if let currentPricingCost { return currentPricingCost }
+        return isPriced ? Double(row.costNanos) / 1_000_000_000.0 : nil
+    }
+
+    /// One row's part of its day/model total: an incomplete row is only counted; a complete one adds its tokens and
+    /// its cost, or marks the total unresolved when it has none.
+    static func accumulateClaudeRow(_ row: ClaudeUsageRow, cost: Double?, into aggregate: inout ClaudeReportAggregate) {
+        if row.isIncomplete == true {
+            aggregate.incompleteRequestCount += 1
+            return
+        }
+        aggregate.sampleCount += 1
+        aggregate.input.add(row.input)
+        aggregate.output.add(row.output)
+        aggregate.cacheRead.add(row.cacheRead)
+        aggregate.cacheCreate.add(row.cacheCreate)
+        if let cost {
+            aggregate.total += cost
+        } else {
+            aggregate.unresolved = true
+        }
     }
 }

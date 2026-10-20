@@ -42,13 +42,77 @@ struct NativeOrbitAccountPresentation: Identifiable {
     var historySourceLabel: String?
     /// The token and spend corners show a remembered reading measured at this time until the live one publishes.
     var usageLastKnownAt: Date?
+    /// How much of a window is left when its fuel light comes on.
+    var fuelReserve: NativeOrbitWarningSignals.FuelReserve = .standard
     /// The dial's lit warning lights the store can see (the popup adds its own: quota and switching).
     var warnings: [NativeOrbitWarningLight] = []
 }
 
+/// Account presentations remembered between the callers of `UsageStore.nativeOrbitAccounts(for:)`.
+@MainActor
+final class NativeOrbitAccountsMemo {
+    struct Entry {
+        let accounts: [NativeOrbitAccountPresentation]
+        let builtAt: Date
+    }
+
+    /// Bumped when an input of the provider's entry changes.
+    @MainActor
+    @Observable
+    final class Generation {
+        fileprivate(set) var value: UInt64 = 0
+    }
+
+    /// How long an entry stands in for a fresh build while none of its inputs changes. Its metrics and warnings also
+    /// read the clock; none of them moves faster than this.
+    static let lifetime: TimeInterval = 5
+
+    var entries: [UsageProvider: Entry] = [:]
+    private var generations: [UsageProvider: Generation] = [:]
+
+    func generation(_ provider: UsageProvider) -> Generation {
+        if let generation = self.generations[provider] { return generation }
+        let generation = Generation()
+        self.generations[provider] = generation
+        return generation
+    }
+
+    func forget(_ provider: UsageProvider) {
+        self.entries[provider] = nil
+        self.generation(provider).value &+= 1
+    }
+}
+
 extension UsageStore {
-    /// Rendering reads only cached inventories and their verified snapshots; it never selects or fetches an account.
+    /// The menu bar, automatic switching and each popover ask for the same rows after every change, so one build
+    /// serves them all. A change to anything the build read discards it.
     func nativeOrbitAccounts(for provider: UsageProvider) -> [NativeOrbitAccountPresentation] {
+        let memo = self.nativeOrbitAccountsMemo
+        let now = Date()
+        if let entry = memo.entries[provider],
+           (0..<NativeOrbitAccountsMemo.lifetime).contains(now.timeIntervalSince(entry.builtAt))
+        {
+            // A reader served the remembered rows observes their generation in place of the inputs they were built
+            // from. A reader that builds observes those inputs itself, exactly as without the memo.
+            _ = memo.generation(provider).value
+            return entry.accounts
+        }
+        // Observers re-read on a later turn, so a rebuild always sees the change that discarded the last one.
+        let accounts = withObservationTracking {
+            self.buildNativeOrbitAccounts(for: provider)
+        } onChange: { [weak memo] in
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { memo?.forget(provider) }
+            } else {
+                Task { @MainActor [weak memo] in memo?.forget(provider) }
+            }
+        }
+        memo.entries[provider] = .init(accounts: accounts, builtAt: now)
+        return accounts
+    }
+
+    /// Rendering reads only cached inventories and their verified snapshots; it never selects or fetches an account.
+    private func buildNativeOrbitAccounts(for provider: UsageProvider) -> [NativeOrbitAccountPresentation] {
         // Provider-specific by design: Codex reconciliation and ClaudeSwap own their distinct account inventories.
         if provider == .codex, let projection = self.nativeCodexAccountProjection {
             return self.nativeOrbitCodexAccounts(projection)
@@ -310,7 +374,9 @@ extension UsageStore {
                     account,
                     ambient: ambient),
                 selection: .claudeSwap(account),
-                // claude-swap owns this row's fetching; its own report lights the dial.
+                // claude-swap owns this row's fetching; its own report lights the dial. This Mac's own Claude read can
+                // fail (a rotated keychain item it may not read without a prompt) while claude-swap reads the same
+                // login, so its faults never light a claude-swap row.
                 faultScope: nil,
                 extraWarnings: warnings.lights,
                 errorExplained: warnings.explained,
@@ -541,6 +607,7 @@ extension UsageStore {
                 provider: provider,
                 snapshot: historySnapshot),
             usageLastKnownAt: localUsage == nil ? nil : usageLastKnownAt,
+            fuelReserve: self.nativeFuelReserve(provider),
             warnings: self.nativeOrbitWarnings(
                 provider: provider,
                 faultScope: faultScope,

@@ -260,6 +260,21 @@ struct NativeCodexAccountUsageHistoryTests {
             canRemove: false)
     }
 
+    @Test func `repeated fetches archive a day again only when its count changes`() throws {
+        var history: NativeCodexAccountUsageHistory?
+        for minute in 0..<50 {
+            history = try NativeCodexAccountUsageHistory.merging(
+                self.history(days: [("2026-10-09", 25), ("2026-10-10", minute < 30 ? 20 : 26)]),
+                previous: history,
+                fetchedAt: self.now.addingTimeInterval(TimeInterval(minute * 60)))
+        }
+        let merged = try #require(history)
+        #expect(merged.archivedObservations?.map(\.day.tokens) == [25, 20, 26])
+        #expect(merged.tokenSnapshot(asOf: self.now.addingTimeInterval(29 * 60))?.daily.map(\.totalTokens)
+            == [25, 20])
+        #expect(merged.tokenSnapshot()?.daily.map(\.totalTokens) == [25, 26])
+    }
+
     @Test func `as of history never borrows the latest correction metadata`() throws {
         let first = try #require(NativeCodexAccountUsageHistory.merging(
             self.history(

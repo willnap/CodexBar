@@ -76,6 +76,50 @@ public struct GrokLocalSessionSummary: Sendable {
 public enum GrokLocalSessionScanner {
     public static let defaultLookbackDays = 30
 
+    /// What one session's signals file says.
+    private struct Signals {
+        let tokens: Int
+        let models: [String]
+    }
+
+    /// Each signals file as last parsed, kept until it changes: a refresh otherwise reread every session of the month.
+    private final class SignalsCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var entries: [String: (stamp: FileContentStamp, signals: Signals)] = [:]
+
+        func signals(at url: URL, stamp: FileContentStamp, parse: (URL) -> Signals?) -> Signals? {
+            if let entry = self.lock.withLock({ self.entries[url.path] }), entry.stamp == stamp { return entry.signals }
+            guard let signals = parse(url) else { return nil }
+            self.lock.withLock { self.entries[url.path] = (stamp, signals) }
+            return signals
+        }
+
+        func keep(_ paths: Set<String>) {
+            self.lock.withLock { self.entries = self.entries.filter { paths.contains($0.key) } }
+        }
+    }
+
+    private static let signalsCache = SignalsCache()
+
+    private static func parseSignals(_ url: URL) -> Signals? {
+        guard let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        let beforeCompaction = (json["totalTokensBeforeCompaction"] as? Int) ?? 0
+        let contextUsed = (json["contextTokensUsed"] as? Int) ?? 0
+        var models: [String] = []
+        if let primary = (json["primaryModelId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !primary.isEmpty
+        {
+            models.append(primary)
+        }
+        for model in (json["modelsUsed"] as? [String]) ?? [] {
+            let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { models.append(trimmed) }
+        }
+        return Signals(tokens: beforeCompaction + contextUsed, models: models)
+    }
+
     /// Walk `~/.grok/sessions/<encoded_cwd>/<session_id>/signals.json` and aggregate stats.
     public static func summarize(
         env: [String: String] = ProcessInfo.processInfo.environment,
@@ -101,6 +145,7 @@ public enum GrokLocalSessionScanner {
         var dailyTokens: [String: Int] = [:]
         var dailySessions: [String: Int] = [:]
         var dailyModels: [String: [String: Int]] = [:]
+        var seen = Set<String>()
 
         while let rootEnum, let sessionURL = rootEnum.nextObject() as? URL {
             guard rootEnum.level == 2 else { continue }
@@ -108,39 +153,24 @@ public enum GrokLocalSessionScanner {
             rootEnum.skipDescendants()
             guard (try? sessionURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
             let url = sessionURL.appendingPathComponent("signals.json")
-            let attrs = try? url.resourceValues(forKeys: [.contentModificationDateKey])
-            let mtime = attrs?.contentModificationDate ?? Date.distantPast
-            guard mtime >= lookbackCutoff, mtime < lookbackEnd else { continue }
-
-            guard let data = try? Data(contentsOf: url),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            guard let stamp = FileContentStamp(url), stamp.modified >= lookbackCutoff, stamp.modified < lookbackEnd
+            else { continue }
+            let mtime = stamp.modified
+            seen.insert(url.path)
+            guard let signals = Self.signalsCache.signals(at: url, stamp: stamp, parse: Self.parseSignals)
             else { continue }
 
             sessionCount += 1
-            let beforeCompaction = (json["totalTokensBeforeCompaction"] as? Int) ?? 0
-            let contextUsed = (json["contextTokensUsed"] as? Int) ?? 0
-            let sessionTokens = beforeCompaction + contextUsed
+            let sessionTokens = signals.tokens
             totalTokens += sessionTokens
 
             if mtime > (lastSessionAt ?? Date.distantPast) {
                 lastSessionAt = mtime
             }
 
-            var sessionModels: [String] = []
-            if let primary = (json["primaryModelId"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !primary.isEmpty
-            {
-                modelCounts[primary, default: 0] += 1
-                sessionModels.append(primary)
-            }
-            if let models = json["modelsUsed"] as? [String] {
-                for model in models {
-                    let trimmed = model.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty {
-                        modelCounts[trimmed, default: 0] += 1
-                        sessionModels.append(trimmed)
-                    }
-                }
+            let sessionModels = signals.models
+            for model in sessionModels {
+                modelCounts[model, default: 0] += 1
             }
 
             if let day = Self.dayKey(for: mtime, calendar: calendar) {
@@ -152,6 +182,7 @@ public enum GrokLocalSessionScanner {
             }
         }
 
+        Self.signalsCache.keep(seen)
         let sortedModels = modelCounts.sorted { $0.value > $1.value }.map(\.key)
         let daily = dailyTokens.keys.sorted().map { day in
             let models = (dailyModels[day] ?? [:]).sorted { $0.value > $1.value }.map(\.key)

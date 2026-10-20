@@ -293,18 +293,67 @@ public actor NativeCodexQuotaSessionHistoryScanner {
         state.discardedTail = Data(searchable.suffix(marker.count - 1))
     }
 
+    /// How far each contributing file had been read when observations were last collected.
+    private struct ReadState: Equatable {
+        let inode: UInt64
+        let offset: UInt64
+    }
+
+    /// The last collection, sorted. Rehashing and sorting every reading of the month cost seconds per refresh, while a
+    /// refresh usually reads nothing new; readings only enter while a file is read, and never from later than then.
+    private var collected: (states: [URL: ReadState], observations: [NativeCodexQuotaSessionObservation])?
+
     private func observations(now: Date) -> [NativeCodexQuotaSessionObservation] {
-        var observations = Set<NativeCodexQuotaSessionObservation>()
+        var states: [URL: ReadState] = [:]
+        var endsMidLine = false
         for (url, state) in self.files {
             guard CodexCredentialFileAccess.permits(url), state.failedAt == nil, state.offset == state.size,
                   !state.discardingLine else { continue }
-            var parser = state.parser
-            if !state.pending.isEmpty { parser.ingest(state.pending, now: now) }
-            observations.formUnion(parser.observations(now: now))
+            states[url] = ReadState(inode: state.inode, offset: state.offset)
+            if !state.pending.isEmpty { endsMidLine = true }
         }
-        return observations.sorted {
-            if $0.snapshot.updatedAt != $1.snapshot.updatedAt { return $0.snapshot.updatedAt < $1.snapshot.updatedAt }
-            return ($0.legacyCreatorAccountID ?? "") < ($1.legacyCreatorAccountID ?? "")
+        let sorted: [NativeCodexQuotaSessionObservation]
+        if !endsMidLine, let collected = self.collected, collected.states == states {
+            sorted = collected.observations
+        } else {
+            var observations = Set<NativeCodexQuotaSessionObservation>()
+            for url in states.keys {
+                guard let state = self.files[url] else { continue }
+                var parser = state.parser
+                // A line still being written is read as it stands now, so it is never kept for later.
+                if !state.pending.isEmpty { parser.ingest(state.pending, now: now) }
+                observations.formUnion(parser.observations(now: now))
+            }
+            sorted = observations.sorted {
+                if $0.snapshot.updatedAt != $1.snapshot.updatedAt {
+                    return $0.snapshot.updatedAt < $1.snapshot.updatedAt
+                }
+                return ($0.legacyCreatorAccountID ?? "") < ($1.legacyCreatorAccountID ?? "")
+            }
+            self.collected = endsMidLine ? nil : (states, sorted)
         }
+        let cutoff = now.addingTimeInterval(-32 * 86400)
+        let lower = sorted.partitioningIndex { $0.snapshot.updatedAt >= cutoff }
+        let upper = sorted.partitioningIndex { $0.snapshot.updatedAt > now }
+        return lower < upper ? Array(sorted[lower..<upper]) : []
+    }
+}
+
+extension RandomAccessCollection {
+    /// The first index whose element satisfies `predicate`, which must be false then true along the collection.
+    fileprivate func partitioningIndex(where predicate: (Element) -> Bool) -> Index {
+        var lower = self.startIndex
+        var count = self.count
+        while count > 0 {
+            let half = count / 2
+            let middle = self.index(lower, offsetBy: half)
+            if predicate(self[middle]) {
+                count = half
+            } else {
+                lower = self.index(after: middle)
+                count -= half + 1
+            }
+        }
+        return lower
     }
 }

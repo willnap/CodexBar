@@ -469,15 +469,21 @@ extension UsageStore {
            let last = existing.entries.last,
            last.nativeMetrics == sample.entry.nativeMetrics,
            Calendar.current.isDate(last.capturedAt, inSameDayAs: sample.entry.capturedAt) { return existing }
+        // Rendering overlays the current reading, which is usually already the latest recorded one: keep the series
+        // (and its storage) rather than copying it to an equal one.
+        if let last = existing.entries.last, last == sample.entry,
+           sample.windowMinutes <= 0 || sample.windowMinutes == existing.windowMinutes { return existing }
         let merged = self.nativeOrbitMergedRawEntries(existing.entries, [sample.entry])
         let entries = sample.name.rawValue == "nativeMetric:usage" ? Array(merged.suffix(4096)) : merged
         let cutoff = (entries.last?.capturedAt ?? sample.entry.capturedAt).addingTimeInterval(-32 * 86400)
         let minutes = sample.windowMinutes > 0 && sample.entry.capturedAt >= (existing.latestCapturedAt ?? .distantPast)
             ? sample.windowMinutes : existing.windowMinutes
+        // The merge is in time order, so the expired readings are a prefix; usually there are none to drop.
+        let retained = entries.firstIndex { $0.capturedAt >= cutoff } ?? entries.endIndex
         return .init(
             name: sample.name,
             windowMinutes: minutes,
-            entries: entries.filter { $0.capturedAt >= cutoff })
+            entries: retained == entries.startIndex ? entries : Array(entries[retained...]))
     }
 
     private nonisolated static func mergedPlanUtilizationEntries(
@@ -1751,25 +1757,39 @@ actor PlanUtilizationHistoryPersistenceCoordinator {
     private let saveOperation: (@Sendable ([ProviderInstanceID: PlanUtilizationHistoryBuckets]) async -> Bool)?
     private var pendingSnapshot: [ProviderInstanceID: PlanUtilizationHistoryBuckets]?
     private var failedSnapshot: [ProviderInstanceID: PlanUtilizationHistoryBuckets]?
+    /// What the files hold after this launch's writes; nil until a complete pass has succeeded.
+    private var savedSnapshot: [ProviderInstanceID: PlanUtilizationHistoryBuckets]?
     private var persistenceTask: Task<Void, Never>?
     private var isTerminating = false
+    /// How long an accepted change waits for the rest of its refresh before it is written. A refresh records several
+    /// providers' readings in turn, and each write encodes a provider's whole history.
+    private let debounce: Duration
+    private var debounceTask: Task<Void, Never>?
 
     init(
         store: PlanUtilizationHistoryStore,
-        saveOperation: (@Sendable ([ProviderInstanceID: PlanUtilizationHistoryBuckets]) async -> Bool)? = nil)
+        saveOperation: (@Sendable ([ProviderInstanceID: PlanUtilizationHistoryBuckets]) async -> Bool)? = nil,
+        debounce: Duration = .zero)
     {
         self.store = store
         self.saveOperation = saveOperation
+        self.debounce = debounce
     }
 
     /// Drain accepted writes and retry a rejected latest snapshot once. A permanent filesystem failure
     /// remains available for the next enqueue/flush without blocking normal termination forever.
     func flush() async -> Bool {
+        // A flush never waits out the debounce.
+        if self.debounceTask != nil {
+            self.debounceTask?.cancel()
+            self.debounceTask = nil
+            self.startPersisting()
+        }
         while let task = self.persistenceTask {
             await task.value
         }
         if let failedSnapshot = self.failedSnapshot {
-            self.scheduleSnapshot(failedSnapshot)
+            self.scheduleSnapshot(failedSnapshot, immediately: true)
             while let task = self.persistenceTask {
                 await task.value
             }
@@ -1786,14 +1806,38 @@ actor PlanUtilizationHistoryPersistenceCoordinator {
     /// Seal ordinary admission so an older captured snapshot cannot overwrite that final state after an await.
     func flushForTermination(latestSnapshot: [ProviderInstanceID: PlanUtilizationHistoryBuckets]?) async -> Bool {
         self.isTerminating = true
-        if let latestSnapshot { self.scheduleSnapshot(latestSnapshot) }
+        if let latestSnapshot { self.scheduleSnapshot(latestSnapshot, immediately: true) }
         return await self.flush()
     }
 
-    private func scheduleSnapshot(_ snapshot: [ProviderInstanceID: PlanUtilizationHistoryBuckets]) {
+    private func scheduleSnapshot(
+        _ snapshot: [ProviderInstanceID: PlanUtilizationHistoryBuckets],
+        immediately: Bool = false)
+    {
         self.pendingSnapshot = snapshot
         guard self.persistenceTask == nil else { return }
+        guard !immediately, self.debounce > .zero else {
+            self.debounceTask?.cancel()
+            self.debounceTask = nil
+            self.startPersisting()
+            return
+        }
+        guard self.debounceTask == nil else { return }
+        let debounce = self.debounce
+        self.debounceTask = Task(priority: .utility) {
+            try? await Task.sleep(for: debounce)
+            await self.debounceDidEnd()
+        }
+    }
 
+    private func debounceDidEnd() {
+        guard !Task.isCancelled else { return }
+        self.debounceTask = nil
+        self.startPersisting()
+    }
+
+    private func startPersisting() {
+        guard self.persistenceTask == nil, self.pendingSnapshot != nil else { return }
         self.persistenceTask = Task(priority: .utility) {
             await self.persistLoop()
         }
@@ -1813,9 +1857,20 @@ actor PlanUtilizationHistoryPersistenceCoordinator {
             return await saveOperation(snapshot)
         }
         let store = self.store
+        // Each refresh changes one provider's history. Encoding every provider's document to find that out cost
+        // more than the write; unchanged values share storage with the saved ones, so comparing them is cheap.
+        let changed = self.savedSnapshot.map { saved in
+            Set(saved.keys).union(snapshot.keys).filter { saved[$0] != snapshot[$0] }
+        }
+        guard changed?.isEmpty != true else { return true }
         let failures = await Task.detached(priority: .utility) {
-            store.save(snapshot)
+            store.save(snapshot, onlyInstanceIDs: changed)
         }.value
+        var saved = self.savedSnapshot ?? snapshot
+        for instanceID in changed ?? Set(snapshot.keys) where !failures.contains(instanceID) {
+            saved[instanceID] = snapshot[instanceID]
+        }
+        self.savedSnapshot = failures.isEmpty || self.savedSnapshot != nil ? saved : nil
         await NativeOrbitSystemSignals.shared.recordHistoryWriteFailures(failures)
         return failures.isEmpty
     }

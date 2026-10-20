@@ -21,6 +21,12 @@ final class NativeCodexSessionAttributionStore {
 
     /// Incremental rollout scanner whose drained observations build the timeline.
     @ObservationIgnored let scanner = NativeCodexQuotaSessionHistoryScanner()
+    /// The inputs of the last repair that left history as it was. The same readings repaired into the same history
+    /// give the same result, so a refresh that read nothing new skips re-sorting every recovered series.
+    @ObservationIgnored var unchangedRepair: (
+        observations: [NativeCodexQuotaSessionObservation],
+        original: PlanUtilizationHistoryBuckets,
+        protected: [String: [NativeCodexQuotaHistoryLane: Set<PlanUtilizationHistoryEntry>]])?
     private(set) var timeline: NativeCodexSessionWindowTimeline?
     private(set) var timelineRevision: UInt64 = 0
     private(set) var resultRevision: UInt64 = 0

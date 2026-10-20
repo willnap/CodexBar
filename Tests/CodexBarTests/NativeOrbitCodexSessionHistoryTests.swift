@@ -125,6 +125,9 @@ struct NativeOrbitCodexSessionHistoryTests {
             let appended = await scanner.scan(homeRoots: [home], now: self.now)
             #expect(appended.map(\.snapshot.updatedAt) == [self.now.addingTimeInterval(-120), self.now])
             #expect(await scanner.scan(homeRoots: [home], now: self.now) == appended)
+            // Nothing new to read, but a later moment drops what has aged out of the 32 days.
+            let later = await scanner.scan(homeRoots: [home], now: self.now.addingTimeInterval(32 * 86400 - 60))
+            #expect(later.map(\.snapshot.updatedAt) == [self.now])
         }
         #expect(await scanner.scan(homeRoots: [home], now: self.now).isEmpty)
     }

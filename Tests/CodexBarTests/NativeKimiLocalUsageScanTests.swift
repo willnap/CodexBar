@@ -39,6 +39,37 @@ struct NativeKimiLocalUsageScanTests {
         #expect(passes <= 7)
     }
 
+    @Test func `later passes find new sessions and agents while reusing unchanged directory listings`() async throws {
+        let root = try self.fixtureRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try self.write(
+            self.record(time: 1_799_999_900_125) + "\n",
+            to: root.appendingPathComponent("project/first/agents/main/wire.jsonl"),
+            modified: self.now.addingTimeInterval(-600))
+        let scanner = NativeKimiLocalUsageScanner(byteBudget: 1024 * 1024)
+        let first = try #require(await scanner.scan(sessionsRoot: root, now: self.now, bucketTimeZoneIdentifier: "UTC"))
+        #expect(first.last30DaysRequests == 1)
+        // A new session in a known project, and a new subagent in a known session.
+        try self.write(
+            self.record(time: 1_799_999_910_125) + "\n",
+            to: root.appendingPathComponent("project/second/agents/main/wire.jsonl"),
+            modified: self.now.addingTimeInterval(-300))
+        try self.write(
+            self.record(time: 1_799_999_920_125) + "\n",
+            to: root.appendingPathComponent("project/first/agents/helper/wire.jsonl"),
+            modified: self.now.addingTimeInterval(-200))
+        let second = try #require(await scanner.scan(
+            sessionsRoot: root,
+            now: self.now,
+            bucketTimeZoneIdentifier: "UTC"))
+        #expect(second.last30DaysRequests == 3)
+        #expect(second.historyIsFullyScanned)
+        // A removed session's wire file is no longer inventoried, so its directory listing goes too.
+        try FileManager.default.removeItem(at: root.appendingPathComponent("project/second"))
+        let third = try #require(await scanner.scan(sessionsRoot: root, now: self.now, bucketTimeZoneIdentifier: "UTC"))
+        #expect(third.historyIsFullyScanned)
+    }
+
     @Test func `files last written before the retention window are not read`() async throws {
         let root = try self.fixtureRoot()
         defer { try? FileManager.default.removeItem(at: root) }

@@ -16,6 +16,9 @@ package actor NativeClaudeDesktopHistory {
     private let sourceURLs: [URL]
     private let cacheURL: URL?
     private var retained: Set<NativeClaudeDesktopHistoryPoint> = []
+    /// Sources whose points are already in `retained`, and the cache as last read or written.
+    private var parsedSources: [URL: FileContentStamp] = [:]
+    private var cacheSnapshot: (stamp: FileContentStamp, points: [NativeClaudeDesktopHistoryPoint])?
     /// Observable save failure only; never exposes paths, organization metadata, or underlying error text.
     package private(set) var persistenceFailed = false
 
@@ -98,17 +101,28 @@ package actor NativeClaudeDesktopHistory {
             $0.resolvingSymlinksInPath().path == cacheURL.resolvingSymlinksInPath().path
         }) { return [] }
         let cached = self.cacheURL.flatMap { url -> [NativeClaudeDesktopHistoryPoint]? in
+            let stamp = FileContentStamp(url)
+            if let snapshot = self.cacheSnapshot, snapshot.stamp == stamp { return snapshot.points }
+            self.cacheSnapshot = nil
             guard let data = Self.read(url), let cache = try? JSONDecoder().decode(Cache.self, from: data),
                   cache.version == 1 else { return nil }
+            self.cacheSnapshot = stamp.map { ($0, cache.points) }
             return cache.points
         } ?? []
         var merged = Set((cached + Array(self.retained)).filter { Self.isRetained($0, now: now) })
+        var parsed: [URL: FileContentStamp] = [:]
         for source in self.sourceURLs {
             guard !Task.isCancelled else { return self.retained.sorted(by: Self.precedes) }
-            if let data = Self.read(source), let points = try? Self.parse(data, now: now) { merged.formUnion(points) }
+            let stamp = FileContentStamp(source)
+            if let stamp, self.parsedSources[source] == stamp { continue }
+            if let data = Self.read(source), let points = try? Self.parse(data, now: now) {
+                merged.formUnion(points)
+                parsed[source] = stamp
+            }
         }
         guard !Task.isCancelled else { return self.retained.sorted(by: Self.precedes) }
         self.retained = merged
+        self.parsedSources.merge(parsed) { $1 }
         let points = merged.sorted(by: Self.precedes)
         if points != cached, let cacheURL {
             guard Self.isContainedFile(cacheURL) else {
@@ -121,6 +135,7 @@ package actor NativeClaudeDesktopHistory {
                 try FileManager.default.createDirectory(
                     at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try data.write(to: cacheURL, options: .atomic)
+                self.cacheSnapshot = FileContentStamp(cacheURL).map { ($0, points) }
                 self.persistenceFailed = false
             } catch {
                 // Retain the observations in memory. A later load retries against the still-older disk cache.

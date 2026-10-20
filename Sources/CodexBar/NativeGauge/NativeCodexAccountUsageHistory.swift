@@ -27,7 +27,16 @@ struct NativeCodexAccountUsageHistory: Codable, Sendable, Equatable {
         for value in values where value.reportedAt >= cutoff && value.reportedAt <= fetchedAt {
             unique["\(value.day.startDate)|\(value.reportedAt.timeIntervalSince1970)"] = value
         }
-        return Array(unique.values.sorted { $0.reportedAt < $1.reportedAt }.suffix(100_000))
+        // Every fetch re-reports each day. Keep a day's reading only when its count differs from the one before,
+        // so the archive holds the corrections it exists for instead of one copy of every day per refresh.
+        var previousTokens: [String: Int64] = [:]
+        let versions = unique.values.sorted {
+            $0.reportedAt != $1.reportedAt ? $0.reportedAt < $1.reportedAt : $0.day.startDate < $1.day.startDate
+        }.filter { value in
+            defer { previousTokens[value.day.startDate] = value.day.tokens }
+            return previousTokens[value.day.startDate] != value.day.tokens
+        }
+        return Array(versions.suffix(100_000))
     }
 
     static func retainingStoredObservations(

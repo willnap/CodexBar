@@ -15,23 +15,27 @@ final class NativeOrbitPreparedWarningHistory {
     private let quotas: [PlanUtilizationSeriesHistory]
     private let inventories: [PlanUtilizationSeriesHistory]
     private let resetEvidenceDates: [Date]
-    private let consumption: [ClosedRange<Date>]
+    private let consumption: [NativeOrbitActivity.Rise]
     private var resetResults: [ResetKey: ResetResult] = [:]
 
     init(history: [PlanUtilizationSeriesHistory]) {
         self.quotas = history.filter(\.name.isNativeQuotaObservation)
         self.inventories = history.filter { $0.name.rawValue == "nativeMetric:resets" }
         var dates = self.inventories.flatMap(\.entries).filter { $0.nativeMetrics?.resets != nil }.map(\.capturedAt)
-        var consumption: [ClosedRange<Date>] = []
+        var consumption: [NativeOrbitActivity.Rise] = []
         for lane in self.quotas {
-            for (before, after) in zip(lane.entries, lane.entries.dropFirst())
+            let measured = lane.entries.filter {
+                $0.historicalPeriod == nil && $0.usedPercent.isFinite && $0.usedPercent >= 0
+            }
+            // Server period totals are not readings; a rise is between two measured ones.
+            for (before, after) in zip(measured, measured.dropFirst())
                 where after.usedPercent > before.usedPercent + NativeOrbitActivity.minimumIncrease
                 && NativeOrbitActivity.sameWindow(before, after)
             {
-                consumption.append(before.capturedAt...after.capturedAt)
-            }
-            let measured = lane.entries.filter {
-                $0.historicalPeriod == nil && $0.usedPercent.isFinite && $0.usedPercent >= 0
+                consumption.append(.init(
+                    lane: lane.name.rawValue,
+                    interval: before.capturedAt...after.capturedAt,
+                    points: after.usedPercent - before.usedPercent))
             }
             for (before, after) in zip(measured, measured.dropFirst())
                 where after.capturedAt > before.capturedAt
@@ -45,12 +49,12 @@ final class NativeOrbitPreparedWarningHistory {
         }
         self.resetEvidenceDates = Array(Set(dates)).sorted()
         self.consumption = consumption.enumerated().sorted {
-            $0.element.upperBound == $1.element.upperBound
-                ? $0.offset < $1.offset : $0.element.upperBound < $1.element.upperBound
+            $0.element.interval.upperBound == $1.element.interval.upperBound
+                ? $0.offset < $1.offset : $0.element.interval.upperBound < $1.element.interval.upperBound
         }.map(\.element)
     }
 
-    func consumptionIntervals(at date: Date) -> ArraySlice<ClosedRange<Date>> {
+    func consumptionIntervals(at date: Date) -> ArraySlice<NativeOrbitActivity.Rise> {
         let lower = self.consumptionBoundary(date.addingTimeInterval(-86400), inclusive: false)
         let upper = self.consumptionBoundary(date, inclusive: true)
         return self.consumption[lower..<upper]
@@ -61,7 +65,7 @@ final class NativeOrbitPreparedWarningHistory {
         var upper = self.consumption.count
         while lower < upper {
             let middle = lower + (upper - lower) / 2
-            let end = self.consumption[middle].upperBound
+            let end = self.consumption[middle].interval.upperBound
             if end < date || (inclusive && end == date) { lower = middle + 1 } else { upper = middle }
         }
         return lower

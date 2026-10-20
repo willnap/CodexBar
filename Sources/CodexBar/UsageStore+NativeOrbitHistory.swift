@@ -242,17 +242,86 @@ extension UsageStore {
             resetDescription: nil)
     }
 
+    /// One entry per instant: a later entry replaces an earlier one, except that a server period total never
+    /// replaces a measured reading.
     nonisolated static func nativeOrbitMergedRawEntries(
         _ existing: [PlanUtilizationHistoryEntry],
         _ incoming: [PlanUtilizationHistoryEntry]) -> [PlanUtilizationHistoryEntry]
     {
-        var byDate: [Date: PlanUtilizationHistoryEntry] = [:]
-        for entry in existing + incoming {
-            if entry.historicalPeriod != nil, byDate[entry.capturedAt]?.historicalPeriod == nil,
-               byDate[entry.capturedAt] != nil { continue }
-            byDate[entry.capturedAt] = entry
+        func winner(_ earlier: PlanUtilizationHistoryEntry, _ later: PlanUtilizationHistoryEntry)
+            -> PlanUtilizationHistoryEntry
+        {
+            later.historicalPeriod != nil && earlier.historicalPeriod == nil ? earlier : later
         }
-        return byDate.values.sorted(by: PlanUtilizationHistoryEntry.precedes)
+        func isOrdered(_ entries: [PlanUtilizationHistoryEntry], strictly: Bool) -> Bool {
+            zip(entries, entries.dropFirst()).allSatisfy {
+                strictly ? $0.capturedAt < $1.capturedAt : $0.capturedAt <= $1.capturedAt
+            }
+        }
+        // Stored series are already one entry per instant in time order, and rendering adds one reading to each:
+        // merge those in a single pass instead of rehashing and resorting the whole series every time.
+        if isOrdered(existing, strictly: true), isOrdered(incoming, strictly: true),
+           let last = existing.last, let first = incoming.first, last.capturedAt < first.capturedAt
+        {
+            return existing + incoming
+        }
+        guard isOrdered(existing, strictly: false), isOrdered(incoming, strictly: false) else {
+            var byDate: [Date: PlanUtilizationHistoryEntry] = [:]
+            for entry in existing + incoming {
+                byDate[entry.capturedAt] = byDate[entry.capturedAt].map { winner($0, entry) } ?? entry
+            }
+            return byDate.values.sorted(by: PlanUtilizationHistoryEntry.precedes)
+        }
+        // Equal instants meet in their original order (existing first), so folding each run with `winner` keeps the
+        // entry the keyed rule keeps.
+        var merged: [PlanUtilizationHistoryEntry] = []
+        merged.reserveCapacity(existing.count + incoming.count)
+        func add(_ entry: PlanUtilizationHistoryEntry) {
+            if let last = merged.last, last.capturedAt == entry.capturedAt {
+                merged[merged.count - 1] = winner(last, entry)
+            } else {
+                merged.append(entry)
+            }
+        }
+        var lhs = existing.startIndex
+        var rhs = incoming.startIndex
+        while lhs < existing.endIndex || rhs < incoming.endIndex {
+            if rhs == incoming.endIndex
+                || (lhs < existing.endIndex && existing[lhs].capturedAt <= incoming[rhs].capturedAt)
+            {
+                add(existing[lhs])
+                lhs += 1
+            } else {
+                add(incoming[rhs])
+                rhs += 1
+            }
+        }
+        return merged
+    }
+
+    /// Bucket width for thinning repeated session-log readings. Well inside the chart's 45-minute gap limit.
+    nonisolated static let nativeOrbitObservationBucket: TimeInterval = 300
+
+    /// Codex session logs repeat the quota reading on every model turn, thousands of times a day. Within a run of
+    /// identical readings this keeps the first and last of each 5-minute bucket, so every change, run end and
+    /// recording gap longer than a bucket stays exactly where it was. A reading this drops can be added again by a
+    /// later rescan without changing the result.
+    nonisolated static func nativeOrbitThinnedObservations(
+        _ entries: Set<PlanUtilizationHistoryEntry>) -> [PlanUtilizationHistoryEntry]
+    {
+        let sorted = entries.sorted(by: PlanUtilizationHistoryEntry.precedes)
+        func repeats(_ lhs: PlanUtilizationHistoryEntry, _ rhs: PlanUtilizationHistoryEntry) -> Bool {
+            lhs.historicalPeriod == nil && rhs.historicalPeriod == nil && lhs.usedPercent == rhs.usedPercent
+                && lhs.resetsAt == rhs.resetsAt && lhs.nativeMetrics == rhs.nativeMetrics
+                && floor(lhs.capturedAt.timeIntervalSinceReferenceDate / self.nativeOrbitObservationBucket)
+                == floor(rhs.capturedAt.timeIntervalSinceReferenceDate / self.nativeOrbitObservationBucket)
+        }
+        return sorted.indices.compactMap { index in
+            let entry = sorted[index]
+            guard index > sorted.startIndex, index < sorted.endIndex - 1,
+                  repeats(sorted[index - 1], entry), repeats(entry, sorted[index + 1]) else { return entry }
+            return nil
+        }
     }
 
     nonisolated static func nativeOrbitCanonicalQuotaHistories(

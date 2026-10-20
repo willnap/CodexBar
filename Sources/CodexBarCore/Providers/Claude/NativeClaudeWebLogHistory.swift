@@ -21,6 +21,9 @@ package actor NativeClaudeWebLogHistory {
     private let cacheURL: URL?
     private let sourceTimeZone: TimeZone?
     private var retained: Set<NativeClaudeWebLogHistoryPoint> = []
+    /// Sources whose points are already in `retained`, and the cache as last read or written.
+    private var parsedSources: [URL: FileContentStamp] = [:]
+    private var cacheSnapshot: (stamp: FileContentStamp, points: [NativeClaudeWebLogHistoryPoint])?
     package private(set) var persistenceFailed = false
 
     private struct Cache: Codable {
@@ -138,28 +141,38 @@ package actor NativeClaudeWebLogHistory {
         var cached: [NativeClaudeWebLogHistoryPoint] = []
         var canReplaceCache = true
         if let cacheURL, FileManager.default.fileExists(atPath: cacheURL.path) {
-            if let data = Self.read(cacheURL), let cache = try? JSONDecoder().decode(Cache.self, from: data),
-               cache.version == 1, cache.points.allSatisfy(Self.valid)
+            let stamp = FileContentStamp(cacheURL)
+            if let snapshot = self.cacheSnapshot, snapshot.stamp == stamp {
+                cached = snapshot.points
+            } else if let data = Self.read(cacheURL), let cache = try? JSONDecoder().decode(Cache.self, from: data),
+                      cache.version == 1, cache.points.allSatisfy(Self.valid)
             {
                 cached = cache.points
+                self.cacheSnapshot = stamp.map { ($0, cached) }
             } else {
                 // Absence permits a new cache; unreadable or unknown existing data must survive recovery.
                 canReplaceCache = false
+                self.cacheSnapshot = nil
             }
         }
         var merged = Set(cached + Array(self.retained))
+        var parsed: [URL: FileContentStamp] = [:]
         for source in self.sourceURLs {
             guard !Task.isCancelled else { return self.retained.sorted(by: Self.precedes) }
+            let stamp = FileContentStamp(source)
+            if let stamp, self.parsedSources[source] == stamp { continue }
             if let data = Self.read(source), let points = try? Self.parse(
                 data,
                 now: now,
                 timeZone: self.sourceTimeZone)
             {
                 merged.formUnion(points)
+                parsed[source] = stamp
             }
         }
         guard !Task.isCancelled else { return self.retained.sorted(by: Self.precedes) }
         self.retained = merged
+        self.parsedSources.merge(parsed) { $1 }
         let points = merged.sorted(by: Self.precedes)
         guard canReplaceCache else {
             self.persistenceFailed = true
@@ -180,6 +193,7 @@ package actor NativeClaudeWebLogHistory {
                 try FileManager.default.createDirectory(
                     at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try data.write(to: cacheURL, options: .atomic)
+                self.cacheSnapshot = FileContentStamp(cacheURL).map { ($0, points) }
                 self.persistenceFailed = false
             } catch { self.persistenceFailed = true }
         } else { self.persistenceFailed = false }

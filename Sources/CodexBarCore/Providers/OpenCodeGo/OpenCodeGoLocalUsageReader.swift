@@ -55,7 +55,7 @@ public struct OpenCodeGoLocalUsageReader: Sendable {
             throw OpenCodeGoLocalUsageError.notDetected
         }
 
-        let rows = try self.readRows()
+        let rows = try self.cachedRows()
         guard hasAuth || !rows.isEmpty else {
             throw OpenCodeGoLocalUsageError.notDetected
         }
@@ -63,6 +63,33 @@ public struct OpenCodeGoLocalUsageReader: Sendable {
             throw OpenCodeGoLocalUsageError.historyUnavailable("no local usage rows")
         }
         return Self.snapshot(rows: rows, now: now, historyDays: historyDays)
+    }
+
+    /// Rows as last read, kept until the database or its write-ahead log changes. The monthly window is anchored on
+    /// the first message ever recorded, so every row is read; an idle database no longer is on every refresh.
+    private final class RowCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var entries: [String: (stamps: [FileContentStamp?], rows: [UsageRow])] = [:]
+
+        func rows(for path: String, stamps: [FileContentStamp?]) -> [UsageRow]? {
+            self.lock.withLock { self.entries[path].flatMap { $0.stamps == stamps ? $0.rows : nil } }
+        }
+
+        func store(_ rows: [UsageRow], for path: String, stamps: [FileContentStamp?]) {
+            self.lock.withLock { self.entries[path] = (stamps, rows) }
+        }
+    }
+
+    private static let rowCache = RowCache()
+
+    private func cachedRows() throws -> [UsageRow] {
+        let path = self.databaseURL.path
+        let stamps = [FileContentStamp(self.databaseURL), FileContentStamp(URL(fileURLWithPath: path + "-wal"))]
+        guard stamps[0] != nil else { return try self.readRows() }
+        if let rows = Self.rowCache.rows(for: path, stamps: stamps) { return rows }
+        let rows = try self.readRows()
+        Self.rowCache.store(rows, for: path, stamps: stamps)
+        return rows
     }
 
     private func readRows() throws -> [UsageRow] {

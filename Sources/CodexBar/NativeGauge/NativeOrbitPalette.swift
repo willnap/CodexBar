@@ -57,9 +57,18 @@ enum NativeOrbitPalette {
         return .extra(Int(hash % 3))
     }
 
+    /// Brightness tells a dial's windows apart: tinted glass flattens most of a saturation difference.
+    private nonisolated static let lightestStep: CGFloat = 0.12
+    private nonisolated static let deepestStep: CGFloat = 0.28
+    /// The deepest window's least brightness, so it never turns black.
+    private nonisolated static let lightFloor: CGFloat = 0.1
+    /// Dark surfaces take lighter pigment and a shorter ladder.
+    private nonisolated static let darkLift: CGFloat = 0.14
+    private nonisolated static let darkLadder: CGFloat = 0.7
+    private nonisolated static let darkFloor: CGFloat = 0.55
+
     private nonisolated static func variant(_ base: NSColor, tone: Tone, neutral: Bool, dark: Bool) -> NSColor {
         guard let rgb = base.usingColorSpace(.sRGB) else { return base }
-        if tone == .weekly, !neutral, !dark { return base }
         let shade: (saturation: CGFloat, brightness: CGFloat) = switch tone {
         case .weekly: (1, 0)
         case .session: (0.7, 0.12)
@@ -67,16 +76,25 @@ enum NativeOrbitPalette {
         case .monthly: (0.85, -0.12)
         case let .extra(index): (0.88 - CGFloat(index) * 0.09, -0.20 - CGFloat(index) * 0.04)
         }
+        // The whole ladder stays inside the brightness range; the provider's level moves to fit it. Clamping each
+        // window instead made bright accents' windows identical in dark mode (Claude's Fable ring matched Session).
+        let scale = dark ? self.darkLadder : 1
+        let level = min(
+            1 - self.lightestStep * scale,
+            max(
+                (dark ? self.darkFloor : self.lightFloor) + self.deepestStep * scale,
+                rgb.brightnessComponent + (dark ? self.darkLift : 0)))
+        if tone == .weekly, !neutral, !dark, level == rgb.brightnessComponent { return base }
+        let brightness = level + shade.brightness * scale
         let saturation = rgb.saturationComponent
-        // Dark surfaces need lighter pigment. Darkening the inner quotas hid both their color and glass edges.
-        let adjustment = dark ? 0.14 + abs(shade.brightness) : shade.brightness
-        let brightness = min(1, max(0, rgb.brightnessComponent + adjustment))
         if neutral || saturation < 0.02 {
             return NSColor(srgbRed: brightness, green: brightness, blue: brightness, alpha: rgb.alphaComponent)
         }
-        // Every quota retains the provider hue; saturation and brightness distinguish its windows.
+        // Every quota retains the provider hue; saturation and brightness distinguish its windows. Built in the
+        // accent's own sRGB space: a calibrated colour converts back with its brightness steps squeezed together.
         return NSColor(
-            calibratedHue: rgb.hueComponent,
+            colorSpace: .sRGB,
+            hue: rgb.hueComponent,
             saturation: saturation * shade.saturation,
             brightness: brightness,
             alpha: rgb.alphaComponent)

@@ -31,7 +31,7 @@ extension AntigravityLocalReader {
         }
     }
 
-    struct Limits: Sendable {
+    struct Limits: Sendable, Equatable {
         var databases = 500
         var directoryEntries = 10000
         var rowsPerDatabase = 10000
@@ -60,6 +60,37 @@ extension AntigravityLocalReader {
         var immutableFallbacks = 0
         /// Databases in a declared root whose schema has no gen_metadata table; skipped without affecting coverage.
         var foreignDatabases = 0
+
+        func subtracting(_ other: Self) -> Self {
+            Self(
+                directoryEntries: self.directoryEntries - other.directoryEntries,
+                files: self.files - other.files,
+                rows: self.rows - other.rows,
+                attemptedBytes: self.attemptedBytes - other.attemptedBytes,
+                materializedPayloadBytes: self.materializedPayloadBytes - other.materializedPayloadBytes,
+                schemaEntries: self.schemaEntries - other.schemaEntries,
+                schemaColumns: self.schemaColumns - other.schemaColumns,
+                schemaBytes: self.schemaBytes - other.schemaBytes,
+                sqliteHandlesOpened: self.sqliteHandlesOpened - other.sqliteHandlesOpened,
+                sqliteHandlesClosed: self.sqliteHandlesClosed - other.sqliteHandlesClosed,
+                immutableFallbacks: self.immutableFallbacks - other.immutableFallbacks,
+                foreignDatabases: self.foreignDatabases - other.foreignDatabases)
+        }
+
+        mutating func add(_ other: Self) {
+            self.directoryEntries += other.directoryEntries
+            self.files += other.files
+            self.rows += other.rows
+            self.attemptedBytes += other.attemptedBytes
+            self.materializedPayloadBytes += other.materializedPayloadBytes
+            self.schemaEntries += other.schemaEntries
+            self.schemaColumns += other.schemaColumns
+            self.schemaBytes += other.schemaBytes
+            self.sqliteHandlesOpened += other.sqliteHandlesOpened
+            self.sqliteHandlesClosed += other.sqliteHandlesClosed
+            self.immutableFallbacks += other.immutableFallbacks
+            self.foreignDatabases += other.foreignDatabases
+        }
     }
 
     enum ScanFailure: Error {
@@ -108,6 +139,14 @@ extension AntigravityLocalReader {
             try self.check()
             self.statistics.rows += 1
             guard self.statistics.rows <= self.limits.rows else { throw ScanFailure.exhausted }
+        }
+
+        /// Charges what reading an unchanged database charged before, under the same overall limits.
+        func recharge(_ charged: Statistics) throws {
+            try self.check()
+            self.statistics.add(charged)
+            guard self.statistics.rows <= self.limits.rows, self.statistics.attemptedBytes <= self.limits.bytes
+            else { throw ScanFailure.exhausted }
         }
 
         func beginDatabase() {

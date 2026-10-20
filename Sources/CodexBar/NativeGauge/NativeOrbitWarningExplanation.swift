@@ -29,9 +29,9 @@ extension NativeOrbitWarningLight.Kind {
         case .limit: "Allowance running out."
         case .notReported: "Limit or reset time missing."
         case .limitsChanged: "Quota period changed."
-        case .behindPace: "Usage below even pace."
-        case .aheadOfPace: "Usage above even pace."
-        case .farAheadPace: "Usage far above even pace."
+        case .behindPace: "Less of the limit used than of its time."
+        case .aheadOfPace: "More of the limit used than of its time."
+        case .farAheadPace: "Far more of the limit used than of its time."
         case .spike: "Today’s usage is at least 3× the daily average."
         case .idle: "No usage for 7 days."
         case .resetLate: "Allowance still exhausted after reset."
@@ -89,8 +89,8 @@ extension NativeOrbitWarningLight {
         // Only concise copy supplied by our warning evaluators may replace catalogue wording.
         // Provider errors and status-page titles remain diagnostic detail, never hover text.
         let text = self.tooltipDetail?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let condition = text.flatMap { $0.isEmpty ? nil : $0 } ?? self.kind.explanation
-        return self.detail.hasPrefix("Projected:") ? "Projected: " + condition : condition
+        // A light read at a future moment is already shown against the dashed projection; it needs no caption.
+        return text.flatMap { $0.isEmpty ? nil : $0 } ?? self.kind.explanation
     }
 
     var actionTitle: String {

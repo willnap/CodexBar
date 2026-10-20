@@ -79,6 +79,25 @@ struct NativeClaudeDesktopHistoryTests {
     }
 
     @Test
+    func `desktop picks up a changed source on the next load`() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("plan-usage-history.json")
+        let reader = NativeClaudeDesktopHistory(sourceURLs: [source], cacheURL: root.appendingPathComponent("c.json"))
+        try Data("""
+        {"version":2,"samples":[{"t":1799996400125,"org":"\(self.firstOrg)","u":{"fh":25}}]}
+        """.utf8).write(to: source)
+        #expect(await reader.load(now: self.now).map(\.usedPercent) == [25])
+        #expect(await reader.load(now: self.now).map(\.usedPercent) == [25])
+        try Data("""
+        {"version":2,"samples":[{"t":1799996400125,"org":"\(self.firstOrg)","u":{"fh":25}},
+          {"t":1799996500125,"org":"\(self.firstOrg)","u":{"fh":40}}]}
+        """.utf8).write(to: source)
+        #expect(await reader.load(now: self.now).map(\.usedPercent) == [25, 40])
+    }
+
+    @Test
     func `desktop test process uses explicit contained fixture paths only`() async throws {
         #expect(await !NativeClaudeDesktopHistory().hasConfiguredPaths)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

@@ -38,8 +38,16 @@ extension CostUsageScanner {
             cacheRoot: options.cacheRoot,
             reportContext: .spendDashboard)
         let pricingStamp = CostUsageClaudeFileStamp.read(at: ModelsDevCache.cacheFileURL(cacheRoot: options.cacheRoot))
+        // Provider-specific by design: organization reports are projected from the Claude transcript cache only.
+        // The cache can be newer in memory than its file between the app's writes, so its content identity counts.
+        let loaded = CostUsageClaudeCacheIO.load(
+            provider: .claude,
+            cacheRoot: options.cacheRoot,
+            reportContext: .spendDashboard,
+            calendar: range.calendar)
         let key = ClaudeOrganizationReportMemo.Key(
             cacheStamp: CostUsageClaudeFileStamp.read(at: cacheURL),
+            contentID: loaded.contentID,
             pricingStamp: pricingStamp,
             organizations: organizationIDs.sorted(),
             sinceKey: range.sinceKey,
@@ -51,18 +59,14 @@ extension CostUsageScanner {
                 organizations: memoized.organizations,
                 attributionStart: memoized.attributionStart)
         }
-        // Provider-specific by design: organization reports are projected from the Claude transcript cache only.
-        let cache = CostUsageClaudeCacheIO.load(
-            provider: .claude,
-            cacheRoot: options.cacheRoot,
-            reportContext: .spendDashboard,
-            calendar: range.calendar).usage
+        let cache = loaded.usage
         try checkCancellation?()
         let projected = self.claudeOrganizationReports(
             cache: cache,
             organizationIDs: organizationIDs,
             range: range,
-            pricingResolver: CostUsagePricing.ClaudeResolver(now: now, cacheRoot: options.cacheRoot))
+            pricingResolver: CostUsagePricing.ClaudeResolver(now: now, cacheRoot: options.cacheRoot),
+            cachePath: cacheURL.standardizedFileURL.resolvingSymlinksInPath().path)
         // Never memoize a projection whose source artifact changed while it was read.
         if key.cacheStamp != nil, CostUsageClaudeFileStamp.read(at: cacheURL) == key.cacheStamp {
             ClaudeOrganizationReportMemo.shared.store(projected, for: key)
@@ -84,8 +88,31 @@ extension CostUsageScanner {
         cache: CostUsageCache,
         organizationIDs: Set<String>,
         range: CostUsageDayRange,
-        pricingResolver: CostUsagePricing.ClaudeResolver) -> ClaudeOrganizationProjection
+        pricingResolver: CostUsagePricing.ClaudeResolver,
+        cachePath: String? = nil) -> ClaudeOrganizationProjection
     {
+        // Each organization's engine replays only the transcripts that changed since its last projection.
+        if let cachePath {
+            var reports: [String: CostUsageDailyReport] = [:]
+            for organization in organizationIDs {
+                let engine = ClaudeReportEngine.Registry.shared.engine(
+                    cachePath: cachePath, organizationID: organization)
+                guard let report = engine.report(
+                    cache: cache, range: range, pricingResolver: pricingResolver, includeRequestCounts: true)?.report
+                else { continue }
+                reports[organization] = CostUsageDailyReport(
+                    data: report.data,
+                    summary: report.summary,
+                    hourly: report.hourly,
+                    quotaSlices: self.coarsenedQuotaSlices(
+                        report.quotaSlices,
+                        interval: self.claudeOrganizationSliceInterval))
+            }
+            let firstAttachment = cache.files.values.compactMap(\.claudeFirstOrganizationAttachmentUnixMs).min()
+            return ClaudeOrganizationProjection(
+                organizations: reports,
+                attributionStart: firstAttachment.map { Date(timeIntervalSince1970: Double($0) / 1000) })
+        }
         var partitions: [String: CostUsageCache] = [:]
         for organization in organizationIDs {
             partitions[organization] = CostUsageCache()
@@ -153,6 +180,7 @@ extension CostUsageScanner {
 final class ClaudeOrganizationReportMemo: @unchecked Sendable {
     struct Key: Equatable {
         let cacheStamp: CostUsageClaudeFileStamp?
+        let contentID: UUID
         let pricingStamp: CostUsageClaudeFileStamp?
         let organizations: [String]
         let sinceKey: String

@@ -20,7 +20,13 @@ extension UsageStore {
     {
         let name = self.metadata(for: provider).displayName
         var lights = extra + NativeOrbitWarningSignals.account(
-            provider: provider, snapshot: snapshot, metrics: metrics, history: history, now: now, observedAt: updatedAt)
+            provider: provider,
+            snapshot: snapshot,
+            metrics: metrics,
+            history: history,
+            now: now,
+            observedAt: updatedAt,
+            fuelReserve: self.nativeFuelReserve(provider))
         let system = NativeOrbitSystemSignals.shared
         if system.isOffline == true {
             lights.append(.init(.macOffline, .caution, "This Mac has no network connection."))
@@ -115,6 +121,13 @@ extension UsageStore {
         self.nativeWarningSlowRefreshProviders.remove(provider.instanceID)
     }
 
+    /// The provider's quota warning thresholds, as its notifications use them, set where the fuel light comes on.
+    func nativeFuelReserve(_ provider: UsageProvider) -> NativeOrbitWarningSignals.FuelReserve {
+        .init(
+            thresholds: self.settings.resolvedQuotaWarningThresholds(provider: provider, window: .session),
+            weekly: self.settings.resolvedQuotaWarningThresholds(provider: provider, window: .weekly))
+    }
+
     /// Extra-usage spend this close to its cap lights the spend-cap light amber; at the cap, red.
     static let spendCapCaution = 0.9
 
@@ -128,10 +141,17 @@ extension UsageStore {
     }
 
     /// A reading older than this is old: three refresh intervals, and never under 15 minutes, which also covers
-    /// claude-swap's own pacing of idle accounts. Manual refresh never calls a reading old.
+    /// claude-swap's own pacing of idle accounts. Adaptive refresh changes its interval as activity does, so its
+    /// readings are never old before its slowest refresh would be overdue. Manual refresh never calls a reading old.
     var nativeOldReadingAge: TimeInterval? {
-        guard self.settings.refreshFrequency != .manual else { return nil }
-        return max(15 * 60, 3 * (self.settings.refreshFrequency.seconds ?? 10 * 60))
+        switch self.settings.refreshFrequency {
+        case .manual:
+            nil
+        case .adaptive, .adaptiveAgentAware:
+            max(NativeOrbitWarningSignals.maximumQuotaAge, 3 * (self.normalRefreshIntervalForHeuristics() ?? 0))
+        default:
+            max(15 * 60, 3 * (self.settings.refreshFrequency.seconds ?? 10 * 60))
+        }
     }
 
     /// A read of this Mac's usage logs that stopped short (a missing sidecar, an exhausted scan budget, rows that

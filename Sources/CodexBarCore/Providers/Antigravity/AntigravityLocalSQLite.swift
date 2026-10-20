@@ -6,15 +6,68 @@ import CSQLite3
 #endif
 
 extension AntigravityLocalReader {
+    /// A database read in full, with what reading it charged the budget. Each refresh otherwise reopened and
+    /// decoded every conversation database (up to 500); an unchanged one read under the same limits is charged the
+    /// same and reused.
+    private struct ReadDatabase {
+        let stamps: [FileContentStamp?]
+        let limits: Limits
+        let source: SourceResult
+        let charged: Statistics
+    }
+
+    private final class DatabaseCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var databases: [String: ReadDatabase] = [:]
+
+        func database(at path: String, stamps: [FileContentStamp?], limits: Limits) -> ReadDatabase? {
+            self.lock.withLock {
+                self.databases[path].flatMap { $0.stamps == stamps && $0.limits == limits ? $0 : nil }
+            }
+        }
+
+        func replace(with databases: [String: ReadDatabase]) {
+            self.lock.withLock { self.databases = databases }
+        }
+    }
+
+    private static let databaseCache = DatabaseCache()
+
+    /// The database file and its write-ahead log; any write changes one of them.
+    private static func stamps(_ url: URL) -> [FileContentStamp?]? {
+        let resolved = url.resolvingSymlinksInPath()
+        guard let main = FileContentStamp(resolved) else { return nil }
+        return [main, FileContentStamp(URL(fileURLWithPath: resolved.path + "-wal"))]
+    }
+
     static func readDatabases(_ paths: [URL], budget: Budget) throws -> SourceResult {
         var result = SourceResult()
+        var read: [String: ReadDatabase] = [:]
         for url in paths {
             do {
                 try budget.check()
                 budget.statistics.files += 1
                 guard budget.statistics.files <= budget.limits.databases else { throw ScanFailure.exhausted }
                 budget.beginDatabase()
-                let source = try self.readDatabase(url, budget: budget)
+                let stamps = self.stamps(url)
+                let source: SourceResult
+                if let stamps,
+                   let cached = self.databaseCache.database(at: url.path, stamps: stamps, limits: budget.limits)
+                {
+                    try budget.recharge(cached.charged)
+                    source = cached.source
+                    read[url.path] = cached
+                } else {
+                    let before = budget.statistics
+                    source = try self.readDatabase(url, budget: budget)
+                    if let stamps, source.isComplete, !source.evidenceIsUnstable {
+                        read[url.path] = ReadDatabase(
+                            stamps: stamps,
+                            limits: budget.limits,
+                            source: source,
+                            charged: budget.statistics.subtracting(before))
+                    }
+                }
                 result.events.append(contentsOf: source.events)
                 result.isComplete = result.isComplete && source.isComplete
                 result.containsHistorySource = result.containsHistorySource || source.containsHistorySource
@@ -26,6 +79,7 @@ extension AntigravityLocalReader {
                 result.isComplete = false
             }
         }
+        self.databaseCache.replace(with: read)
         return result
     }
 

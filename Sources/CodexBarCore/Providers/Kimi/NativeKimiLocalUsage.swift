@@ -272,6 +272,22 @@ public actor NativeKimiLocalUsageScanner {
         var archiveLoaded = false
         var archiveWritable = true
         var archiveDirty = false
+        /// Directory listings from earlier passes, kept while each directory's modification time is unchanged.
+        var listings: [String: DirectoryListing] = [:]
+    }
+
+    /// One directory's entries. Adding, removing or renaming an entry changes the directory's modification time;
+    /// appending to a file does not, and the inventory stats every file itself.
+    private struct DirectoryListing: Sendable {
+        struct Entry: Sendable {
+            let url: URL
+            let isDirectory: Bool
+            let isRegularFile: Bool
+            let isSymbolicLink: Bool
+        }
+
+        let modified: Date
+        let entries: [Entry]
     }
 
     private struct PassProgress {
@@ -380,7 +396,8 @@ public actor NativeKimiLocalUsageScanner {
         // Until this pass completes, more work is assumed to remain.
         state.hasPendingWork = true
         self.loadArchive(into: &state, url: archiveURL, owner: rootFingerprint)
-        let discovery = try self.discoveredWireFiles(root: root, checkCancellation: checkCancellation)
+        let discovery = try self.discoveredWireFiles(
+            root: root, listings: &state.listings, checkCancellation: checkCancellation)
         var progress = PassProgress(partial: discovery.1 || !state.archiveWritable)
         let files = try self.inventory(discovery.0, progress: &progress, checkCancellation: checkCancellation)
         // An incomplete inventory proves no deletion. Retain unreadable/undiscovered file cursors.
@@ -652,51 +669,57 @@ public actor NativeKimiLocalUsageScanner {
 
     private static func discoveredWireFiles(
         root: URL,
+        listings: inout [String: DirectoryListing],
         checkCancellation: @Sendable () throws -> Void) throws -> ([URL], Bool)
     {
         var urls: [URL] = []
         var partial = false
-        let keys: [URLResourceKey] = [
-            .isDirectoryKey,
-            .isRegularFileKey,
-            .isSymbolicLinkKey,
-        ]
-        // Prune tool artifacts; include sessions/<project>/<session>/agents/<agent>/wire.jsonl for every agent.
-        if let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: keys,
-            options: [.skipsHiddenFiles],
-            errorHandler: { _, _ in
-                partial = true; return true
-            })
-        {
-            var visited = 0
-            for case let discovered as URL in enumerator {
+        guard FileManager.default.fileExists(atPath: root.path) else { return (urls, partial) }
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
+        var visited = 0
+        var listed: Set<String> = []
+        /// A pass relists only the directories that changed since the last one; the walk is otherwise the same.
+        func entries(of directory: URL) -> [DirectoryListing.Entry]? {
+            listed.insert(directory.path)
+            // Read uncached: a URL from an earlier listing keeps the resource values it was first asked for.
+            guard let modified = (try? FileManager.default.attributesOfItem(atPath: directory.path))?[.modificationDate]
+                as? Date
+            else { partial = true; return nil }
+            if let listing = listings[directory.path], listing.modified == modified { return listing.entries }
+            guard let children = try? FileManager.default.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: Array(keys),
+                options: [.skipsHiddenFiles])
+            else { partial = true; return nil }
+            let entries = children.compactMap { child -> DirectoryListing.Entry? in
+                guard let values = try? child.resourceValues(forKeys: keys) else { partial = true; return nil }
+                return .init(
+                    url: child.standardizedFileURL,
+                    isDirectory: values.isDirectory == true,
+                    isRegularFile: values.isRegularFile == true,
+                    isSymbolicLink: values.isSymbolicLink == true)
+            }
+            listings[directory.path] = .init(modified: modified, entries: entries)
+            return entries
+        }
+        /// Prune tool artifacts; include sessions/<project>/<session>/agents/<agent>/wire.jsonl for every agent.
+        func walk(_ directory: URL, depth: Int) throws -> Bool {
+            for entry in entries(of: directory) ?? [] {
                 try checkCancellation()
-                // Foundation enumerates /var roots as /private/var children on macOS. Normalize both sides
-                // before measuring relative depth, otherwise valid agent directories are pruned as artifacts.
-                let url = discovered.standardizedFileURL
                 visited += 1
-                if visited > 20000 || urls.count >= 4096 { partial = true; break }
-                guard let values = try? url.resourceValues(forKeys: Set(keys))
-                else { partial = true; continue }
-                let parts = url.pathComponents.dropFirst(root.pathComponents.count)
-                if values.isSymbolicLink == true {
-                    enumerator.skipDescendants(); partial = true; continue
-                }
-                if values.isDirectory == true {
-                    if parts.count > 4 || (parts.count == 3 && parts.last != "agents") {
-                        enumerator.skipDescendants()
-                    }
-                } else if values.isRegularFile == true,
-                          parts.count == 5,
-                          url.lastPathComponent == "wire.jsonl"
-                {
-                    urls.append(url)
+                if visited > 20000 || urls.count >= 4096 { partial = true; return false }
+                if entry.isSymbolicLink { partial = true; continue }
+                if entry.isDirectory {
+                    let descends = depth + 1 <= 4 && (depth + 1 != 3 || entry.url.lastPathComponent == "agents")
+                    if descends, try !walk(entry.url, depth: depth + 1) { return false }
+                } else if entry.isRegularFile, depth + 1 == 5, entry.url.lastPathComponent == "wire.jsonl" {
+                    urls.append(entry.url)
                 }
             }
-        } else if FileManager.default.fileExists(atPath: root.path) { partial = true
+            return true
         }
+        _ = try walk(root, depth: 0)
+        listings = listings.filter { listed.contains($0.key) }
         return (urls, partial)
     }
 

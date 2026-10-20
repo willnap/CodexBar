@@ -45,7 +45,7 @@ struct NativeOrbitWarningEvidenceContinuityTests {
     func `a cached missing reset warning expires with its actual quota evidence`(resetAfter: TimeInterval) {
         let account = self.quotaWarningAccount(resetAfter: resetAfter, partial: false)
         #expect(self.evaluated(account).contains { $0.kind == .notReported })
-        let later = self.now.addingTimeInterval(min(resetAfter, 1800) + 1)
+        let later = self.now.addingTimeInterval(min(resetAfter, NativeOrbitWarningSignals.maximumQuotaAge) + 1)
         #expect(!self.evaluated(account, at: later).contains { $0.kind == .notReported })
     }
 
@@ -53,7 +53,7 @@ struct NativeOrbitWarningEvidenceContinuityTests {
     func `a cached missing model warning expires with its actual quota evidence`(resetAfter: TimeInterval) {
         let account = self.quotaWarningAccount(resetAfter: resetAfter, partial: true)
         #expect(self.evaluated(account).contains { $0.kind == .partialReading })
-        let later = self.now.addingTimeInterval(min(resetAfter, 1800) + 1)
+        let later = self.now.addingTimeInterval(min(resetAfter, NativeOrbitWarningSignals.maximumQuotaAge) + 1)
         #expect(!self.evaluated(account, at: later).contains { $0.kind == .partialReading })
     }
 

@@ -72,11 +72,11 @@ public enum CodexCredentialFileAccess {
 
     @TaskLocal public static var fixtureScope: FixtureScope?
 
-    public static var isTestContext: Bool {
-        self.isTestContext(
-            processName: ProcessInfo.processInfo.processName,
-            environment: ProcessInfo.processInfo.environment)
-    }
+    /// Decided once: the process's name and test markers do not change while it runs, and `permits` asks for every
+    /// file a scan touches, where copying the whole environment each time cost seconds per refresh.
+    public static let isTestContext: Bool = Self.isTestContext(
+        processName: ProcessInfo.processInfo.processName,
+        environment: ProcessInfo.processInfo.environment)
 
     static func isTestContext(processName: String, environment: [String: String]) -> Bool {
         environment[self.isolationEnvironmentKey] == "1"

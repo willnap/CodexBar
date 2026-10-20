@@ -3,8 +3,16 @@ import Foundation
 
 /// Evaluates only measured, account-scoped inputs. Missing evidence never becomes a zero or an incident.
 enum NativeOrbitWarningSignals {
-    static let maximumQuotaAge: TimeInterval = 30 * 60
+    /// A quota reading stays current until the next scheduled one is overdue: the slowest automatic refresh (30
+    /// minutes:
+    /// adaptive refresh when idle or in Low Power Mode) plus time for the fetch itself.
+    static let maximumQuotaAge: TimeInterval = 45 * 60
     static let maximumMoneyAge: TimeInterval = 2 * 3600
+    /// How long a provider can take to count a request in its quota reading.
+    static let quotaReportingLag: TimeInterval = 10 * 60
+    /// Percentage points a quota must rise with no local request before it counts as use elsewhere. Whole-number
+    /// readings can step a point with no request here (a limit that changes size moves it too).
+    static let minimumUnexplainedRise = 2.0
 
     private static func light(
         _ kind: NativeOrbitWarningLight.Kind,
@@ -21,14 +29,29 @@ enum NativeOrbitWarningSignals {
         return age >= 0 && age <= maximumAge
     }
 
-    static func currentWindows(_ snapshot: UsageSnapshot?, at now: Date) -> [RateWindow] {
+    /// The current windows with the name their lights use: the provider's own windows by their length, and a window of
+    /// its own (one model's weekly limit) by its title as well.
+    static func currentWindows(_ snapshot: UsageSnapshot?, at now: Date) -> [(title: String, window: RateWindow)] {
         guard self.isCurrent(snapshot?.updatedAt, at: now, maximumAge: self.maximumQuotaAge),
               let snapshot else { return [] }
-        return snapshot.measuredRateWindows.filter { window in
-            window.usedPercent.isFinite && window.usedPercent >= 0
-                && !(window.resetsAt.map { snapshot.updatedAt < $0 && $0 <= now } ?? false)
+        let own: [(scope: String?, window: RateWindow?)] = [snapshot.primary, snapshot.secondary, snapshot.tertiary]
+            .map { (nil, $0) }
+        let extra = (snapshot.extraRateWindows ?? []).filter(\.usageKnown).map { named -> (String?, RateWindow?) in
+            let title = named.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (self.providerWindowIDs.contains(named.id) || title.isEmpty ? nil : title, named.window)
+        }
+        return (own + extra).compactMap { scope, window in
+            guard let window = window?.measured, window.usedPercent.isFinite, window.usedPercent >= 0,
+                  !(window.resetsAt.map { snapshot.updatedAt < $0 && $0 <= now } ?? false) else { return nil }
+            let title = self.quotaTitle(minutes: window.windowMinutes)
+            return (scope.map { "\(title) (\($0))" } ?? title, window)
         }
     }
+
+    /// Lane ids of a provider's own windows, as the popup names them when it rebuilds a snapshot.
+    private static let providerWindowIDs: Set<String> = [
+        "primary", "secondary", "tertiary", "session", "weekly", "daily", "monthly",
+    ]
 
     static func account(
         provider: UsageProvider,
@@ -40,11 +63,14 @@ enum NativeOrbitWarningSignals {
         observedAt: Date? = nil,
         evidenceDate: Date? = nil,
         includeObservedHistory: Bool = true,
-        preparedHistory: NativeOrbitPreparedWarningHistory? = nil) -> [NativeOrbitWarningLight]
+        preparedHistory: NativeOrbitPreparedWarningHistory? = nil,
+        fuelReserve: FuelReserve = .standard) -> [NativeOrbitWarningLight]
     {
         var lights: [NativeOrbitWarningLight] = []
-        let windows = self.currentWindows(snapshot, at: now)
-        self.appendQuotaWindows(windows, snapshotUpdatedAt: snapshot?.updatedAt, now: now, to: &lights)
+        let named = self.currentWindows(snapshot, at: now)
+        let windows = named.map(\.window)
+        self.appendQuotaWindows(
+            named, snapshotUpdatedAt: snapshot?.updatedAt, now: now, fuelReserve: fuelReserve, to: &lights)
         if let snapshot, self.isCurrent(snapshot.updatedAt, at: now, maximumAge: self.maximumQuotaAge) {
             let status = snapshot.subscriptionStatus?.lowercased()
             if snapshot.subscriptionIsActive == false
@@ -101,7 +127,7 @@ enum NativeOrbitWarningSignals {
                 to: &lights)
         }
         self.appendUsage(
-            plan: snapshot?.loginMethod(for: provider),
+            plan: snapshot?.loginMethod(for: provider) ?? metrics.reportedPlan,
             metrics: metrics,
             history: history,
             now: now,
@@ -119,11 +145,48 @@ enum NativeOrbitWarningSignals {
         })
     }
 
+    /// How much of a window is left when its fuel light comes on, as a car's low-fuel light: the lowest of the
+    /// quota-warning thresholds, where the user asked to hear that an allowance is running low. Windows of a day or
+    /// less take the session thresholds.
+    struct FuelReserve: Equatable {
+        var session: Double
+        var weekly: Double
+
+        static let standard = Self(thresholds: QuotaWarningThresholds.defaults, weekly: QuotaWarningThresholds.defaults)
+
+        init(session: Double, weekly: Double) {
+            self.session = session
+            self.weekly = weekly
+        }
+
+        init(thresholds session: [Int], weekly: [Int]) {
+            func lowest(_ thresholds: [Int]) -> Double {
+                Double(QuotaWarningThresholds.active(thresholds).min() ?? QuotaWarningThresholds.defaults.min() ?? 0)
+            }
+            self.init(session: lowest(session), weekly: lowest(weekly))
+        }
+
+        func percent(minutes: Int) -> Double {
+            minutes <= 1440 ? self.session : self.weekly
+        }
+    }
+
     private static func appendQuotaWindows(
-        _ windows: [RateWindow], snapshotUpdatedAt: Date?, now: Date, to lights: inout [NativeOrbitWarningLight])
+        _ windows: [(title: String, window: RateWindow)],
+        snapshotUpdatedAt: Date?,
+        now: Date,
+        fuelReserve: FuelReserve,
+        to lights: inout [NativeOrbitWarningLight])
     {
-        for window in windows where window.usedPercent.isFinite && window.usedPercent >= 0 {
-            let title = self.quotaTitle(minutes: window.windowMinutes)
+        // A light names one window. When several windows raise the same kind, it shows the one that matters most:
+        // the largest gap from pace, the least left.
+        var strongest: [NativeOrbitWarningLight.Kind: (light: NativeOrbitWarningLight, weight: Double)] = [:]
+        func raise(_ light: NativeOrbitWarningLight, weight: Double) {
+            if let current = strongest[light.kind], current.weight >= weight { return }
+            strongest[light.kind] = (light, weight)
+        }
+        defer { lights += strongest.values.map(\.light) }
+        for (title, window) in windows where window.usedPercent.isFinite && window.usedPercent >= 0 {
             if window.usedPercent >= 100 {
                 lights.append(Self.light(.limit, .critical, "\(title) exhausted."))
                 if let reset = window.resetsAt, let measured = snapshotUpdatedAt,
@@ -135,47 +198,56 @@ enum NativeOrbitWarningSignals {
                         "\(title) still exhausted after reset."))
                 }
             }
+            if window.usedPercent < 100, let minutes = window.windowMinutes, minutes > 0,
+               window.remainingPercent <= fuelReserve.percent(minutes: minutes)
+            {
+                let left = Int(window.remainingPercent.rounded(.down))
+                raise(Self.light(.limit, .caution, "\(title): \(left)% left."), weight: -window.remainingPercent)
+            }
             guard window.usedPercent > 0, window.usedPercent < 100,
                   let minutes = window.windowMinutes, minutes > 0,
                   window.resetsAt.map({ $0 > now }) == true,
-                  let pace = UsagePace.weekly(window: window, now: now, defaultWindowMinutes: minutes)
+                  let pace = UsagePace.weekly(window: window, now: now, defaultWindowMinutes: minutes),
+                  // As the menu's pace: a few minutes into a window, one request extrapolates to a run-out.
+                  pace.expectedUsedPercent >= 3
             else { continue }
+            let gap = abs(pace.deltaPercent)
+            let detail = Self.paceDetail(
+                title: title, used: window.usedPercent, elapsed: pace.expectedUsedPercent, minutes: minutes)
             switch pace.stage {
             case .behind, .farBehind:
-                lights.append(Self.light(
-                    .behindPace,
-                    .opportunity,
-                    "\(title): \(Int(abs(pace.deltaPercent).rounded())) points below pace."))
+                raise(Self.light(.behindPace, .opportunity, detail), weight: gap)
             case .slightlyAhead, .ahead:
-                lights.append(Self.light(
-                    .aheadOfPace,
-                    .caution,
-                    "\(title): \(Int(pace.deltaPercent.rounded())) points above pace."))
+                raise(Self.light(.aheadOfPace, .caution, detail), weight: gap)
             case .farAhead:
-                lights.append(Self.light(
-                    .farAheadPace,
-                    .caution,
-                    "\(title): \(Int(pace.deltaPercent.rounded())) points above pace."))
+                raise(Self.light(.farAheadPace, .caution, detail), weight: gap)
             case .onTrack, .slightlyBehind: break
-            }
-            if window.usedPercent < 100, let eta = pace.etaSeconds, let reset = window.resetsAt,
-               eta >= 0, eta < reset.timeIntervalSince(now)
-            {
-                let delay = NativeOrbitTooltip.countdown(to: now.addingTimeInterval(eta), now: now)
-                lights.append(Self.light(
-                    .limit,
-                    .caution,
-                    "\(title) may run out in \(delay)."))
             }
             if minutes >= 10080, let reset = window.resetsAt,
                reset.timeIntervalSince(now) <= 86400, window.remainingPercent >= 40
             {
-                lights.append(Self.light(
-                    .behindPace,
-                    .opportunity,
-                    "\(Int(window.remainingPercent.rounded()))% left; resets within 24 hours."))
+                // Says the same as the gap from pace near a reset, in terms that are easier to act on.
+                raise(
+                    Self.light(
+                        .behindPace,
+                        .opportunity,
+                        "\(title): \(Int(window.remainingPercent.rounded()))% left; resets within 24 hours."),
+                    weight: .infinity)
             }
         }
+    }
+
+    /// Pace in the two numbers it compares: how much of the limit is used, and how much of its window has gone.
+    static func paceDetail(title: String, used: Double, elapsed: Double, minutes: Int) -> String {
+        let period = switch minutes {
+        case 300: "the session"
+        case 1440: "the day"
+        case 10080: "the week"
+        case 40320...44640: "the month"
+        default: "the window"
+        }
+        let usedText = used > 0 && used < 1 ? "under 1%" : "\(Int(used.rounded()))%"
+        return "\(title): \(usedText) used, \(Int(elapsed.rounded()))% of \(period) gone."
     }
 
     static func quotaTitle(minutes: Int?) -> String {
@@ -234,7 +306,7 @@ enum NativeOrbitWarningSignals {
             } else if balance.value == 0, NativeOrbitWarningEvidence.wasFunded(balance, history: history) {
                 lights.append(Self.light(.credits, .critical, "Prepaid credits exhausted."))
             } else if balance.value > 0,
-                      let rate = NativeOrbitMonetaryInspection.balanceRate(balance, history: history),
+                      let rate = NativeOrbitMonetaryInspection.sustainedBalanceRate(balance, history: history),
                       rate < 0, balance.value / -rate <= 3 * 86400
             {
                 lights.append(Self.light(.credits, .caution, "Credits may run out within 3 days."))
@@ -249,9 +321,10 @@ enum NativeOrbitWarningSignals {
             } else if spend.used / spend.limit >= 0.9 {
                 lights.append(Self.light(.spend, .caution, "Spending cap at least 90% used."))
             }
+            // As credits: a cap only worth warning about is one that spending would reach within three days.
             if spend.used < spend.limit, let reset = spend.resetsAt, reset > now,
-               let rate = NativeOrbitMonetaryInspection.spendRate(spend, history: history), rate > 0,
-               spend.used + rate * reset.timeIntervalSince(now) >= spend.limit
+               let rate = NativeOrbitMonetaryInspection.sustainedSpendRate(spend, history: history), rate > 0,
+               spend.used + rate * min(reset.timeIntervalSince(now), 3 * 86400) >= spend.limit
             {
                 lights.append(Self.light(.spend, .caution, "Spending may hit cap before reset."))
             }
@@ -288,15 +361,43 @@ enum NativeOrbitWarningSignals {
         }
         if let observed = metrics.resetInventoryObservedAt, let count = metrics.bankedResets,
            observed <= now, now.timeIntervalSince(observed) <= 86400,
-           let previous = history.filter({ $0.name.rawValue == "nativeMetric:resets" }).flatMap(\.entries)
-               .filter({ $0.capturedAt < observed }).max(by: { $0.capturedAt < $1.capturedAt }),
-               let inventory = previous.nativeMetrics?.resets,
-               count > inventory.available(at: observed).count
+           self.savedResetWasAdded(history: history, current: count, observedAt: observed, now: now)
         {
             lights.append(Self.light(
                 .newSavedReset,
                 .opportunity,
                 "Saved reset added; \(count) available."))
+        }
+    }
+
+    /// Whether a saved reset joined the inventory in the last day: a reading counted more available resets than the
+    /// one before it. The news lasts the day, not only until the next refresh reads the same count again.
+    private static func savedResetWasAdded(
+        history: [PlanUtilizationSeriesHistory], current: Int, observedAt observed: Date, now: Date) -> Bool
+    {
+        let since = now.addingTimeInterval(-86400)
+        var baseline: (date: Date, inventory: NativeOrbitResetObservation)?
+        var recent: [(date: Date, inventory: NativeOrbitResetObservation)] = []
+        for lane in history where lane.name.rawValue == "nativeMetric:resets" {
+            for entry in lane.entries where entry.capturedAt < observed {
+                guard let inventory = entry.nativeMetrics?.resets else { continue }
+                if entry.capturedAt >= since {
+                    recent.append((entry.capturedAt, inventory))
+                } else if baseline.map({ entry.capturedAt > $0.date }) ?? true {
+                    baseline = (entry.capturedAt, inventory)
+                }
+            }
+        }
+        let readings = (baseline.map { [$0] } ?? []) + recent.sorted { $0.date < $1.date }
+        func rose(_ before: NativeOrbitResetObservation, to count: Int, at date: Date) -> Bool {
+            count > before.available(at: date).count
+        }
+        if let last = readings.last, rose(last.inventory, to: current, at: observed) { return true }
+        return zip(readings, readings.dropFirst()).contains { before, after in
+            after.date >= since && rose(
+                before.inventory,
+                to: after.inventory.available(at: after.date).count,
+                at: after.date)
         }
     }
 
@@ -445,9 +546,8 @@ enum NativeOrbitWarningSignals {
         }
         let rawPlan = plan?.lowercased() ?? ""
         let plan = rawPlan.hasPrefix("claude ") ? String(rawPlan.dropFirst(7)) : rawPlan
-        let paid = ["pro", "max", "plus", "team", "business", "enterprise", "ultra"].contains {
-            plan == $0 || plan.hasPrefix($0 + " ")
-        }
+        // Any named plan but a free one is paid for (Codex reports Pro Lite as "prolite").
+        let paid = !plan.isEmpty && !["free", "guest", "trial"].contains { plan.contains($0) }
         if paid, currentComplete, previous.allSatisfy({ $0 == 0 }), currentTokens == 0,
            !metrics.quotaConsumption.contains(where: { $0 <= now && now.timeIntervalSince($0) <= 7 * 86400 })
         {
@@ -464,15 +564,20 @@ enum NativeOrbitWarningSignals {
         now: Date,
         preparedHistory: NativeOrbitPreparedWarningHistory?) -> Bool
     {
-        var intervals: [ClosedRange<Date>] = []
+        var intervals: [NativeOrbitActivity.Rise] = []
         if preparedHistory == nil {
             for lane in history where lane.name.isNativeQuotaObservation {
-                for (before, after) in zip(lane.entries, lane.entries.dropFirst())
+                // Server period totals are not readings; a rise is between two measured ones.
+                let measured = lane.entries.filter { $0.historicalPeriod == nil }
+                for (before, after) in zip(measured, measured.dropFirst())
                     where after.capturedAt <= now && now.timeIntervalSince(after.capturedAt) <= 86400
                     && after.usedPercent > before.usedPercent + NativeOrbitActivity.minimumIncrease
                     && NativeOrbitActivity.sameWindow(before, after)
                 {
-                    intervals.append(before.capturedAt...after.capturedAt)
+                    intervals.append(.init(
+                        lane: lane.name.rawValue,
+                        interval: before.capturedAt...after.capturedAt,
+                        points: after.usedPercent - before.usedPercent))
                 }
             }
         }
@@ -494,17 +599,23 @@ enum NativeOrbitWarningSignals {
             }
             // An exact complete request stream can rule out local use during the actual quota-rise interval,
             // even if this account was used locally earlier on the same day.
-            for interval in recentIntervals where covered.lowerBound <= interval.lowerBound
-                && through >= interval.upperBound && report.updatedAt >= interval.upperBound
+            var unexplained: [String: Double] = [:]
+            for rise in recentIntervals where covered.lowerBound <= rise.interval.lowerBound
+                && through >= rise.interval.upperBound && report.updatedAt >= rise.interval.upperBound
             {
+                let interval = rise.interval
                 let ambiguous = local.unattributedDays.contains {
                     $0 >= dayKey(interval.lowerBound) && $0 <= dayKey(interval.upperBound)
                 }
+                // The provider's figure catches up with a request minutes after it was made, so a rise can follow
+                // the local request that caused it.
                 let localRequests = report.quotaSlices.contains {
-                    $0.timestamp > interval.lowerBound && $0.timestamp <= interval.upperBound
+                    $0.timestamp > interval.lowerBound.addingTimeInterval(-self.quotaReportingLag)
+                        && $0.timestamp <= interval.upperBound
                 }
-                if !ambiguous, !localRequests { return true }
+                if !ambiguous, !localRequests { unexplained[rise.lane, default: 0] += rise.points }
             }
+            if unexplained.values.contains(where: { $0 >= self.minimumUnexplainedRise }) { return true }
             guard recentIntervals.isEmpty, let consumed = lastConsumption,
                   report.updatedAt >= consumed, through >= consumed else { return false }
             let period = CostReportingPeriod.rolling(days: 1)

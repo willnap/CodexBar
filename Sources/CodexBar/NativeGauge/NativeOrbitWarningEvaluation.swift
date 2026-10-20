@@ -46,8 +46,10 @@ enum NativeOrbitWarningEvaluation {
             isProjecting: isProjecting)
         let rates = windows.compactMap { window -> NamedRateWindow? in
             guard window.id != "monetary-budget", let used = window.usedFraction else { return nil }
+            // Named as their history lanes, so changes of a window's period are found in its own recordings.
+            let lane = NativeOrbitHistoricalInspection.historyID(window, provider: account.gauge.provider)
             return NamedRateWindow(
-                id: window.id,
+                id: String(lane.dropFirst("nativeQuota:".count)),
                 title: window.label,
                 window: RateWindow(
                     usedPercent: used * 100,
@@ -82,7 +84,8 @@ enum NativeOrbitWarningEvaluation {
             observedAt: account.updatedAt,
             evidenceDate: future ? now : moment,
             includeObservedHistory: !future,
-            preparedHistory: prepared)
+            preparedHistory: prepared,
+            fuelReserve: account.fuelReserve)
         // The reconstructed snapshot describes the inspected instant, not a new provider observation.
         // Only an actual receipt can prove that a reset was still overdue after the grace period.
         measured.removeAll { $0.kind == .resetLate }

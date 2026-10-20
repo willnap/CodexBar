@@ -245,6 +245,16 @@ public struct AgentProcessRecord: Equatable, Sendable {
         self.piSelectorEnvironment = PiProcessEnvironment.filtered(piSelectorEnvironment)
     }
 
+    func withParent(_ ppid: Int32) -> Self {
+        Self(
+            pid: self.pid,
+            ppid: ppid,
+            startedAt: self.startedAt,
+            command: self.command,
+            arguments: self.arguments,
+            piSelectorEnvironment: self.piSelectorEnvironment)
+    }
+
     func withPiSelectorEnvironment(_ environment: [String: String]?) -> Self {
         var record = self
         record.piSelectorEnvironment = PiProcessEnvironment.filtered(environment)

@@ -159,7 +159,9 @@ extension UsageStore {
             append("balance", at: balance.updatedAt, observation: .init(balance: balance))
         } else if let credits, credits.balanceReadSucceeded || credits.creditsAvailable == true {
             append("balance", at: credits.updatedAt, observation: .init())
-        } else if let date = snapshot.providerCost?.balanceUpdatedAt {
+        } else if provider != .codex || credits != nil, let date = snapshot.providerCost?.balanceUpdatedAt {
+            // Provider-specific by design: a Codex balance (or its absence) comes from the credits read, which records
+            // it moments after the usage refresh; an empty marker here would break every balance's continuity.
             append("balance", at: date, observation: .init())
         }
         if !metrics.creditUsageEvents.isEmpty, let credits {

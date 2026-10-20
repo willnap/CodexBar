@@ -102,7 +102,9 @@ extension CostUsageClaudeCacheIO {
         try await ArtifactMemo.$shared.withValue(ArtifactMemo()) {
             try await CostUsageClaudeReportMemo.$shared.withValue(CostUsageClaudeReportMemo()) {
                 try await CostUsageClaudeFragments.$shared.withValue(CostUsageClaudeFragments()) {
-                    try await operation()
+                    try await CostUsageScanner.ClaudeReportEngine.Registry.$shared.withValue(.init()) {
+                        try await operation()
+                    }
                 }
             }
         }

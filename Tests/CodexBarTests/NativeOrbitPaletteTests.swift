@@ -71,6 +71,37 @@ struct NativeOrbitPaletteTests {
         }
     }
 
+    @Test
+    func `a dial's windows keep their own shades in either appearance, whatever the accent`() throws {
+        let accents: [Color] = [
+            Color(.sRGB, red: 0.85, green: 0.47, blue: 0.34, opacity: 1),
+            Color(.sRGB, red: 0.20, green: 0.25, blue: 0.85, opacity: 1),
+            Color(.sRGB, red: 1.00, green: 0.85, blue: 0.10, opacity: 1),
+            Color(.sRGB, red: 0.10, green: 0.10, blue: 0.30, opacity: 1),
+            Color(.sRGB, red: 0.12, green: 0.42, blue: 0.50, opacity: 1),
+        ]
+        // Claude's Fable window takes the third model tone, which in dark mode once matched its session exactly.
+        let windows: [(String, TimeInterval)] = [
+            ("primary", 18000), ("secondary", 604_800), ("daily", 86400), ("monthly", 2_592_000),
+            ("tertiary", 604_800), ("claude-weekly-scoped-sonnet", 604_800), ("claude-weekly-scoped-fable", 604_800),
+        ]
+        #expect(Set(windows.map { NativeOrbitPalette.tone(id: $0.0, period: $0.1) }).count == windows.count)
+        for accent in accents {
+            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                let shades = try windows.map {
+                    try Self.resolve(
+                        NativeOrbitPalette.color(accent: accent, id: $0.0, period: $0.1),
+                        appearance: appearance)
+                }
+                for (index, shade) in shades.enumerated() {
+                    for other in shades[(index + 1)...] {
+                        #expect(abs(shade.brightnessComponent - other.brightnessComponent) >= 0.025)
+                    }
+                }
+            }
+        }
+    }
+
     private static func resolve(_ color: Color, appearance: NSAppearance.Name) throws -> NSColor {
         let appearance = try #require(NSAppearance(named: appearance))
         var resolved: NSColor?

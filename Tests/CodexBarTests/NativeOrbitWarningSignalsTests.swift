@@ -94,7 +94,7 @@ struct NativeOrbitWarningSignalsTests {
     }
 
     @Test func `pace pressure uses one actionable light and clears on even pace`() {
-        for (used, kind) in [(5.0, NativeOrbitWarningLight.Kind.behindPace), (54, .limit), (80, .limit)] {
+        for (used, kind) in [(5.0, NativeOrbitWarningLight.Kind.behindPace), (54, .aheadOfPace), (80, .limit)] {
             let window = RateWindow(
                 usedPercent: used,
                 windowMinutes: 300,
@@ -172,7 +172,7 @@ struct NativeOrbitWarningSignalsTests {
     @Test func `real local attribution emits a complete zero report for an account used off this Mac`() throws {
         let windowA = self.now.addingTimeInterval(4 * 86400)
         let windowB = self.now.addingTimeInterval(5 * 86400)
-        let request = self.now.addingTimeInterval(-60)
+        let request = self.now.addingTimeInterval(-3600)
         let source = CostUsageTokenSnapshot(
             sessionTokens: nil,
             sessionCostUSD: nil,
@@ -217,6 +217,22 @@ struct NativeOrbitWarningSignalsTests {
             history: [rise],
             now: self.now)
         #expect(live.contains { $0.kind == .usedElsewhere })
+        // One whole-number step is not enough: readings can tick a point with nothing used anywhere.
+        let blip = PlanUtilizationSeriesHistory(name: "nativeQuota:secondary", windowMinutes: 10080, entries: [
+            .init(capturedAt: self.now.addingTimeInterval(-30), usedPercent: 10, resetsAt: windowA),
+            .init(capturedAt: self.now, usedPercent: 11, resetsAt: windowA),
+        ])
+        #expect(!NativeOrbitWarningSignals.account(
+            provider: .codex, snapshot: nil, metrics: metrics, history: [blip], now: self.now)
+            .contains { $0.kind == .usedElsewhere })
+        // The provider counts a request minutes after it is made: a rise read soon after it is that request.
+        let lagged = PlanUtilizationSeriesHistory(name: "nativeQuota:secondary", windowMinutes: 10080, entries: [
+            .init(capturedAt: request.addingTimeInterval(120), usedPercent: 10, resetsAt: windowA),
+            .init(capturedAt: request.addingTimeInterval(240), usedPercent: 15, resetsAt: windowA),
+        ])
+        #expect(!NativeOrbitWarningSignals.account(
+            provider: .codex, snapshot: nil, metrics: metrics, history: [lagged], now: self.now)
+            .contains { $0.kind == .usedElsewhere })
         let noRise = PlanUtilizationSeriesHistory(name: "nativeQuota:secondary", windowMinutes: 10080, entries: [
             .init(capturedAt: self.now.addingTimeInterval(-30), usedPercent: 10, resetsAt: windowA),
             .init(capturedAt: self.now, usedPercent: 10, resetsAt: windowA),

@@ -31,6 +31,12 @@ public enum CostUsageError: LocalizedError, Sendable {
 public struct CostUsageFetcher: Sendable {
     private static let codexAutomaticScanDurationPerRefresh: TimeInterval = 2
 
+    /// Lets this process keep changed Claude transcript caches in memory for up to `interval` between writes. The app
+    /// refreshes every few minutes while each write rewrites the whole artifact; the CLI and tests write every change.
+    package static func deferClaudeCacheWrites(interval: TimeInterval) {
+        CostUsageClaudeCacheIO.WriteSchedule.shared.setInterval(interval)
+    }
+
     package static func piRootScope(environment: [String: String]) async throws -> String {
         let contexts = await LocalAgentSessionScanner().piSessionProcessContexts(environment: environment)
         return try await CostUsageScanExecutor.run { checkCancellation in

@@ -152,7 +152,8 @@ final class CostUsageClaudeReportMemo: @unchecked Sendable {
         sourceInventory: [String: CostUsageClaudeFileStamp],
         reportKey: CostUsageClaudeReportMemoKey,
         report: CostUsageDailyReport,
-        hasWindowScopedRows: Bool = false)
+        hasWindowScopedRows: Bool = false,
+        persisting: Bool = true)
     {
         let key = Self.key(provider: provider, canonicalCachePath: canonicalCachePath)
         let entry = Entry(
@@ -161,7 +162,8 @@ final class CostUsageClaudeReportMemo: @unchecked Sendable {
             report: report,
             hasWindowScopedRows: hasWindowScopedRows)
         self.lock.withLock { self.installUnlocked(key: key, entry: entry) }
-        Self.persist(entry, canonicalCachePath: canonicalCachePath)
+        // A memo for a cache kept only in memory stays there too: on disk it would describe rows the file lacks.
+        if persisting { Self.persist(entry, canonicalCachePath: canonicalCachePath) }
     }
 
     #if DEBUG
@@ -442,20 +444,72 @@ enum CostUsageClaudeCacheIO {
         checkCancellation: CostUsageScanner.CancellationCheck? = nil) throws -> CostUsageClaudeFileStamp?
     {
         let url = self.cacheFileURL(provider: provider, cacheRoot: cacheRoot, reportContext: reportContext)
+        let cache = self.normalized(cache, calendar: calendar)
+        let key = url.standardizedFileURL.resolvingSymlinksInPath() as NSURL
+        let stamp = try self.write(cache, to: url, contentID: cache.contentID, checkCancellation: checkCancellation)
+        if let stamp, CostUsageClaudeFileStamp.read(at: url) == stamp {
+            ArtifactMemo.shared.entries.setObject(ArtifactMemo.Entry(stamp: stamp, cache: cache), forKey: key)
+            WriteSchedule.shared.noteWrite(key.path ?? url.path, at: Date())
+        }
+        if stamp != nil, reportContext == .spendDashboard {
+            self.removeLegacyHistoryArtifacts(provider: provider, replacing: url)
+        }
+        return stamp
+    }
+
+    private static func normalized(_ cache: CostUsageClaudeCache, calendar: Calendar) -> CostUsageClaudeCache {
         var cache = cache
         let timeZoneID = calendar.timeZone.identifier
         if cache.usage.version != self.schemaVersion { cache.usage.version = self.schemaVersion }
         if cache.usage.timeZoneIdentifier?.utf8.elementsEqual(timeZoneID.utf8) != true {
             cache.usage.timeZoneIdentifier = timeZoneID
         }
+        return cache
+    }
+
+    /// How long the app keeps a changed cache in memory before writing it. Each write rewrites (and hashes) the whole
+    /// artifact, tens of megabytes, while a refresh usually appends a few rows. Zero, the default, writes every change.
+    final class WriteSchedule: @unchecked Sendable {
+        #if DEBUG
+        @TaskLocal static var shared = WriteSchedule()
+        #else
+        static let shared = WriteSchedule()
+        #endif
+        private let lock = NSLock()
+        private var interval: TimeInterval = 0
+        private var lastWrites: [String: Date] = [:]
+
+        func setInterval(_ interval: TimeInterval) {
+            self.lock.withLock { self.interval = max(0, interval) }
+        }
+
+        func shouldDefer(_ path: String, now: Date) -> Bool {
+            self.lock.withLock {
+                guard self.interval > 0, let last = self.lastWrites[path] else { return false }
+                return now.timeIntervalSince(last) < self.interval
+            }
+        }
+
+        func noteWrite(_ path: String, at date: Date) {
+            self.lock.withLock { self.lastWrites[path] = date }
+        }
+    }
+
+    /// Keeps a cache newer than its unchanged file in memory instead of writing it: the next load returns it while the
+    /// file keeps its stamp. A later save writes it; a relaunch or an eviction before then reloads the file and
+    /// reparses what changed since. Nil when there is no file to stand in for, so the caller saves instead.
+    static func retainUnsaved(
+        provider: UsageProvider,
+        cache: CostUsageClaudeCache,
+        cacheRoot: URL?,
+        reportContext: CostUsageReportContext,
+        calendar: Calendar) -> CostUsageClaudeFileStamp?
+    {
+        let url = self.cacheFileURL(provider: provider, cacheRoot: cacheRoot, reportContext: reportContext)
+        guard let stamp = CostUsageClaudeFileStamp.read(at: url) else { return nil }
         let key = url.standardizedFileURL.resolvingSymlinksInPath() as NSURL
-        let stamp = try self.write(cache, to: url, contentID: cache.contentID, checkCancellation: checkCancellation)
-        if let stamp, CostUsageClaudeFileStamp.read(at: url) == stamp {
-            ArtifactMemo.shared.entries.setObject(ArtifactMemo.Entry(stamp: stamp, cache: cache), forKey: key)
-        }
-        if stamp != nil, reportContext == .spendDashboard {
-            self.removeLegacyHistoryArtifacts(provider: provider, replacing: url)
-        }
+        let cache = self.normalized(cache, calendar: calendar)
+        ArtifactMemo.shared.entries.setObject(ArtifactMemo.Entry(stamp: stamp, cache: cache), forKey: key)
         return stamp
     }
 
@@ -478,6 +532,7 @@ enum CostUsageClaudeCacheIO {
         encoder.outputFormatting = [.sortedKeys]
         let directory = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        self.removeAbandonedTemporaryFiles(in: directory)
         let temporaryURL = directory.appendingPathComponent(".claude-cache-\(UUID().uuidString).tmp")
         defer { try? FileManager.default.removeItem(at: temporaryURL) }
         guard let output = CostUsageClaudeArtifactWriter(temporaryURL: temporaryURL, replacing: url) else {
@@ -515,6 +570,33 @@ enum CostUsageClaudeCacheIO {
         }
         guard let data = try? encoder.encode(value), (try? append(data)) != nil else { return nil }
         return try commit()
+    }
+
+    private final class TemporaryFileSweep: @unchecked Sendable {
+        static let shared = TemporaryFileSweep()
+        private let lock = NSLock()
+        private var directories: Set<String> = []
+
+        /// True the first time this process writes into `directory`.
+        func claim(_ directory: URL) -> Bool {
+            self.lock.withLock { self.directories.insert(directory.standardizedFileURL.path).inserted }
+        }
+    }
+
+    /// A write killed before its rename leaves its temporary copy of the cache behind, and relaunching the app during
+    /// a scan does exactly that. Remove those leftovers once per directory and launch; an hour is far longer than any
+    /// write, so another process's copy in progress is never touched.
+    static func removeAbandonedTemporaryFiles(in directory: URL, now: Date = Date()) {
+        guard TemporaryFileSweep.shared.claim(directory),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return }
+        for name in names where name.hasPrefix(".claude-cache-") && name.hasSuffix(".tmp") {
+            let url = directory.appendingPathComponent(name, isDirectory: false)
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  attributes[.type] as? FileAttributeType == .typeRegular,
+                  let modified = attributes[.modificationDate] as? Date,
+                  now.timeIntervalSince(modified) > 3600 else { continue }
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     fileprivate static func read(at url: URL, options: Data.ReadingOptions = []) -> Data? {

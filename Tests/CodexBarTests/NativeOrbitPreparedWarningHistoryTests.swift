@@ -68,7 +68,7 @@ struct NativeOrbitPreparedWarningHistoryTests {
                     && after.usedPercent > before.usedPercent + NativeOrbitActivity.minimumIncrease
                     && NativeOrbitActivity.sameWindow(before, after) ? before.capturedAt...after.capturedAt : nil
             }
-            #expect(Array(prepared.consumptionIntervals(at: date)) == expected)
+            #expect(prepared.consumptionIntervals(at: date).map(\.interval) == expected)
         }
     }
 

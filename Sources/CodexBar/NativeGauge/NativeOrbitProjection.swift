@@ -11,6 +11,13 @@ enum NativeOrbitActivity {
     /// Quota readings move in hundredths at best; a smaller change is noise.
     static let minimumIncrease = 0.01
 
+    /// One quota lane rising between two readings in the same window.
+    struct Rise: Equatable {
+        let lane: String
+        let interval: ClosedRange<Date>
+        let points: Double
+    }
+
     /// The latest instant at most `window` before `now` that shows this account consuming; nil when nothing does.
     static func lastActivity(
         lanes: [NativeOrbitHistoryWidget.Lane],
@@ -50,7 +57,8 @@ enum NativeOrbitActivity {
     static func consumptionDates(_ histories: [PlanUtilizationSeriesHistory]) -> [Date] {
         var dates: [Date] = []
         for history in histories where history.name.isNativeQuotaObservation {
-            let entries = history.entries.sorted { $0.capturedAt < $1.capturedAt }
+            // Server period totals are not readings; a rise is between two measured ones.
+            let entries = history.entries.filter { $0.historicalPeriod == nil }.sorted { $0.capturedAt < $1.capturedAt }
             for (before, after) in zip(entries, entries.dropFirst())
                 where after.usedPercent > before.usedPercent + self.minimumIncrease && self.sameWindow(before, after)
             {

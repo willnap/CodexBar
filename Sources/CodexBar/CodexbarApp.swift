@@ -465,6 +465,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         MenuBarStatusItemWindowProbe.trace("did-finish-launching")
+        CostUsageFetcher.deferClaudeCacheWrites(interval: 10 * 60)
         NativeOrbitSystemSignals.shared.start()
         self.dockIconController.start()
         self.memoryPressureMonitor.start()
