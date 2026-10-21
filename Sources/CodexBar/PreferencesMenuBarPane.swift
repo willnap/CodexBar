@@ -34,10 +34,19 @@ struct MenuBarPane: View {
                         options: NativeGaugeStyle.allCases,
                         label: { Text(L("Style")) },
                         optionLabel: { Text($0.label) })
+
+                    if self.settings.usesNativeGauges {
+                        SettingsMenuPicker(
+                            selection: self.$settings.nativeCombinesAllServices,
+                            options: [false, true],
+                            label: { Text(L("Combine into one icon")) },
+                            optionLabel: { always in
+                                Text(always ? L("Always") : L("With 4 or more services"))
+                            })
+                    }
                 } footer: {
                     if self.settings.usesNativeGauges {
-                        SettingsSectionFooter(
-                            L("Each enabled service has its own gauge. Manage services in the sidebar."))
+                        SettingsSectionFooter(L("Manage services in the sidebar."))
                     }
                 }
             }

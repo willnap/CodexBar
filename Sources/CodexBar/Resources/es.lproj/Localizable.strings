@@ -2517,7 +2517,10 @@
 "Available services" = "Available services";
 "Configured services" = "Configured services";
 "Custom gauges" = "Custom gauges";
-"Each enabled service has its own gauge. Manage services in the sidebar." = "Each enabled service has its own gauge. Manage services in the sidebar.";
+"Combine into one icon" = "Combine into one icon";
+"With 4 or more services" = "With 4 or more services";
+"Always" = "Always";
+"Manage services in the sidebar." = "Manage services in the sidebar.";
 "Enabled services" = "Enabled services";
 "Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
 "Keep Mac awake while agents run" = "Keep Mac awake while agents run";
@@ -2627,14 +2630,3 @@
 
 /* Combined account paging (English fallback). */
 "Account pages" = "Account pages";
-"All connected accounts" = "All connected accounts";
-"Average of each account’s most constrained quota. Account limits reset independently." = "Average of each account’s most constrained quota. Account limits reset independently.";
-"Combined usage overview" = "Combined usage overview";
-"Connected accounts" = "Connected accounts";
-"Known cost; currencies are kept separate" = "Known cost; currencies are kept separate";
-"Known requests across accounts" = "Known requests across accounts";
-"Known tokens across accounts" = "Known tokens across accounts";
-"Known totals · Partial data" = "Known totals · Partial data";
-"Mean quota left" = "Mean quota left";
-"Multi" = "Multi";
-"No token history for this range" = "No token history for this range";

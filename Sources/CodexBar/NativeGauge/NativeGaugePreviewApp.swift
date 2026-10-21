@@ -383,18 +383,32 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
         }, now: self.now)
         self.exportCombinedIndicatorArtwork(model)
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NativeCombinedStatusImage.make(model.recentAccounts)
+        if let button = item.button {
+            var x: CGFloat = 1
+            for page in model.recentAccounts.prefix(2) {
+                let host = NativeGaugeHostingView(rootView: AnyView(EmptyView()))
+                button.addSubview(host)
+                x += host.update(state: page.account.gauge, accountID: page.id, button: button, x: x) + 6
+            }
+            item.length = x - 6 + 1
+        }
         item.button?.setAccessibilityLabel("All accounts · Preview")
         // Provider-specific by design: The fixture inventory retains its sole combined status item in Codex’s slot.
         self.items[.codex] = item
         let initialID = CommandLine.arguments.contains("--preview-overview") ? NativeCombinedAccounts.overviewID : nil
+        let showing = NativeCombinedShowing()
+        let size = NativeCombinedPopupView.contentSize(pageCount: model.pages.count + 1)
+        showing.begin(
+            openingID: initialID ?? model.pages.first?.id ?? NativeCombinedAccounts.overviewID,
+            pageOrder: model.pages.map(\.id),
+            width: size.width)
         let host = NSHostingController(rootView: NativeCombinedPopupView(
             sources: sources,
             toolbar: toolbar,
-            initialID: initialID))
+            showing: showing))
         let popover = NSPopover()
         popover.contentViewController = host
-        popover.contentSize = NativeCombinedPopupView.contentSize
+        popover.contentSize = size
         self.popover = popover
         let window = Self.glassWindow(host, size: popover.contentSize)
         self.previewWindow = window
@@ -403,12 +417,39 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
         NSApp.activate()
         window.makeKey()
         self.recordPreview(popover)
+        self.exportCombinedRender(sources: sources, toolbar: toolbar, showing: showing, size: size)
         if CommandLine.arguments.contains("--preview-control-check"),
            let argument = CommandLine.arguments.firstIndex(of: "--preview-output"),
            CommandLine.arguments.indices.contains(argument + 1)
         {
             let directory = URL(fileURLWithPath: CommandLine.arguments[argument + 1], isDirectory: true)
             Task { await NativePageControlPreviewCheck.run(view: host.view, model: model, directory: directory) }
+        }
+    }
+
+    /// SwiftUI's own offscreen render of the production popup, without sampling a window or the user's screen.
+    /// AppKit-hosted pieces (the glass dial, the page control) are absent from it.
+    private func exportCombinedRender(
+        sources: [NativeCombinedAccountSource],
+        toolbar: NativeOrbitPopupState,
+        showing: NativeCombinedShowing,
+        size: NSSize)
+    {
+        guard let argument = CommandLine.arguments.firstIndex(of: "--preview-output"),
+              CommandLine.arguments.indices.contains(argument + 1) else { return }
+        let directory = URL(fileURLWithPath: CommandLine.arguments[argument + 1], isDirectory: true)
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            var view = NativeCombinedPopupView(sources: sources, toolbar: toolbar, showing: showing)
+            view.rendersStaticStrip = true
+            let renderer = ImageRenderer(content: view
+                .frame(width: size.width, height: size.height)
+                .background(Color(nsColor: .windowBackgroundColor)))
+            renderer.scale = 2
+            guard let image = renderer.cgImage,
+                  let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+            else { return }
+            try? png.write(to: directory.appendingPathComponent("popup-render.png"))
         }
     }
 

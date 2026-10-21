@@ -111,6 +111,66 @@ struct NativePopoverTests {
         print("100 warmed native popup lookups: \(started.duration(to: .now))")
     }
 
+    @Test func `an opening popup draws its prepared columns and applies pending changes once shown`() async throws {
+        let settings = testSettingsStore(suiteName: "NativePopoverOpening", userDefaults: InMemoryUserDefaults())
+        settings.refreshFrequency = .manual
+        settings.statusChecksEnabled = false
+        enableTestProviders([.kimi], settings: settings)
+        let store = UsageStore(
+            fetcher: UsageFetcher(),
+            browserDetection: BrowserDetection(cacheTTL: 0),
+            settings: settings,
+            startupBehavior: .testing)
+        func publish(_ used: Double) {
+            store.snapshots[.kimi] = UsageSnapshot(
+                primary: RateWindow(usedPercent: used, windowMinutes: 300, resetsAt: nil, resetDescription: nil),
+                secondary: nil,
+                updatedAt: Date())
+        }
+        publish(25)
+        let controller = StatusItemController(
+            store: store,
+            settings: settings,
+            account: AccountInfo(email: nil, plan: nil),
+            updater: DisabledUpdaterController(),
+            preferencesSelection: PreferencesSelection(),
+            menuCardRenderingEnabled: false,
+            menuRefreshEnabled: false)
+        defer { controller.releaseStatusItemsForTesting() }
+        let button = try #require(controller.statusItem.button)
+        let popup = controller.nativePopover(for: .kimi, button: button)
+        let viewController = try #require(popup.contentViewController as? NativeServicePopoverController)
+        var used: Double? {
+            viewController.orbitState.accounts.first?.gauge.resolvedWindows.first?.usedFraction
+        }
+        func waitForUsed(_ expected: Double) async {
+            for _ in 0..<120 where used != expected {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+        #expect(used == 0.25)
+
+        publish(73)
+        try? await Task.sleep(for: .milliseconds(100))
+        viewController.popoverWillShow(Notification(name: NSPopover.willShowNotification))
+        try? await Task.sleep(for: .milliseconds(300))
+        #expect(used == 0.25, "The opening frame must not wait behind a rebuild")
+        viewController.popoverDidShow(Notification(name: NSPopover.didShowNotification))
+        await waitForUsed(0.73)
+        #expect(used == 0.73)
+        viewController.popoverDidClose(Notification(name: NSPopover.didCloseNotification))
+
+        publish(50)
+        try? await Task.sleep(for: .milliseconds(100))
+        viewController.beginCombinedPresentation()
+        try? await Task.sleep(for: .milliseconds(300))
+        #expect(used == 0.73, "A combined popup also opens on its prepared columns")
+        viewController.combinedPresentationDidShow()
+        await waitForUsed(0.5)
+        #expect(used == 0.5)
+        viewController.endCombinedPresentation()
+    }
+
     private func descendants(_ view: NSView) -> [NSView] {
         [view] + view.subviews.flatMap { self.descendants($0) }
     }

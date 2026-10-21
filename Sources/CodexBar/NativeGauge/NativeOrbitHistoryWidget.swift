@@ -12,6 +12,8 @@ struct NativeOrbitHistoryWidget: View {
     let now: Date
     var days = 1
     var accent = Color.primary
+    /// Per-lane accents by history name, for a chart whose lanes belong to different services.
+    var laneAccents: [String: Color] = [:]
     var quotaLabels: [String: String] = [:]
     var quotaWindows: [String: RateWindow] = [:]
     var calendar = Calendar.current
@@ -464,6 +466,7 @@ struct NativeOrbitHistoryWidget: View {
             lanes: lanes.map {
                 "\($0.id)|\($0.styleIndex)|\($0.samples.count)|\($0.samples.last?.date.timeIntervalSince1970 ?? 0)"
                     + "|\($0.samples.last?.available ?? -1)"
+                    + "|\(self.laneAccents[$0.history.name.rawValue].map { "\($0)" } ?? "")"
             },
             resetEvents: Self.resetEvents(lanes).map(\.id),
             projection: self.drawnProjection?.signature ?? [],
@@ -911,7 +914,9 @@ extension NativeOrbitHistoryWidget {
     private func color(_ history: PlanUtilizationSeriesHistory) -> Color {
         NativeOrbitContrast.foreground(
             NativeOrbitPalette.color(
-                accent: self.accent, id: history.name.rawValue, period: Double(history.windowMinutes) * 60),
+                accent: self.laneAccents[history.name.rawValue] ?? self.accent,
+                id: history.name.rawValue,
+                period: Double(history.windowMinutes) * 60),
             for: self.colorScheme)
             .opacity(self.spending?.emphasizesQuota == false ? 0.35 : 1)
     }
@@ -919,7 +924,9 @@ extension NativeOrbitHistoryWidget {
     private func color(id: String) -> Color {
         NativeOrbitContrast.foreground(
             NativeOrbitPalette.color(
-                accent: self.accent, id: id, period: Double(self.quotaWindows[id]?.windowMinutes ?? 0) * 60),
+                accent: self.laneAccents[id] ?? self.accent,
+                id: id,
+                period: Double(self.quotaWindows[id]?.windowMinutes ?? 0) * 60),
             for: self.colorScheme)
     }
 

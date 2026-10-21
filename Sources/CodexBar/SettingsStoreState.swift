@@ -3,6 +3,7 @@ import Foundation
 
 struct SettingsDefaultsState {
     var nativeGaugeStyleRaw: String
+    var nativeCombinesAllServices: Bool
     var refreshFrequency: RefreshFrequency
     var adaptiveActivityScanConsent: AdaptiveActivityScanConsent
     var refreshAllProvidersOnMenuOpen: Bool

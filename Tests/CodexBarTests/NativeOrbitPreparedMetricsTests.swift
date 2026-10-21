@@ -37,6 +37,61 @@ struct NativeOrbitPreparedMetricsTests {
         #expect(prepared.at(self.now, observedAt: self.now, history: other).reportedBalance?.value == 99)
     }
 
+    @Test func `preparing an already prepared reading reuses its preparation`() {
+        let history = self.history(balance: 12)
+        let prepared = NativeOrbitAccountMetrics.empty.preparingInspection(history: history)
+        let again = prepared.preparingInspection(history: history)
+        #expect(again.preparedHistory === prepared.preparedHistory)
+        #expect(again.at(self.now, observedAt: self.now, history: history).reportedBalance?.value == 12)
+    }
+
+    @Test func `a reading prepared for other history or changed credit events is prepared again`() {
+        let prepared = NativeOrbitAccountMetrics.empty.preparingInspection(history: self.history(balance: 12))
+        let other = self.history(balance: 99)
+        #expect(prepared.preparingInspection(history: other).preparedHistory?.matches(other) == true)
+        var changed = prepared
+        changed.creditUsageEvents = [NativeOrbitCreditUsageEvent(CreditEvent(
+            date: self.now, service: "fixture", creditsUsed: 2))]
+        #expect(changed.preparingInspection(history: self.history(balance: 12)).preparedCreditEvents?.count == 1)
+    }
+
+    @MainActor
+    @Test func `a combined toolbar adopts columns another popup already prepared`() {
+        let column = NativeOrbitPopupState()
+        column.accounts = [NativeOrbitAccountPresentation(
+            id: "fixture",
+            label: "Fixture",
+            email: nil,
+            symbol: "gearshape",
+            isActive: true,
+            canActivate: false,
+            gauge: ComputeGauge.State(),
+            updatedAt: self.now,
+            history: self.history(balance: 12),
+            odometer: nil,
+            odometerHelp: nil,
+            statusText: nil,
+            selection: .none)]
+        let toolbar = NativeOrbitPopupState()
+        toolbar.accounts = column.accounts
+        #expect(toolbar.accounts.first?.metrics.preparedHistory === column.accounts.first?.metrics.preparedHistory)
+    }
+
+    @Test func `renaming an ordered history keeps its entries without sorting them again`() {
+        let history = PlanUtilizationSeriesHistory(
+            name: .init(rawValue: "nativeQuota:primary"),
+            windowMinutes: 300,
+            entries: [600.0, 0, 300].map {
+                .init(capturedAt: self.now.addingTimeInterval($0), usedPercent: $0 / 10, resetsAt: nil)
+            })
+        let renamed = history.renamed(.init(rawValue: "nativeQuota:combined-0"))
+        #expect(renamed.name.rawValue == "nativeQuota:combined-0")
+        #expect(renamed.windowMinutes == 300)
+        #expect(renamed.entries.map(\.capturedAt) == [0.0, 300, 600].map { self.now.addingTimeInterval($0) })
+        #expect(renamed.entries.withUnsafeBufferPointer { $0.baseAddress }
+            == history.entries.withUnsafeBufferPointer { $0.baseAddress })
+    }
+
     @Test func `prepared timestamp ranges preserve intraday boundaries partial data and unsorted input`() {
         let calendar = CostUsageBucketTimeZone.calendar(identifier: "UTC")
         let slices: [CostUsageTimedEntry] = [

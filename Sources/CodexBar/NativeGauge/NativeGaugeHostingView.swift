@@ -55,12 +55,17 @@ final class NativeGaugeHostingView: NSHostingView<AnyView> {
     override func hitTest(_: NSPoint) -> NSView? { nil }
 
     func update(state: ComputeGauge.State, accountID: String? = nil, button: NSStatusBarButton, item: NSStatusItem) {
+        item.length = self.update(state: state, accountID: accountID, button: button, x: 1) + 2
+    }
+
+    /// Places the gauge `x` points into the button and returns its width. The combined item places several.
+    @discardableResult
+    func update(state: ComputeGauge.State, accountID: String?, button: NSStatusBarButton, x: CGFloat) -> CGFloat {
         let size: CGFloat = 20
         let width = LaurelGauge.layoutWidth(for: size, windowCount: state.resolvedWindows.count)
         let height = LaurelGauge.layoutHeight(for: size, windowCount: state.resolvedWindows.count)
         let density = button.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         self.sizingOptions = []
-        item.length = width + 2
         self.model.width = width
         self.model.height = height
         self.model.density = density
@@ -71,9 +76,10 @@ final class NativeGaugeHostingView: NSHostingView<AnyView> {
         }
         self.autoresizingMask = [.minYMargin, .maxYMargin]
         self.frame = NSRect(
-            x: 1,
+            x: x,
             y: ((button.bounds.height - height) / 2 * density).rounded() / density,
             width: width,
             height: height)
+        return width
     }
 }

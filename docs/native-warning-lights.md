@@ -43,9 +43,9 @@ an evaluator supplies a specific one):
 | Limit (`limit`) | `fuelpump.fill` | Allowance running out. |
 | Not reported (`notReported`) | `questionmark` | Limit or reset time missing. |
 | Limits changed (`limitsChanged`) | `slider.horizontal.3` | Quota period changed. |
-| Behind pace (`behindPace`) | `tortoise.fill` | Less of the limit used than of its time. |
-| Ahead of pace (`aheadOfPace`) | `hare.fill` | More of the limit used than of its time. |
-| Far ahead of pace (`farAheadPace`) | `flame.fill` | Far more of the limit used than of its time. |
+| Behind pace (`behindPace`) | `tortoise.fill` | On pace to have allowance left over. |
+| Ahead of pace (`aheadOfPace`) | `hare.fill` | On pace to run out early. |
+| Far ahead of pace (`farAheadPace`) | `flame.fill` | On pace to run out very early. |
 | Unusual usage (`spike`) | `waveform.path.ecg` | Today’s usage is at least 3× the daily average. |
 | Account idle (`idle`) | `zzz` | No usage for 7 days. |
 | Reset overdue (`resetLate`) | `alarm.fill` | Allowance still exhausted after reset. |
@@ -80,7 +80,9 @@ an evaluator supplies a specific one):
   lit fuel light replaces the pace lights.
 - No pace light until 3 % of the window has passed, as the menu's pace: a single request a few minutes into a
   window would otherwise read as far ahead.
-- Pace lights say the two numbers they compare, used and elapsed: "Weekly limit: 33% used, 4% of the week gone."
+- Pace lights say what the pace means for the limit, then the two numbers it compares: "Weekly limit on pace to run
+  out early: 33% used, 4% of the week gone." At a steady rate, ahead of pace runs out before the reset and behind
+  pace leaves some over. Near a weekly reset the tortoise says "Weekly limit resets within 24 hours with 45% unused."
 - Each light names its window: the provider's own windows by their length ("Weekly limit"), a window of its own by
   its title too ("Weekly limit (Fable only)"). When several windows raise the same light, it shows the largest gap
   from pace or the least left.

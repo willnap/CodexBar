@@ -76,17 +76,23 @@ struct NativeCombinedAccounts {
     let pages: [Page]
     let recentAccounts: [Page]
 
-    static func shouldCombine(_ connections: [Connection]) -> Bool {
-        Set(connections.filter(\.isConnected).map(\.provider)).count > 3
+    /// The combined popup needs at least one connected provider to open, even when combining always.
+    static func shouldCombine(_ connections: [Connection], always: Bool = false) -> Bool {
+        let connected = Set(connections.filter(\.isConnected).map(\.provider)).count
+        return always ? connected > 0 : connected > 3
     }
 
     init(connections: [Connection], now: Date, preservingOrder: [String] = []) {
         let pages = connections.filter(\.isConnected).flatMap { connection in
             connection.accounts.map { Page(provider: connection.provider, account: $0) }
         }
+        // Each account's history is scanned once, not once per comparison.
+        let activity = Dictionary(
+            pages.compactMap { page in Self.lastActivity(page.account, now: now).map { (page.id, $0) } },
+            uniquingKeysWith: { first, _ in first })
         let recent = pages.sorted { lhs, rhs in
-            let left = Self.lastActivity(lhs.account, now: now)
-            let right = Self.lastActivity(rhs.account, now: now)
+            let left = activity[lhs.id]
+            let right = activity[rhs.id]
             if left != right { return (left ?? .distantPast) > (right ?? .distantPast) }
             if lhs.account.isActive != rhs.account.isActive { return lhs.account.isActive }
             return lhs.id < rhs.id
@@ -163,15 +169,32 @@ struct NativeCombinedAccounts {
     /// Only an unattributed machine-wide report is shared. Attributed requests and separate profile reports
     /// belong to distinct accounts even when their display scope is the same.
     func summary(days: Int, now: Date) -> Summary {
-        self.summary { $0.metrics.summary(days: days, now: now) }
+        Summary(self.readings(days: days, now: now).map(\.reading))
     }
 
-    private func summary(reading: (NativeOrbitAccountPresentation) -> NativeOrbitMetricSummary) -> Summary {
-        var readings: [NativeOrbitMetricSummary] = []
+    struct Share: Identifiable {
+        let page: Page
+        let tokens: Int
+        var id: String {
+            self.page.id
+        }
+    }
+
+    /// Each account's tokens in the range, a shared machine-wide report counted once (with its provider's first
+    /// account), largest first. Accounts without a token count are absent rather than zero.
+    func tokenShares(days: Int, now: Date) -> [Share] {
+        self.readings(days: days, now: now).compactMap { page, reading in
+            reading.tokens.flatMap { $0 > 0 ? Share(page: page, tokens: $0) : nil }
+        }.sorted { $0.tokens == $1.tokens ? $0.page.id < $1.page.id : $0.tokens > $1.tokens }
+    }
+
+    private func readings(days: Int, now: Date) -> [(page: Page, reading: NativeOrbitMetricSummary)] {
+        var readings: [(page: Page, reading: NativeOrbitMetricSummary)] = []
         var seen = Set<UsageProvider>()
         for page in self.pages where seen.insert(page.provider).inserted {
-            let accounts = self.pages.filter { $0.provider == page.provider }.map(\.account)
-            let summaries = accounts.map(reading)
+            let pages = self.pages.filter { $0.provider == page.provider }
+            let accounts = pages.map(\.account)
+            let summaries = accounts.map { $0.metrics.summary(days: days, now: now) }
             let ownedTokens = zip(accounts, summaries).contains {
                 $1.tokens != nil && !Self.isSharedMachine($0.metrics, scope: $1.usageScope, cost: false)
             }
@@ -181,7 +204,8 @@ struct NativeCombinedAccounts {
             }
             var includedMachineTokens = false
             var includedMachineCosts = false
-            for (account, var summary) in zip(accounts, summaries) {
+            for (page, var summary) in zip(pages, summaries) {
+                let account = page.account
                 if Self.isSharedMachine(account.metrics, scope: summary.usageScope, cost: false) {
                     if ownedTokens || includedMachineTokens {
                         summary.tokens = nil
@@ -197,10 +221,10 @@ struct NativeCombinedAccounts {
                     includedMachineCosts = true
                     summary.costIsPartial = true
                 }
-                readings.append(summary)
+                readings.append((page, summary))
             }
         }
-        return Summary(readings)
+        return readings
     }
 
     private static func isSharedMachine(
@@ -210,68 +234,6 @@ struct NativeCombinedAccounts {
         let local = cost ? metrics.localCostUsage ?? metrics.primaryLocalUsage
             : metrics.primaryLocalUsage ?? metrics.localCostUsage
         return local?.isAccountAttributed != true
-    }
-
-    struct DayUsage: Identifiable {
-        let date: Date
-        let tokens: Int?
-        var id: Date {
-            self.date
-        }
-    }
-
-    /// Completed civil-day buckets are measured history, not intraday inspection. Aggregate-only reports stay
-    /// unknown here: a 30-day total cannot be assigned to any particular day.
-    func dailyHistory(days: Int, now: Date) -> [DayUsage] {
-        (0..<days).compactMap { offset in
-            guard let date = Calendar.current.date(byAdding: .day, value: -offset, to: now),
-                  let interval = Calendar.current.dateInterval(of: .day, for: date) else { return nil }
-            let cutoff = min(now, interval.end.addingTimeInterval(-0.001))
-            let summary = self.summary { account in
-                var metrics = NativeOrbitAccountMetrics(
-                    usage: Self.dayReport(account.metrics.usage, cutoff: cutoff),
-                    usageScope: account.metrics.usageScope,
-                    bucketTimeZoneIdentifier: account.metrics.bucketTimeZoneIdentifier)
-                metrics.primaryLocalUsage = account.metrics.primaryLocalUsage.flatMap { local in
-                    Self.dayLocalReport(local, cutoff: cutoff)
-                }
-                metrics.localCostUsage = account.metrics.localCostUsage.flatMap { local in
-                    Self.dayLocalReport(local, cutoff: cutoff)
-                }
-                return metrics.summary(days: 1, now: cutoff)
-            }
-            return DayUsage(date: date, tokens: summary.tokens)
-        }.reversed()
-    }
-
-    private static func dayLocalReport(_ local: NativeOrbitLocalUsage, cutoff: Date) -> NativeOrbitLocalUsage? {
-        guard let snapshot = dayReport(local.snapshot, cutoff: cutoff) else { return nil }
-        return NativeOrbitLocalUsage(
-            snapshot: snapshot,
-            scope: local.scope,
-            bucketTimeZoneIdentifier: local.bucketTimeZoneIdentifier,
-            isAccountAttributed: local.isAccountAttributed,
-            isStale: local.isStale,
-            unattributedDays: local.unattributedDays)
-    }
-
-    private static func dayReport(_ report: CostUsageTokenSnapshot?, cutoff: Date) -> CostUsageTokenSnapshot? {
-        guard let report, !report.daily.isEmpty || !report.quotaSlices.isEmpty else { return nil }
-        return CostUsageTokenSnapshot(
-            sessionTokens: nil,
-            sessionCostUSD: nil,
-            last30DaysTokens: nil,
-            last30DaysCostUSD: nil,
-            currencyCode: report.currencyCode,
-            historyDays: report.historyDays,
-            historyCoverageIsEstablished: report.historyCoverageIsEstablished,
-            historyScanIsPartial: report.historyScanIsPartial,
-            bucketTimeZoneIdentifier: report.bucketTimeZoneIdentifier,
-            coverageThrough: report.coverageThrough ?? report.updatedAt,
-            costProvenance: report.costProvenance,
-            daily: report.daily,
-            quotaSlices: report.quotaSlices,
-            updatedAt: min(report.updatedAt, cutoff))
     }
 }
 

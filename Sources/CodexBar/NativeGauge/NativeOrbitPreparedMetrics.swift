@@ -96,6 +96,8 @@ final class NativeOrbitPreparedMetricHistory {
 
     private let source: [PlanUtilizationSeriesHistory]
     lazy var warningHistory = NativeOrbitPreparedWarningHistory(history: self.source)
+    /// Every recorded redemption; a range only filters them.
+    lazy var resetRedemptions = NativeOrbitResetEvent.redemptions(in: self.source)
     private let lanes: [String: Lane]
     let creditEvents: [NativeOrbitCreditUsageEvent]
     private var usageSnapshots: [Int: CostUsageTokenSnapshot] = [:]

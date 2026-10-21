@@ -49,6 +49,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     private var badgeIdentityKey = ""
     private(set) var presentationClockTask: Task<Void, Never>?
     private var claudeArchiveTask: Task<Void, Never>?
+    private var claudeArchivePoints: [NativeClaudeLocalArchivePoint]?
     private var claudeFileArchiveHistory: [PlanUtilizationSeriesHistory] = []
     /// Store changes arrive continuously from background scans. A closed popup coalesces them so clicks never
     /// wait behind presentation rebuilds; an open popup follows them promptly.
@@ -247,10 +248,15 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
             width: min(CGFloat(count * 240 + (count - 1)), availableWidth - 40),
             height: NativeOrbitPopupView.contentHeight(showsFooter: showsFooter))
         self.popover?.contentSize = self.preferredContentSize
-        if !self.startupLaunch.hasShown, self.popover?.isShown != true, !self.isInCombinedPresentation {
-            self.orbitState.prepareStartupArtwork(
-                screen: self.statusButton?.window?.screen,
-                appearance: self.isViewLoaded ? self.view.effectiveAppearance : nil)
+        // Closed: build what the next opening draws while the readings change, so the click only draws it.
+        if self.popover?.isShown != true, !self.isInCombinedPresentation {
+            if self.startupLaunch.hasShown {
+                self.orbitState.prepareForOpening()
+            } else {
+                self.orbitState.prepareStartupArtwork(
+                    screen: self.statusButton?.window?.screen,
+                    appearance: self.isViewLoaded ? self.view.effectiveAppearance : nil)
+            }
         }
         NativeOrbitHistoryInspectionProof.write(provider: self.provider, store: self.store, state: self.orbitState)
         if switched, self.popover?.isShown == true {
@@ -441,6 +447,10 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
             let points = await reader.load()
             guard !Task.isCancelled, let self, self.settings.nativeDesignEnabled,
                   self.store.isEnabled(self.provider) else { return }
+            // Reloaded on every opening and each minute while open; an unchanged archive leaves the columns as
+            // they are instead of rebuilding every Claude chart.
+            guard points != self.claudeArchivePoints else { return }
+            self.claudeArchivePoints = points
             self.claudeFileArchiveHistory = NativeOrbitClaudeLocalArchive.histories(points)
             self.refreshPresentation()
         }
@@ -460,9 +470,8 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     func beginCombinedPresentation() {
         self.isInCombinedPresentation = true
         self.cancelStartup()
-        if self.presentationDirty { self.observePresentation() }
+        self.holdPendingPresentationWhileOpening()
         self.orbitState.now = Date()
-        self.reloadClaudeLocalArchive()
         self.presentationClockTask?.cancel()
         self.presentationClockTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
@@ -472,6 +481,12 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
                 self?.reloadClaudeLocalArchive()
             }
         }
+    }
+
+    /// The combined popup has finished appearing; see `popoverDidShow`.
+    func combinedPresentationDidShow() {
+        self.applyPendingPresentationAfterShowing()
+        self.reloadClaudeLocalArchive()
     }
 
     func endCombinedPresentation() {
@@ -500,31 +515,42 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     }
 
     func popoverWillShow(_ notification: Notification) {
-        // Appear at once with the prepared columns; a pending background change is applied right after showing,
-        // so the click never waits behind a presentation rebuild.
         self.orbitState.now = Date()
         if notification.object is NSPopover, self.startupLaunch.reserve(self.startupOwner) {
             self.orbitState.armStartup(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
         }
-        if self.presentationDirty {
-            self.presentationRefreshTask?.cancel()
-            self.presentationRefreshTask = Task { @MainActor [weak self] in
-                await Task.yield()
-                guard let self, !Task.isCancelled else { return }
-                self.presentationRefreshTask = nil
-                if self.presentationDirty { self.observePresentation() }
-            }
-        }
-        self.reloadClaudeLocalArchive()
+        self.holdPendingPresentationWhileOpening()
         self.popover = notification.object as? NSPopover
         self.popover?.contentSize = self.preferredContentSize
         self.statusButton?.highlight(true)
+    }
+
+    /// Appear at once with the prepared columns. A rebuild queued now would run before the popup's first frame is
+    /// committed (a `Task.yield` does not let the run loop draw), so the window would wait for it.
+    private func holdPendingPresentationWhileOpening() {
+        guard self.presentationDirty else { return }
+        self.presentationRefreshTask?.cancel()
+        self.presentationRefreshTask = nil
+    }
+
+    /// A pending background change and the Claude archive are applied once the popup has finished appearing.
+    private func applyPendingPresentationAfterShowing() {
+        guard self.presentationDirty else { return }
+        self.presentationRefreshTask?.cancel()
+        self.presentationRefreshTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self, !Task.isCancelled else { return }
+            self.presentationRefreshTask = nil
+            if self.presentationDirty { self.observePresentation() }
+        }
     }
 
     func popoverDidShow(_ notification: Notification) {
         if notification.object is NSPopover, self.startupLaunch.shown(self.startupOwner) {
             self.startStartup()
         }
+        self.applyPendingPresentationAfterShowing()
+        self.reloadClaudeLocalArchive()
         self.presentationClockTask?.cancel()
         self.presentationClockTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {

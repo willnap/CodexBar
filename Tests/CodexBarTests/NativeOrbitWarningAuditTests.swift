@@ -27,9 +27,11 @@ struct NativeOrbitWarningAuditTests {
         let behind = lights.filter { $0.kind == .behindPace }
         #expect(behind.count == 1)
         // 3 % of a window 14 % through is 11 points behind; 0.5 % of one 43 % through is 42 behind.
-        #expect(behind.first?.detail == "Weekly limit (Fable only): under 1% used, 43% of the week gone.")
-        #expect(NativeOrbitWarningSignals.paceDetail(title: "Session limit", used: 33.4, elapsed: 4, minutes: 300)
-            == "Session limit: 33% used, 4% of the session gone.")
+        #expect(behind.first?.detail
+            == "Weekly limit (Fable only) on pace to have some left over: under 1% used, 43% of the week gone.")
+        #expect(NativeOrbitWarningSignals.paceDetail(
+            .aheadOfPace, title: "Session limit", used: 33.4, elapsed: 4, minutes: 300)
+            == "Session limit on pace to run out early: 33% used, 4% of the session gone.")
     }
 
     @Test func `a window's first minutes light no pace or fuel from a single request`() {

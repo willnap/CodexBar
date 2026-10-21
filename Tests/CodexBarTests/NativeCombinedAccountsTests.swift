@@ -19,6 +19,31 @@ struct NativeCombinedAccountsTests {
         #expect(!NativeCombinedAccounts.shouldCombine(three + [unconfigured]))
     }
 
+    @Test func `combining every service needs only one connected platform`() {
+        let codex = self.connection(.codex)
+        let empty = NativeCombinedAccounts.Connection(provider: .cursor, accounts: [], hasSavedAccounts: false)
+        #expect(NativeCombinedAccounts.shouldCombine([codex], always: true))
+        #expect(!NativeCombinedAccounts.shouldCombine([codex], always: false))
+        #expect(!NativeCombinedAccounts.shouldCombine([empty], always: true))
+        #expect(!NativeCombinedAccounts.shouldCombine([], always: true))
+    }
+
+    @Test func `the popup shows every page up to three and two and a half beyond`() {
+        #expect(NativeCombinedPopupView.contentSize(pageCount: 2).width == 481)
+        #expect(NativeCombinedPopupView.contentSize(pageCount: 3).width == 722)
+        #expect(NativeCombinedPopupView.contentSize(pageCount: 9).width == 602)
+        #expect(NativeCombinedPopupView.contentSize(pageCount: 9, maximumWidth: 500).width == 500)
+    }
+
+    @Test func `only pages wholly in view count as shown`() {
+        #expect(NativeCombinedPopupView.wholeColumns(leading: 0, width: 602) == 0...1)
+        #expect(NativeCombinedPopupView.wholeColumns(leading: 241, width: 602) == 1...2)
+        #expect(NativeCombinedPopupView.wholeColumns(leading: 120, width: 602) == 1...2)
+        // The end of nine pages: page 6 is cut off, pages 7 and 8 are whole.
+        #expect(NativeCombinedPopupView.wholeColumns(leading: 1566, width: 602) == 7...8)
+        #expect(NativeCombinedPopupView.wholeColumns(leading: 0, width: 722) == 0...2)
+    }
+
     @Test func `saved accounts remain connected when their usage is unavailable`() {
         let connection = NativeCombinedAccounts.Connection(
             provider: .codex, accounts: [self.account(.codex, id: "saved", measured: false)], hasSavedAccounts: true)
@@ -100,17 +125,23 @@ struct NativeCombinedAccountsTests {
         #expect(model.summary(days: 1, now: self.now).tokens == 100)
     }
 
-    @Test func `completed daily totals appear in the overview history`() {
-        var account = self.account(.codex, id: "one")
-        account.metrics = self.metrics(tokens: 700, scope: .account, attributed: false, dayOffset: -3)
-        let model = NativeCombinedAccounts(connections: [.init(provider: .codex, accounts: [account])], now: self.now)
-        let history = model.dailyHistory(days: 7, now: self.now)
-        #expect(history.count == 7)
-        #expect(history[3].tokens == 700)
-        #expect(history.last?.tokens == 0)
+    @Test func `token shares count each account once and a shared machine report once`() {
+        var first = self.account(.codex, id: "one")
+        var second = self.account(.codex, id: "two")
+        var claude = self.account(.claude, id: "claude")
+        first.metrics = self.metrics(tokens: 100, scope: .localMachine, attributed: false)
+        second.metrics = first.metrics
+        claude.metrics = self.metrics(tokens: 300, scope: .account, attributed: false)
+        let model = NativeCombinedAccounts(connections: [
+            .init(provider: .codex, accounts: [first, second]),
+            .init(provider: .claude, accounts: [claude]),
+        ], now: self.now)
+        let shares = model.tokenShares(days: 1, now: self.now)
+        #expect(shares.map(\.tokens) == [300, 100])
+        #expect(shares.map(\.page.provider) == [.claude, .codex])
     }
 
-    @Test func `aggregate-only totals never become invented daily bars`() {
+    @Test func `aggregate-only totals still count toward the range total`() {
         var account = self.account(.codex, id: "aggregate")
         account.metrics.usage = CostUsageTokenSnapshot(
             sessionTokens: nil,
@@ -122,7 +153,7 @@ struct NativeCombinedAccountsTests {
             updatedAt: self.now)
         let model = NativeCombinedAccounts(connections: [.init(provider: .codex, accounts: [account])], now: self.now)
         #expect(model.summary(days: 30, now: self.now).tokens == 9000)
-        #expect(model.dailyHistory(days: 30, now: self.now).allSatisfy { $0.tokens == nil })
+        #expect(model.tokenShares(days: 30, now: self.now).map(\.tokens) == [9000])
     }
 
     @Test func `incoming accounts preserve provider grouping and the visible page identity`() {

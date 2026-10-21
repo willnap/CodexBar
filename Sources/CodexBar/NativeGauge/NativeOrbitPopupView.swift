@@ -19,14 +19,15 @@ final class NativeOrbitPopupState {
         }
     }
 
+    /// Lanes only change with their histories (which replace `accounts`), the range, or the day; predictions, spend
+    /// and lights read the clock, which they follow to the minute like the open popup's own clock. Opening after a
+    /// while therefore redoes only what the minutes moved.
     var now = Date() {
         didSet {
-            self.warningLightsCache = [:]
-            // Lanes only change with their histories (which replace `accounts`), the range, or the day.
-            if abs(self.now.timeIntervalSince(oldValue)) >= 60
-                || !Calendar.current.isDate(self.now, inSameDayAs: oldValue)
-            {
+            if !Calendar.current.isDate(self.now, inSameDayAs: oldValue) {
                 self.invalidatePreparedHistory()
+            } else if abs(self.now.timeIntervalSince(oldValue)) >= 60 {
+                self.invalidateClockPreparation()
             }
         }
     }
@@ -160,14 +161,29 @@ final class NativeOrbitPopupState {
             statusReady: self.startupStatusReady)
     }
 
+    /// Builds what an opening draws from the readings (charts, predictions, spend, lights), so a closed popup does it
+    /// when the readings change and the click only draws them.
+    func prepareForOpening() {
+        for account in self.accounts {
+            self.prepare(account)
+        }
+    }
+
+    private func prepare(_ account: NativeOrbitAccountPresentation) {
+        _ = self.projection(for: account)
+        _ = self.renderLanes(for: account)
+        _ = self.renderObservationDates(for: account)
+        _ = self.spendingHistory(for: account)
+        _ = self.displayLights(for: account)
+        _ = account.metrics.preparedHistory?.resetRedemptions
+    }
+
     /// Populate expensive chart caches before interaction, never once per animation frame.
     func prepareStartupArtwork(screen: NSScreen?, appearance: NSAppearance? = nil) {
         for account in self.accounts {
+            self.prepare(account)
             var startupAccount = account
             startupAccount.metrics = self.projection(for: account).liveMetrics
-            _ = self.renderLanes(for: account)
-            _ = self.renderObservationDates(for: account)
-            _ = self.spendingHistory(for: account)
             NativeOrbitStartupArtwork.prepare(
                 account: startupAccount,
                 badge: self.accounts.count > 1 ? self.badges[account.id] : nil,
@@ -202,6 +218,14 @@ final class NativeOrbitPopupState {
         self.warningLightsCache = [:]
         self.projectingHistoryCache = [:]
         self.projectingObservationCache = [:]
+    }
+
+    private func invalidateClockPreparation() {
+        self.projectionCache = [:]
+        self.markedEventCache = [:]
+        self.spendingHistoryCache = [:]
+        self.preparedSpendingAccounts = []
+        self.warningLightsCache = [:]
     }
 
     /// Every range uses the same 31-day quota marks. Only observations and predictions depend on the visible range.
@@ -407,6 +431,8 @@ struct NativeOrbitPopupView: View {
     /// A combined popup reuses this exact column, with its own pager and shared toolbar.
     var displayedAccountID: String?
     var showsToolbar = true
+    /// The combined popup tints its whole page itself, down behind its page control.
+    var drawsColumnBackground = true
 
     /// Each column owns its observation reads, so inspecting one moment does not invalidate the account list.
     private struct AccountColumn: View {
@@ -571,13 +597,18 @@ struct NativeOrbitPopupView: View {
         }
         .padding(.horizontal, 8)
         .background {
-            if account.isActive, self.state.accounts.count > 1 {
-                self.state.accent.opacity(0.055)
+            if self.drawsColumnBackground, account.isActive, self.state.accounts.count > 1 {
+                Self.activeColumnTint(self.state.accent)
             }
         }
         .frame(width: 240)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(account.label)
+    }
+
+    /// The active account's column among several.
+    static func activeColumnTint(_ accent: Color) -> Color {
+        accent.opacity(0.055)
     }
 
     /// The inspected instant, prominent and simple, in a glass pill centered in the gap between the dial and the

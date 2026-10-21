@@ -229,6 +229,46 @@ struct NativeOrbitProjectionTests {
         #expect(widget.inspectionDate(at: reset.addingTimeInterval(30), plotWidth: 200) == reset)
     }
 
+    // MARK: - Clock
+
+    @Test func `a minute passing keeps the prepared lanes and redoes only what reads the clock`() {
+        let reset = self.now.addingTimeInterval(2 * self.hour)
+        let state = NativeOrbitPopupState()
+        state.now = self.now
+        state.accounts = [self.account(id: "busy", histories: [self.quota("nativeQuota:primary", minutes: 300, [
+            (-600, 20, reset), (0, 25, reset),
+        ])])]
+        let account = state.accounts[0]
+        let lanes = state.lanes(for: account)
+        #expect(state.projection(for: account).now == self.now)
+        let later = self.now.addingTimeInterval(5 * 60)
+        state.now = later
+        #expect(Self.sameStorage(state.lanes(for: account), lanes), "Lanes change with their history, range or day")
+        #expect(state.projection(for: account).now == later)
+        state.now = self.now.addingTimeInterval(24 * self.hour)
+        #expect(!Self.sameStorage(state.lanes(for: account), lanes))
+    }
+
+    @Test func `warning lights are reused within the popup's minute clock`() {
+        let state = NativeOrbitPopupState()
+        state.now = self.now
+        var account = self.account(id: "busy", histories: [])
+        account.warnings = [.init(.update, .opportunity, "CodexBar 9.0 is available.")]
+        state.accounts = [account]
+        let lights = state.warningLights(for: state.accounts[0])
+        #expect(!lights.isEmpty)
+        state.now = self.now.addingTimeInterval(10)
+        #expect(Self.sameStorage(state.warningLights(for: state.accounts[0]), lights))
+        state.now = self.now.addingTimeInterval(70)
+        #expect(!Self.sameStorage(state.warningLights(for: state.accounts[0]), lights))
+    }
+
+    private static func sameStorage<Element>(_ first: [Element], _ second: [Element]) -> Bool {
+        first.count == second.count && first.withUnsafeBufferPointer { lhs in
+            second.withUnsafeBufferPointer { lhs.baseAddress == $0.baseAddress }
+        }
+    }
+
     // MARK: - Future readings
 
     @Test func `dials show each window's predicted usage and the next reset at a future instant`() throws {

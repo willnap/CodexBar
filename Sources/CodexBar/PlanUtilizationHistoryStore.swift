@@ -224,6 +224,11 @@ struct PlanUtilizationSeriesHistory: Codable, Equatable, Sendable {
         return Self(name: self.name, windowMinutes: self.windowMinutes, orderedEntries: Array(self.entries[..<lower]))
     }
 
+    /// The same ordered entries under another name, sharing their storage instead of sorting them again.
+    func renamed(_ name: PlanUtilizationSeriesName) -> Self {
+        Self(name: name, windowMinutes: self.windowMinutes, orderedEntries: self.entries)
+    }
+
     private init(
         name: PlanUtilizationSeriesName, windowMinutes: Int, orderedEntries: [PlanUtilizationHistoryEntry])
     {

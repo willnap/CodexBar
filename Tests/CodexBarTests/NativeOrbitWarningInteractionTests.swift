@@ -7,7 +7,7 @@ struct NativeOrbitWarningInteractionTests {
     @Test func `detail tooltips explain the condition without a redundant explain action`() {
         let light = NativeOrbitWarningLight(.behindPace, .opportunity, "Weekly usage is below pace.")
         #expect(!light.tooltip(account: "Work").contains("Explain"))
-        #expect(light.tooltip(account: "Work") == "Less of the limit used than of its time.")
+        #expect(light.tooltip(account: "Work") == "On pace to have allowance left over.")
         #expect(light.tooltip(account: "Work", includesAction: false) == light.tooltip(account: nil))
     }
 

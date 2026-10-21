@@ -1,29 +1,37 @@
 import AppKit
 
 /// Exercises only the fixture's own view hierarchy. Events are delivered directly to its control, never posted
-/// to the desktop; native scroll offsets verify that input reaches the production pager rather than just its dots.
+/// to the desktop; native scroll offsets verify that input reaches the production page strip rather than just its dots.
 @MainActor
 enum NativePageControlPreviewCheck {
     static func run(view: NSView, model: NativeCombinedAccounts, directory: URL) async {
         var results: [[String: Any]] = []
         await self.settle(view)
+        // The page strip is the scroll view whose content is widest; pages inside it do not scroll sideways.
         guard let control = self.descendants(view).compactMap({ $0 as? NativePageControlInputControl }).first,
-              let pager = self.descendants(view).compactMap({ $0 as? NativeAccountPagerSurface }).first?.controller
+              let strip = self.descendants(view).compactMap({ $0 as? NSScrollView })
+                  .max(by: { ($0.documentView?.frame.width ?? 0) < ($1.documentView?.frame.width ?? 0) })
         else {
             self.write(
-                ["passed": false, "error": "Production page control or native page controller missing"],
+                ["passed": false, "error": "Production page control or page strip missing"],
                 to: directory)
             return
         }
         func check(_ name: String, index: Int) {
+            let visible = strip.contentView.bounds
+            let page = CGRect(
+                x: CGFloat(index) * NativeCombinedPopupView.pitch,
+                y: visible.minY,
+                width: NativeCombinedPopupView.pageWidth,
+                height: 1)
+            let shown = visible.insetBy(dx: -1, dy: 0).contains(page)
             results.append([
                 "name": name,
                 "selected": control.currentIndex,
                 "expected": index,
-                "nativePageIndex": pager.selectedIndex,
-                "visiblePageID": pager.visiblePageID ?? "missing",
-                "passed": control.currentIndex == index && pager.selectedIndex == index
-                    && pager.visiblePageID == control.pages[index].id,
+                "scrollOffset": visible.minX,
+                "selectedPageVisible": shown,
+                "passed": control.currentIndex == index && shown,
             ])
         }
         func send(_ type: NSEvent.EventType, x: CGFloat) {

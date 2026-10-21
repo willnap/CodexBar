@@ -12,6 +12,10 @@ struct SettingsSearchIndex: Sendable {
 
     private let catalog: Catalog
 
+    private static let nativeMenuBarOnlyKeys: Set = [
+        "Combine into one icon", "With 4 or more services", "Always", "Manage services in the sidebar.",
+    ]
+
     private init() {
         let bundle = codexBarLocalizationResourceBundle()
         if let url = bundle.url(forResource: "SettingsSearchIndex", withExtension: "json"),
@@ -60,14 +64,13 @@ struct SettingsSearchIndex: Sendable {
                     return !["Local usage totals", "Local agents", "Keep Mac awake while agents run"].contains(key)
                         && !key.hasPrefix("Prevents idle system sleep")
                 }
+                if pane == .menuBar { return !Self.nativeMenuBarOnlyKeys.contains(key) }
                 return true
             }
             switch pane {
             case .menuBar:
-                return [
-                    "Style", "Custom gauges", "Legacy icons",
-                    "Each enabled service has its own gauge. Manage services in the sidebar.",
-                ].contains(key)
+                return ["Style", "Custom gauges", "Legacy icons"].contains(key)
+                    || Self.nativeMenuBarOnlyKeys.contains(key)
             case .menu:
                 let legacyPrefixes = [
                     "usage_bars_fill_", "reset_times_", "show_quota_warning_markers_",

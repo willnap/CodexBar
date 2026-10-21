@@ -10,6 +10,7 @@ extension StatusItemController {
         }
         self.nativeServicePopovers.removeAll()
         self.nativeGaugeHosts.removeAll()
+        self.nativeCombinedGaugeHosts.removeAll()
         #if DEBUG
         self.isReleasedForTesting = true
         #endif

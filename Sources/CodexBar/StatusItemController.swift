@@ -143,6 +143,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     var statusItem: NSStatusItem
     var statusItems: [ProviderInstanceID: NSStatusItem] = [:]
     var nativeGaugeHosts: [ProviderInstanceID: NativeGaugeHostingView] = [:]
+    var nativeCombinedGaugeHosts: [String: NativeGaugeHostingView] = [:]
     var nativeCombinedProviders: [UsageProvider] = []
     var nativeCombinedPopover: NSPopover?
     var nativeUsagePopover: NSPopover?

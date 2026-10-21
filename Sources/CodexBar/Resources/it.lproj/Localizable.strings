@@ -2523,7 +2523,10 @@
 "Available services" = "Servizi disponibili";
 "Configured services" = "Servizi configurati";
 "Custom gauges" = "Indicatori personalizzati";
-"Each enabled service has its own gauge. Manage services in the sidebar." = "Ogni servizio abilitato ha il proprio indicatore. Gestisci i servizi nella barra laterale.";
+"Combine into one icon" = "Unisci in un’unica icona";
+"With 4 or more services" = "Con 4 o più servizi";
+"Always" = "Sempre";
+"Manage services in the sidebar." = "Gestisci i servizi nella barra laterale.";
 "Enabled services" = "Servizi abilitati";
 "Folder access could not be saved. Choose the folder again." = "Non è stato possibile salvare l’accesso alla cartella. Seleziona di nuovo la cartella.";
 "Keep Mac awake while agents run" = "Mantieni il Mac attivo mentre gli agenti sono in esecuzione";
@@ -2633,14 +2636,3 @@
 
 /* Pagine degli account combinati. */
 "Account pages" = "Pagine degli account";
-"All connected accounts" = "Tutti gli account collegati";
-"Average of each account’s most constrained quota. Account limits reset independently." = "Media della quota più limitata di ogni account. I limiti degli account si azzerano indipendentemente.";
-"Combined usage overview" = "Panoramica dell’utilizzo combinato";
-"Connected accounts" = "Account collegati";
-"Known cost; currencies are kept separate" = "Costo noto; le valute restano separate";
-"Known requests across accounts" = "Richieste note tra gli account";
-"Known tokens across accounts" = "Token noti tra gli account";
-"Known totals · Partial data" = "Totali noti · Dati parziali";
-"Mean quota left" = "Quota media rimanente";
-"Multi" = "Più valute";
-"No token history for this range" = "Nessuna cronologia dei token per questo intervallo";

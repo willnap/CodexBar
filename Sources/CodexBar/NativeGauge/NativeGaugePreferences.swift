@@ -34,6 +34,12 @@ extension SettingsStore {
         set { self.setDefault(\.nativeGaugeStyleRaw, newValue.rawValue, key: "nativeGaugeStyle") }
     }
 
+    /// Off keeps one gauge per service until more than three are connected.
+    var nativeCombinesAllServices: Bool {
+        get { self.defaultsState.nativeCombinesAllServices }
+        set { self.setDefault(\.nativeCombinesAllServices, newValue, key: "nativeCombinesAllServices") }
+    }
+
     var usesNativeGauges: Bool {
         self.nativeDesignEnabled && self.nativeGaugeStyle == .laurel
     }

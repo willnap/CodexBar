@@ -155,13 +155,13 @@ extension UsageStore {
         } else if let cost = snapshot.providerCost, cost.usageIsUnavailable == true {
             append("spend", at: cost.updatedAt, observation: .init())
         }
+        // Provider-specific by design: the last branch waits for Codex's credits read. A Codex balance (or its absence)
+        // comes from that read, moments after the usage refresh; an empty marker here would break its continuity.
         if let balance = metrics.reportedBalance {
             append("balance", at: balance.updatedAt, observation: .init(balance: balance))
         } else if let credits, credits.balanceReadSucceeded || credits.creditsAvailable == true {
             append("balance", at: credits.updatedAt, observation: .init())
         } else if provider != .codex || credits != nil, let date = snapshot.providerCost?.balanceUpdatedAt {
-            // Provider-specific by design: a Codex balance (or its absence) comes from the credits read, which records
-            // it moments after the usage refresh; an empty marker here would break every balance's continuity.
             append("balance", at: date, observation: .init())
         }
         if !metrics.creditUsageEvents.isEmpty, let credits {

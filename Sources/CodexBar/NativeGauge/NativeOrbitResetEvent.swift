@@ -180,10 +180,13 @@ extension NativeOrbitResetEvent {
         in metricHistories: [PlanUtilizationSeriesHistory],
         days: Int,
         now: Date,
-        calendar: Calendar = .current) -> [Redemption]
+        calendar: Calendar = .current,
+        prepared: NativeOrbitPreparedMetricHistory? = nil) -> [Redemption]
     {
         let start = CostReportingPeriod.rolling(days: max(1, days)).bounds(now: now, calendar: calendar).lowerBound
-        return self.redemptions(in: metricHistories).filter { $0.date >= start && $0.date <= now }
+        let all = prepared.flatMap { $0.matches(metricHistories) ? $0.resetRedemptions : nil }
+            ?? self.redemptions(in: metricHistories)
+        return all.filter { $0.date >= start && $0.date <= now }
     }
 
     private static func redemptionIndex(for drop: Drop, in pool: [Redemption]) -> Int? {

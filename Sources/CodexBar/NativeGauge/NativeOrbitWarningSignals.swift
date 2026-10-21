@@ -212,15 +212,17 @@ enum NativeOrbitWarningSignals {
                   pace.expectedUsedPercent >= 3
             else { continue }
             let gap = abs(pace.deltaPercent)
-            let detail = Self.paceDetail(
-                title: title, used: window.usedPercent, elapsed: pace.expectedUsedPercent, minutes: minutes)
+            func detail(_ kind: NativeOrbitWarningLight.Kind) -> String {
+                Self.paceDetail(
+                    kind, title: title, used: window.usedPercent, elapsed: pace.expectedUsedPercent, minutes: minutes)
+            }
             switch pace.stage {
             case .behind, .farBehind:
-                raise(Self.light(.behindPace, .opportunity, detail), weight: gap)
+                raise(Self.light(.behindPace, .opportunity, detail(.behindPace)), weight: gap)
             case .slightlyAhead, .ahead:
-                raise(Self.light(.aheadOfPace, .caution, detail), weight: gap)
+                raise(Self.light(.aheadOfPace, .caution, detail(.aheadOfPace)), weight: gap)
             case .farAhead:
-                raise(Self.light(.farAheadPace, .caution, detail), weight: gap)
+                raise(Self.light(.farAheadPace, .caution, detail(.farAheadPace)), weight: gap)
             case .onTrack, .slightlyBehind: break
             }
             if minutes >= 10080, let reset = window.resetsAt,
@@ -231,14 +233,26 @@ enum NativeOrbitWarningSignals {
                     Self.light(
                         .behindPace,
                         .opportunity,
-                        "\(title): \(Int(window.remainingPercent.rounded()))% left; resets within 24 hours."),
+                        "\(title) resets within 24 hours with \(Int(window.remainingPercent.rounded()))% unused."),
                     weight: .infinity)
             }
         }
     }
 
-    /// Pace in the two numbers it compares: how much of the limit is used, and how much of its window has gone.
-    static func paceDetail(title: String, used: Double, elapsed: Double, minutes: Int) -> String {
+    /// What the pace means for the limit, then the two numbers it compares: how much of the limit is used,
+    /// and how much of its window has gone. At a steady rate, ahead of pace runs out before the reset.
+    static func paceDetail(
+        _ kind: NativeOrbitWarningLight.Kind,
+        title: String,
+        used: Double,
+        elapsed: Double,
+        minutes: Int) -> String
+    {
+        let outlook = switch kind {
+        case .farAheadPace: "on pace to run out very early"
+        case .aheadOfPace: "on pace to run out early"
+        default: "on pace to have some left over"
+        }
         let period = switch minutes {
         case 300: "the session"
         case 1440: "the day"
@@ -247,7 +261,7 @@ enum NativeOrbitWarningSignals {
         default: "the window"
         }
         let usedText = used > 0 && used < 1 ? "under 1%" : "\(Int(used.rounded()))%"
-        return "\(title): \(usedText) used, \(Int(elapsed.rounded()))% of \(period) gone."
+        return "\(title) \(outlook): \(usedText) used, \(Int(elapsed.rounded()))% of \(period) gone."
     }
 
     static func quotaTitle(minutes: Int?) -> String {

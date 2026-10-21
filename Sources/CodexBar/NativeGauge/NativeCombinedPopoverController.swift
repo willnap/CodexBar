@@ -2,10 +2,12 @@ import AppKit
 import CodexBarCore
 import SwiftUI
 
+/// Kept between showings like a service's own popup, so opening never rebuilds the pages from scratch.
 @MainActor
 final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate {
-    private let controllers: [NativeServicePopoverController]
+    let controllers: [NativeServicePopoverController]
     private let toolbar = NativeOrbitPopupState()
+    private let showing = NativeCombinedShowing()
     private weak var button: NSStatusBarButton?
     private let didClose: () -> Void
 
@@ -14,25 +16,48 @@ final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate
         self.button = button
         self.didClose = didClose
         super.init(nibName: nil, bundle: nil)
-        self.preferredContentSize = NativeCombinedPopupView.contentSize
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 
-    override func loadView() {
+    /// Each showing opens on the most recently used account, with the page order and width frozen for that showing.
+    func prepareForShowing() {
         for controller in self.controllers {
             controller.beginCombinedPresentation()
         }
+        let sources = self.controllers.map { $0.combinedSource() }
+        let model = NativeCombinedAccounts(connections: sources.map {
+            .init(provider: $0.provider, accounts: $0.state.accounts, hasSavedAccounts: true)
+        }, now: Date())
+        let pageCount = model.pages.count + 1
+        self.preferredContentSize = NativeCombinedPopupView.contentSize(
+            pageCount: pageCount,
+            maximumWidth: (self.button?.window?.screen?.visibleFrame.width ?? 1200) - 40)
+        self.toolbar.layoutColumns = Int(NativeCombinedPopupView.visibleColumns(pageCount: pageCount).rounded(.up))
         self.toolbar.accounts = self.controllers.flatMap(\.orbitState.accounts)
-        self.toolbar.layoutColumns = 1
+        self.showing.begin(
+            openingID: model.pages.first?.id ?? NativeCombinedAccounts.overviewID,
+            pageOrder: model.pages.map(\.id),
+            width: self.preferredContentSize.width)
+    }
+
+    override func loadView() {
         self.view = NSHostingView(rootView: NativeCombinedPopupView(
-            sources: self.controllers.map { $0.combinedSource() }, toolbar: self.toolbar))
+            sources: self.controllers.map { $0.combinedSource() },
+            toolbar: self.toolbar,
+            showing: self.showing))
         self.view.frame = NSRect(origin: .zero, size: self.preferredContentSize)
     }
 
     func popoverWillShow(_: Notification) {
         self.button?.highlight(true)
+    }
+
+    func popoverDidShow(_: Notification) {
+        for controller in self.controllers {
+            controller.combinedPresentationDidShow()
+        }
     }
 
     func popoverDidClose(_: Notification) {
@@ -44,31 +69,13 @@ final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate
     }
 }
 
-@MainActor
-enum NativeCombinedStatusImage {
-    static func make(_ pages: [NativeCombinedAccounts.Page]) -> NSImage {
-        let shown = Array(pages.prefix(3))
-        let image = NSImage(size: NSSize(width: 18 + max(0, shown.count - 1) * 13, height: 22))
-        image.lockFocus()
-        for (index, page) in shown.enumerated() {
-            let repeated = shown.prefix(index).contains { $0.provider == page.provider }
-            let glyph = repeated
-                ? NSImage(systemSymbolName: page.account.symbol, accessibilityDescription: nil)
-                : NativeProviderSymbol.image(for: page.provider, pointSize: 15)
-            glyph?.draw(in: NSRect(x: index * 13, y: index.isMultiple(of: 2) ? 4 : 1, width: 17, height: 17))
-        }
-        image.unlockFocus()
-        image.isTemplate = true
-        return image
-    }
-}
-
 extension StatusItemController {
     /// Native mode decides visibility from cached connection evidence every time it receives an icon update.
     func updateNativeAccountVisibility() {
         let connections = self.store.nativeCombinedConnections()
         let connected = connections.filter(\.isConnected).map(\.provider)
-        let combined = NativeCombinedAccounts.shouldCombine(connections)
+        let combined = NativeCombinedAccounts.shouldCombine(
+            connections, always: self.settings.nativeCombinesAllServices)
         if self.nativeCombinedProviders != (combined ? connected : []) {
             self.closeNativeServicePopover()
             self.nativeCombinedProviders = combined ? connected : []
@@ -87,22 +94,44 @@ extension StatusItemController {
             }
         }
         self.expectedVisibleStatusItemAutosaveNames = visibleNames
+        let shown = combined ? Array(NativeCombinedAccounts(connections: connections, now: Date())
+            .recentAccounts.prefix(2)) : []
+        self.drawNativeCombinedGauges(shown)
         guard combined, let button = self.statusItem.button else { return }
-        let model = NativeCombinedAccounts(connections: connections, now: Date())
         self.statusItem.menu = nil
-        self.statusItem.length = NSStatusItem.variableLength
         button.target = self
         button.action = #selector(self.nativeCombinedClicked(_:))
         button.sendAction(on: [.leftMouseDown, .rightMouseUp])
+        button.setAccessibilityIdentifier("CodexBar.CombinedAccounts")
+    }
+
+    /// One button holds the full gauges of the one or two most recently used accounts, side by side.
+    private func drawNativeCombinedGauges(_ pages: [NativeCombinedAccounts.Page]) {
+        for id in Array(self.nativeCombinedGaugeHosts.keys) where !pages.contains(where: { $0.id == id }) {
+            self.nativeCombinedGaugeHosts.removeValue(forKey: id)?.removeFromSuperview()
+        }
+        guard !pages.isEmpty, let button = self.statusItem.button else { return }
+        button.image = nil
         button.title = ""
-        button.image = NativeCombinedStatusImage.make(model.recentAccounts)
-        let recent = model.recentAccounts.map {
-            self.store.metadata(for: $0.provider).displayName + ": " + $0.account.label
-        }.joined(separator: ", ")
-        let label = L("All accounts") + ". " + recent
+        var x: CGFloat = 1
+        var labels = [L("All accounts")]
+        for page in pages {
+            let host = self.nativeCombinedGaugeHosts[page.id].flatMap { $0.superview === button ? $0 : nil }
+                ?? NativeGaugeHostingView(rootView: AnyView(EmptyView()))
+            if host.superview !== button { button.addSubview(host) }
+            self.nativeCombinedGaugeHosts[page.id] = host
+            // Keyed by account, so a gauge keeps its animation state when the two swap places.
+            x += host.update(state: page.account.gauge, accountID: page.id, button: button, x: x) + 6
+            labels.append([
+                self.store.metadata(for: page.provider).displayName,
+                page.account.label,
+                page.account.gauge.usageSummary(at: .now),
+            ].filter { !$0.isEmpty }.joined(separator: ", "))
+        }
+        self.statusItem.length = x - 6 + 1
+        let label = labels.joined(separator: ". ")
         button.toolTip = label
         button.setAccessibilityLabel(label)
-        button.setAccessibilityIdentifier("CodexBar.CombinedAccounts")
     }
 
     @objc func nativeCombinedClicked(_ sender: NSStatusBarButton) {
@@ -111,13 +140,51 @@ extension StatusItemController {
             return
         }
         self.closeNativeServicePopover()
+        let opening = ContinuousClock.now
+        let waited = Self.clickWaitMilliseconds()
+        guard let provider = self.nativeCombinedProviders.first,
+              let (popover, controller) = self.nativeCombinedPopover(button: sender) else { return }
+        controller.prepareForShowing()
+        popover.contentSize = controller.preferredContentSize
+        self.nativeUsagePopover = popover
+        self.nativeServiceRoute.toggle(provider)
+        self.lastMenuProvider = provider.instanceID
+        NSApp.activate()
+        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+        controller.view.window?.makeKey()
+        self.nativePopoverOpened(provider: provider, popover: popover)
+        let shown = opening.duration(to: .now)
+        // The first frame is committed by the time the main actor next runs.
+        Task { @MainActor in
+            await Task.yield()
+            CodexBarLog.logger("native-gauges").info(
+                "Combined popup shown",
+                metadata: [
+                    "width": String(Int(controller.preferredContentSize.width)),
+                    "waitedMilliseconds": String(format: "%.1f", waited),
+                    "showMilliseconds": String(format: "%.1f", Self.milliseconds(shown)),
+                    "drawnMilliseconds": String(format: "%.1f", Self.milliseconds(opening.duration(to: .now))),
+                ])
+        }
+    }
+
+    /// The kept popup, or a new one when its services' popups were replaced.
+    private func nativeCombinedPopover(
+        button: NSStatusBarButton) -> (NSPopover, NativeCombinedPopoverController)?
+    {
         let controllers = self.nativeCombinedProviders.compactMap { provider -> NativeServicePopoverController? in
             guard let button = self.statusItems[provider.instanceID]?.button else { return nil }
             return self.nativePopover(for: provider, button: button)
                 .contentViewController as? NativeServicePopoverController
         }
-        guard let provider = self.nativeCombinedProviders.first, !controllers.isEmpty else { return }
-        let controller = NativeCombinedPopoverController(controllers: controllers, button: sender) { [weak self] in
+        guard !controllers.isEmpty else { return nil }
+        if let existing = self.nativeCombinedPopover,
+           let kept = existing.contentViewController as? NativeCombinedPopoverController,
+           kept.controllers.elementsEqual(controllers, by: ===)
+        {
+            return (existing, kept)
+        }
+        let controller = NativeCombinedPopoverController(controllers: controllers, button: button) { [weak self] in
             self?.nativePopoverRefreshScheduler.cancel()
             self?.nativeServiceRoute.dismiss()
             if NSApp.isActive, !NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeKey }) {
@@ -129,14 +196,34 @@ extension StatusItemController {
         popover.animates = true
         popover.contentViewController = controller
         popover.delegate = controller
-        popover.contentSize = NativeCombinedPopupView.contentSize
         self.nativeCombinedPopover = popover
-        self.nativeUsagePopover = popover
-        self.nativeServiceRoute.toggle(provider)
-        self.lastMenuProvider = provider.instanceID
-        NSApp.activate()
-        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-        controller.view.window?.makeKey()
-        self.nativePopoverOpened(provider: provider, popover: popover)
+        return (popover, controller)
+    }
+
+    private static func milliseconds(_ duration: Duration) -> Double {
+        Double(duration.components.seconds) * 1000 + Double(duration.components.attoseconds) / 1e15
+    }
+
+    /// How long the click waited for the main thread before its handler ran (event timestamps are system uptime).
+    static func clickWaitMilliseconds() -> Double {
+        guard let event = NSApp.currentEvent else { return 0 }
+        return max(0, ProcessInfo.processInfo.systemUptime - event.timestamp) * 1000
+    }
+}
+
+/// What one showing of the kept combined popup opens on.
+@MainActor
+@Observable
+final class NativeCombinedShowing {
+    private(set) var generation = 0
+    private(set) var openingID = NativeCombinedAccounts.overviewID
+    private(set) var pageOrder: [String] = []
+    private(set) var width = NativeCombinedPopupView.pageWidth
+
+    func begin(openingID: String, pageOrder: [String], width: CGFloat) {
+        self.openingID = openingID
+        self.pageOrder = pageOrder
+        self.width = width
+        self.generation += 1
     }
 }

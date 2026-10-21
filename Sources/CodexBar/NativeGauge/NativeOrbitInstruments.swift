@@ -115,7 +115,11 @@ struct NativeOrbitInstruments: View {
             help: Self.resetHelp(
                 state,
                 displayed: displayed,
-                redeemed: NativeOrbitResetEvent.redemptions(in: self.account.history, days: self.days, now: self.now),
+                redeemed: NativeOrbitResetEvent.redemptions(
+                    in: self.account.history,
+                    days: self.days,
+                    now: self.now,
+                    prepared: self.account.metrics.preparedHistory),
                 provider: self.provider,
                 moment: self.moment,
                 now: self.liveNow ?? self.now))

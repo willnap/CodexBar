@@ -34,6 +34,19 @@ struct SettingsSearchIndexTests {
     }
 
     @Test
+    func `combining every service is searchable only where its picker is shown`() {
+        CodexBarLocalizationOverride.$appLanguage.withValue("en") {
+            #expect(SettingsSearchIndex.shared.match(pane: .menuBar, query: "combine icon", usesNativeGauges: true)
+                == "Combine into one icon")
+            // Legacy icons keep their own Combined icon section.
+            #expect(SettingsSearchIndex.shared.match(pane: .menuBar, query: "combine icon", usesNativeGauges: false)
+                == "Combined icon")
+            #expect(SettingsSearchIndex.shared.match(pane: .menuBar, query: "4 or more", usesNativeGauges: false)
+                == nil)
+        }
+    }
+
+    @Test
     func `legacy Menu search never captions native only settings`() {
         CodexBarLocalizationOverride.$appLanguage.withValue("en") {
             for label in ["Local usage totals", "Local agents", "Keep Mac awake while agents run"] {

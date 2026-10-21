@@ -88,6 +88,7 @@ extension StatusItemController {
             self.showNativeAdvancedActions(for: provider, button: sender)
             return
         }
+        let waited = Self.clickWaitMilliseconds()
         let wasOpen = self.nativeUsagePopover?.isShown == true
         if !wasOpen { self.nativeServiceRoute.dismiss() }
         self.nativeServiceRoute.toggle(provider)
@@ -109,7 +110,11 @@ extension StatusItemController {
         let milliseconds = Double(elapsed.seconds) * 1000 + Double(elapsed.attoseconds) / 1e15
         CodexBarLog.logger("native-gauges").info(
             "Native popup shown",
-            metadata: ["provider": provider.rawValue, "milliseconds": String(format: "%.1f", milliseconds)])
+            metadata: [
+                "provider": provider.rawValue,
+                "waitedMilliseconds": String(format: "%.1f", waited),
+                "milliseconds": String(format: "%.1f", milliseconds),
+            ])
         // Whether the popup can take the next click directly: activation is asynchronous, so check after it settles.
         Task { @MainActor [weak popover] in
             try? await Task.sleep(for: .milliseconds(300))

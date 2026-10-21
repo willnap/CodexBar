@@ -76,6 +76,29 @@ struct NativeOrbitResetEventTests {
         #expect(NativeOrbitResetEvent.redemptions(in: histories).map(\.quantity) == [1])
     }
 
+    @Test func `a prepared history counts redemptions once and each range only filters them`() {
+        let grantEnd = self.now.addingTimeInterval(10 * 86400)
+        let histories = [
+            self.claude(at: -7200, used: 40, weeklyReset: 3 * 86400, available: [grantEnd], usedResets: []),
+            self.claude(at: -3600, used: 100, weeklyReset: 3 * 86400, available: [grantEnd], usedResets: []),
+            self.claude(at: -3300, used: 0, weeklyReset: nil, available: [], usedResets: [grantEnd]),
+        ].reduce([PlanUtilizationSeriesHistory]()) {
+            UsageStore.nativeOrbitHistoryIncludingCurrentSnapshot($0, provider: .claude, snapshot: $1)
+        }
+        let prepared = NativeOrbitPreparedMetricHistory(history: histories)
+        #expect(prepared.resetRedemptions.map(\.date) == NativeOrbitResetEvent.redemptions(in: histories).map(\.date))
+        for days in [1, 7, 30] {
+            let plain = NativeOrbitResetEvent.redemptions(in: histories, days: days, now: self.now)
+            let reused = NativeOrbitResetEvent.redemptions(in: histories, days: days, now: self.now, prepared: prepared)
+            #expect(reused.map(\.date) == plain.map(\.date))
+            #expect(reused.map(\.quantity) == plain.map(\.quantity))
+        }
+        // A history the preparation was not made from is counted from its own readings.
+        let other = NativeOrbitPreparedMetricHistory(history: [])
+        #expect(NativeOrbitResetEvent.redemptions(in: histories, days: 7, now: self.now, prepared: other).count
+            == NativeOrbitResetEvent.redemptions(in: histories, days: 7, now: self.now).count)
+    }
+
     @Test func `an early reset with the same inventory on both sides is the provider's`() throws {
         let grantEnd = self.now.addingTimeInterval(10 * 86400)
         let histories = [

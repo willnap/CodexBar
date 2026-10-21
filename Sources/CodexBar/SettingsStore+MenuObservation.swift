@@ -3,6 +3,7 @@ import Foundation
 extension SettingsStore {
     var menuObservationToken: Int {
         _ = self.nativeGaugeStyle
+        _ = self.nativeCombinesAllServices
         _ = self.providerOrder
         _ = self.providerEnablement
         _ = self.refreshFrequency

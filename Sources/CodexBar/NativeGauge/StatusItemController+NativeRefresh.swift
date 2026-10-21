@@ -90,5 +90,9 @@ extension StatusItemController {
             host.removeFromSuperview()
         }
         self.nativeGaugeHosts.removeAll()
+        for host in self.nativeCombinedGaugeHosts.values {
+            host.removeFromSuperview()
+        }
+        self.nativeCombinedGaugeHosts.removeAll()
     }
 }

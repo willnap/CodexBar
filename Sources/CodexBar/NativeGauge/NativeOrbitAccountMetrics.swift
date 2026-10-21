@@ -113,7 +113,14 @@ struct NativeOrbitAccountMetrics {
     var preparedCreditEvents: [NativeOrbitCreditUsageEvent]?
     var preparedUsageSlices: [NativeOrbitPreparedUsageSlices] = []
 
+    /// A value already prepared for this history is returned as it is: the combined popup hands every column's
+    /// prepared rows to its toolbar on each opening, and rebuilding them delayed the popup by tens of milliseconds.
     func preparingInspection(history: [PlanUtilizationSeriesHistory]) -> Self {
+        if self.preparedHistory?.matches(history) == true, self.preparedAccountUsage != nil,
+           self.preparedCreditEvents != nil
+        {
+            return self
+        }
         var result = self
         let prepared = NativeOrbitPreparedMetricHistory(history: history)
         result.preparedHistory = prepared

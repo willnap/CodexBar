@@ -548,6 +548,7 @@ extension SettingsStore {
         }
         return SettingsDefaultsState(
             nativeGaugeStyleRaw: userDefaults.string(forKey: "nativeGaugeStyle") ?? NativeGaugeStyle.laurel.rawValue,
+            nativeCombinesAllServices: userDefaults.object(forKey: "nativeCombinesAllServices") as? Bool ?? false,
             refreshFrequency: refreshFrequency,
             adaptiveActivityScanConsent: adaptiveActivityScanConsent,
             refreshAllProvidersOnMenuOpen: userDefaults.object(
