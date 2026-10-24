@@ -680,3 +680,27 @@ extension UsageStore {
         }
     }
 }
+
+extension NativeOrbitAccountSelection: Equatable {
+    /// A ClaudeSwap slot compares by what identifies and routes it; the row's own fields carry what it shows.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        // Provider-specific by design: Selection payloads differ: Codex account values, token IDs and ClaudeSwap
+        // routing fields each define equality for their own case.
+        switch (lhs, rhs) {
+        case let (.codex(left), .codex(right)): left == right
+        case let (.token(left), .token(right)): left == right
+        case let (.claudeSwap(left), .claudeSwap(right)):
+            left.id == right.id && left.displayLabel == right.displayLabel && left.accountEmail == right.accountEmail
+                && left.accountOrganizationName == right.accountOrganizationName
+                && left.sourceOrganizationID == right.sourceOrganizationID && left.isActive == right.isActive
+                && left.canActivate == right.canActivate && left.autoSwitchEligible == right.autoSwitchEligible
+                && left.usesLastKnownUsage == right.usesLastKnownUsage && left.error == right.error
+                && left.sourceLabel == right.sourceLabel && left.snapshot?.updatedAt == right.snapshot?.updatedAt
+        case (.none, .none): true
+        default: false
+        }
+    }
+}
+
+/// Equal rows show the same thing; a rebuilt row equal to the shown one keeps the shown one and its preparation.
+extension NativeOrbitAccountPresentation: Equatable {}

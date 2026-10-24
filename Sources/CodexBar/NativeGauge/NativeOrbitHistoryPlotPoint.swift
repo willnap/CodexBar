@@ -9,9 +9,7 @@ struct NativeOrbitHistoryPlotPoint: Equatable {
 
 extension NativeOrbitHistoryWidget.Lane {
     var plotPoints: [NativeOrbitHistoryPlotPoint] {
-        self.renderSamples.map {
-            NativeOrbitHistoryPlotPoint(date: $0.renderDate, available: $0.available, seriesID: self.seriesID($0))
-        }
+        self.cursorCurve.points
     }
 }
 
@@ -35,6 +33,8 @@ extension NativeOrbitHistoryWidget {
     func projectionPlotPoints(
         _ lane: NativeOrbitLaneProjection, seriesID: String) -> [NativeOrbitHistoryPlotPoint]
     {
-        Self.projectionPlotPoints(lane.points(through: self.dataEnd), seriesID: seriesID)
+        let points = self.drawnProjection?.markerCurve(lane, through: self.dataEnd).points
+            ?? Self.projectionPlotPoints(lane.points(through: self.dataEnd), seriesID: seriesID)
+        return points.map { .init(date: $0.date, available: $0.available, seriesID: seriesID) }
     }
 }

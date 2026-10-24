@@ -161,6 +161,7 @@ struct NativeOrbitLastKnownUsageTests {
         let restored = try #require(store.nativeOrbitClaudeResolvedLocalUsage(owner))
         #expect(restored.lastKnownAt == report.updatedAt)
         #expect(restored.usage.isStale)
+        #expect(restored.usage.isAccountAttributed)
         #expect(store.nativeOrbitClaudeResolvedLocalUsage(other) == nil)
         let row = try #require(store.nativeOrbitAccounts(for: .claude).first { $0.id.hasSuffix(":1") })
         #expect(row.usageLastKnownAt == report.updatedAt)

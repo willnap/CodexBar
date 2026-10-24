@@ -1,6 +1,37 @@
 import CodexBarCore
 import Foundation
 
+/// A common, absolute unit for both overview charts. Different currencies never share a scale.
+enum NativeCombinedMetric: Equatable {
+    case tokens
+    case money(currency: String)
+
+    var title: String {
+        switch self {
+        case .tokens: L("Tokens")
+        case .money: L("Spend")
+        }
+    }
+
+    func value(_ reading: NativeOrbitMetricSummary) -> Double? {
+        let value: Double? = switch self {
+        case .tokens: reading.tokens.map(Double.init)
+        case let .money(currency): reading.currencyCode == currency ? reading.cost : nil
+        }
+        return value.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
+    }
+
+    func formatted(_ value: Double, compact: Bool = false) -> String {
+        switch self {
+        case .tokens:
+            let count = Int(exactly: value.rounded()) ?? Int.max
+            return compact ? NativeOrbitInstruments.compact(count) : "\(count.formatted()) tokens"
+        case let .money(currency):
+            return NativeOrbitInstruments.money(value, currency: currency)
+        }
+    }
+}
+
 /// Pure presentation policy: no credential reads, fetching, or changes to the selected login.
 struct NativeCombinedAccounts {
     static let overviewID = "combined:overview"
@@ -137,7 +168,7 @@ struct NativeCombinedAccounts {
             id: Self.overviewID,
             targetID: Self.overviewID,
             provider: nil,
-            symbol: "square.stack.3d.up",
+            symbol: "chart.pie.fill",
             label: L("All accounts"),
             selected: selectedID == Self.overviewID)]
         let selected = self.pages.first { $0.id == selectedID }
@@ -188,13 +219,29 @@ struct NativeCombinedAccounts {
         }.sorted { $0.tokens == $1.tokens ? $0.page.id < $1.page.id : $0.tokens > $1.tokens }
     }
 
-    private func readings(days: Int, now: Date) -> [(page: Page, reading: NativeOrbitMetricSummary)] {
+    struct MetricShare: Identifiable {
+        let page: Page
+        let value: Double
+        var id: String {
+            self.page.id
+        }
+    }
+
+    func shares(metric: NativeCombinedMetric, days: Int, now: Date) -> [MetricShare] {
+        self.readings(days: days, now: now).compactMap { page, reading in
+            metric.value(reading).flatMap { $0 > 0 ? MetricShare(page: page, value: $0) : nil }
+        }.sorted { $0.value == $1.value ? $0.id < $1.id : $0.value > $1.value }
+    }
+
+    func readings(days: Int, now: Date) -> [(page: Page, reading: NativeOrbitMetricSummary)] {
         var readings: [(page: Page, reading: NativeOrbitMetricSummary)] = []
         var seen = Set<UsageProvider>()
         for page in self.pages where seen.insert(page.provider).inserted {
             let pages = self.pages.filter { $0.provider == page.provider }
             let accounts = pages.map(\.account)
-            let summaries = accounts.map { $0.metrics.summary(days: days, now: now) }
+            let summaries = accounts.map {
+                $0.metrics.at(now, observedAt: $0.updatedAt, history: $0.history).summary(days: days, now: now)
+            }
             let ownedTokens = zip(accounts, summaries).contains {
                 $1.tokens != nil && !Self.isSharedMachine($0.metrics, scope: $1.usageScope, cost: false)
             }

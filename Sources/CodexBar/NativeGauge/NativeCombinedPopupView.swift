@@ -10,6 +10,8 @@ struct NativeCombinedAccountSource {
     var lightAction: (String, NativeOrbitWarningLight.Action) -> Void = { _, _ in }
     var refresh: () -> Void = {}
     var settings: () -> Void = {}
+    /// Holds the service's background changes while the pages move, and lands them once they settle.
+    var holdPresentation: (Bool) -> Void = { _ in }
 }
 
 /// Pages sit side by side like a service's own account columns. The scroll view owns trackpad momentum and
@@ -53,6 +55,10 @@ struct NativeCombinedPopupView: View {
     var rendersStaticStrip = false
     @State private var navigation: NativePageControlNavigation
     @State private var scrollID: String?
+    /// Pages whose content is built; the rest hold their place and tint. An opening builds and updates only the
+    /// pages on screen, the others follow once the popup has appeared, and built pages stay while it is open, so
+    /// scrolling never builds a page.
+    @State private var livePages: Set<String>
 
     private var selection: String {
         self.navigation.selectionID
@@ -68,6 +74,17 @@ struct NativeCombinedPopupView: View {
         self.showing = showing
         self._navigation = State(initialValue: NativePageControlNavigation(selectionID: showing.openingID))
         self._scrollID = State(initialValue: showing.openingID)
+        self._livePages = State(initialValue: Self.pagesInView(
+            [NativeCombinedAccounts.overviewID] + showing.pageOrder,
+            leadingID: showing.openingID))
+    }
+
+    /// The pages on screen with `leadingID` at the leading edge; the scroll view stops at the last page.
+    static func pagesInView(_ ids: [String], leadingID: String) -> Set<String> {
+        let columns = Int(Self.visibleColumns(pageCount: ids.count).rounded(.up))
+        let index = ids.firstIndex(of: leadingID) ?? 0
+        let start = max(0, min(index, ids.count - columns))
+        return Set(ids[start..<min(ids.count, start + columns)])
     }
 
     private var model: NativeCombinedAccounts {
@@ -116,6 +133,7 @@ struct NativeCombinedPopupView: View {
                 validIDs: [NativeCombinedAccounts.overviewID] + model.pages.map(\.id))
         }
         .onChange(of: self.toolbar.days, initial: true) {
+            self.toolbar.inspectionDate = nil
             for source in self.sources {
                 source.state.finishStartup()
                 source.state.days = self.toolbar.days
@@ -152,7 +170,9 @@ struct NativeCombinedPopupView: View {
                 ForEach(Array(ids.enumerated()), id: \.element) { index, id in
                     self.page(id, model: model)
                     if index < ids.count - 1 {
-                        Divider().frame(height: 464).padding(.top, 12)
+                        Divider().frame(width: 1, height: 464).padding(.top, 12)
+                            .frame(height: Self.stripHeight, alignment: .top)
+                            .background(self.columnTint(id, model: model))
                     }
                 }
             }
@@ -163,21 +183,45 @@ struct NativeCombinedPopupView: View {
         }
     }
 
+    private func pageRows(ids: [String], model: NativeCombinedAccounts) -> some View {
+        ForEach(Array(ids.enumerated()), id: \.element) { index, id in
+            HStack(alignment: .top, spacing: 0) {
+                if self.livePages.contains(id) {
+                    self.page(id, model: model)
+                        .onAppear { NativeCombinedScrollProbe.shared?.pageAppeared() }
+                } else {
+                    self.placeholder(id, model: model)
+                }
+                if index < ids.count - 1 {
+                    Divider().frame(width: 1, height: 464).padding(.top, 12)
+                        .frame(height: Self.stripHeight, alignment: .top)
+                        .background(self.columnTint(id, model: model))
+                }
+            }
+            .id(id)
+        }
+    }
+
+    /// Once the popup has appeared, the pages off screen are built one at a time, a frame apart, nearest first.
+    private func buildRemainingPages(_ ids: [String]) async {
+        guard self.showing.shownGeneration > 0 else { return }
+        let closed = self.showing.closedGeneration
+        let selected = ids.firstIndex(of: self.selection) ?? 0
+        for id in ids.enumerated().sorted(by: { abs($0.offset - selected) < abs($1.offset - selected) }).map(\.element)
+            where !self.livePages.contains(id)
+        {
+            try? await Task.sleep(for: .milliseconds(20))
+            // A popup closed meanwhile keeps only its opening pages.
+            guard !Task.isCancelled, self.showing.closedGeneration == closed else { return }
+            self.livePages.insert(id)
+        }
+    }
+
     private func scrollingStrip(ids: [String], model: NativeCombinedAccounts) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
-                LazyHStack(alignment: .top, spacing: 0) {
-                    ForEach(Array(ids.enumerated()), id: \.element) { index, id in
-                        HStack(alignment: .top, spacing: 0) {
-                            self.page(id, model: model)
-                            if index < ids.count - 1 {
-                                Divider().frame(height: 464).padding(.top, 12)
-                            }
-                        }
-                        .id(id)
-                    }
-                }
-                .scrollTargetLayout()
+                HStack(alignment: .top, spacing: 0) { self.pageRows(ids: ids, model: model) }
+                    .scrollTargetLayout()
             }
             .scrollIndicators(.hidden)
             .scrollTargetBehavior(.viewAligned)
@@ -199,7 +243,17 @@ struct NativeCombinedPopupView: View {
                     proxy.scrollTo(request.id, anchor: .leading)
                 }
             }
-            .onScrollPhaseChange { _, phase in
+            .onScrollPhaseChange { old, phase in
+                if phase.isScrolling != old.isScrolling {
+                    // Swiping before every page is built: build the rest now rather than slide in empty pages.
+                    if phase.isScrolling, self.livePages.count < ids.count { self.livePages = Set(ids) }
+                    for source in self.sources {
+                        source.holdPresentation(phase.isScrolling)
+                        source.state.isScrolling = phase.isScrolling
+                    }
+                    self.toolbar.isScrolling = phase.isScrolling
+                    NativeCombinedScrollProbe.shared?.scrolling(phase.isScrolling)
+                }
                 if phase == .interacting {
                     self.navigation.interrupt(at: self.scrollID, validIDs: ids)
                 } else if phase == .idle {
@@ -224,7 +278,13 @@ struct NativeCombinedPopupView: View {
             return .handled
         }
         .onChange(of: self.showing.generation, initial: true) {
+            self.livePages.formUnion(Self.pagesInView(ids, leadingID: self.showing.openingID))
             self.select(self.showing.openingID, interaction: .continuous)
+        }
+        .task(id: self.showing.shownGeneration) { await self.buildRemainingPages(ids) }
+        .onChange(of: self.showing.closedGeneration) {
+            // The next opening returns to the opening page, so only its pages stay built.
+            self.livePages = Self.pagesInView(ids, leadingID: self.showing.openingID)
         }
     }
 
@@ -254,6 +314,18 @@ struct NativeCombinedPopupView: View {
         return AnyView(Color.clear.frame(width: Self.pageWidth, height: Self.stripHeight))
     }
 
+    private func columnTint(_ id: String, model: NativeCombinedAccounts) -> Color {
+        guard let page = model.pages.first(where: { $0.id == id }),
+              let source = self.sources.first(where: { $0.provider == page.provider }) else { return .clear }
+        return page.account.isActive && source.state.accounts.count > 1
+            ? NativeOrbitPopupView.activeColumnTint(source.state.accent) : source.state.accent.opacity(0.03)
+    }
+
+    /// A page not built yet keeps its place and its service's tint.
+    private func placeholder(_ id: String, model: NativeCombinedAccounts) -> some View {
+        self.columnTint(id, model: model).frame(width: Self.pageWidth, height: Self.stripHeight)
+    }
+
     private func synchronizeToolbar(_ model: NativeCombinedAccounts) {
         self.toolbar.accounts = model.pages.map(\.account)
         self.toolbar.now = max(Date(), self.sources.map(\.state.now).max() ?? self.toolbar.now)
@@ -279,6 +351,7 @@ struct NativeCombinedPopupView: View {
     }
 
     private func select(_ id: String, interaction: NativePageControlInteraction = .discrete) {
+        self.toolbar.inspectionDate = nil
         for source in self.sources {
             source.state.inspectionDate = nil
         }
@@ -292,21 +365,21 @@ struct NativeCombinedPopupView: View {
     }
 }
 
-/// Laid out like an account page: the dial, then the history chart. The dial is each account's share of the range's
-/// tokens; the chart draws each account's main allowance through time; the colours are the accounts' own.
+/// The same dial and chart instruments as account pages, comparing recorded money or tokens.
 private struct NativeCombinedOverviewView: View {
     let model: NativeCombinedAccounts
     let sources: [NativeCombinedAccountSource]
     let state: NativeOrbitPopupState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var metric = NativeCombinedMetric.tokens
 
     private struct Account {
         let page: NativeCombinedAccounts.Page
         let accent: Color
         let name: String
+        let badge: String?
     }
 
-    /// The colour an account's page, share and lane share: its service's accent, greyed a little when another login
-    /// of that service is the active one, as on the service's own columns.
     private var accounts: [Account] {
         self.model.pages.compactMap { page in
             guard let source = self.sources.first(where: { $0.provider == page.provider }) else { return nil }
@@ -316,8 +389,15 @@ private struct NativeCombinedOverviewView: View {
                 page: page,
                 accent: several && !page.account.isActive
                     ? source.state.accent.mix(with: .gray, by: 0.12) : source.state.accent,
-                name: several ? "\(service) · \(page.account.label)" : service)
+                name: several ? "\(service) · \(page.account.label)" : service,
+                badge: several ? source.state.badges[page.account.id] : nil)
         }
+    }
+
+    /// Currency is fixed to the current range while scrubbing, so a missing past receipt never changes units.
+    private var moneyCurrency: String? {
+        let costs = self.model.summary(days: self.state.days, now: self.state.now).costs
+        return costs.count == 1 ? costs.keys.first : nil
     }
 
     var body: some View {
@@ -325,100 +405,118 @@ private struct NativeCombinedOverviewView: View {
         VStack(spacing: 0) {
             ZStack {
                 NativeCombinedShareRing(segments: self.segments(accounts))
-                Image(systemName: "square.stack.3d.up")
-                    .font(.system(size: 28, weight: .light))
-                    .foregroundStyle(.secondary)
                 self.corners
             }
             .frame(width: 224, height: 240)
             Rectangle().fill(Color(nsColor: .separatorColor).opacity(0.65)).frame(width: 166, height: 0.5)
-            self.chart(accounts)
+                .overlay {
+                    if let date = self.state.inspectionDate {
+                        NativeOrbitInspectionPill(time: NativeOrbitPopupView.inspectedInstant(
+                            date,
+                            now: self.state.now))
+                    }
+                }
+                .zIndex(1)
+            NativeCombinedTokenChart(
+                model: self.model,
+                state: self.state,
+                metric: self.metric,
+                accents: Dictionary(uniqueKeysWithValues: accounts.map { ($0.page.id, $0.accent) }),
+                labels: Dictionary(uniqueKeysWithValues: accounts.map { ($0.page.id, $0.name) }))
         }
         .padding(.horizontal, 8)
+        .animation(self.reduceMotion ? nil : NativeCombinedMetricTransition.animation, value: self.metric)
+        .animation(self.reduceMotion ? nil : NativeCombinedMetricTransition.animation, value: self.state.days)
+        .onChange(of: self.moneyCurrency) { _, currency in
+            if case .money = self.metric {
+                self.metric = currency.map { .money(currency: $0) } ?? .tokens
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(L("All accounts"))
     }
 
     private func segments(_ accounts: [Account]) -> [NativeCombinedShareRing.Segment] {
-        let shares = self.model.tokenShares(days: self.state.days, now: self.state.now)
-        let total = Double(shares.map(\.tokens).reduce(0, +))
-        guard total > 0 else { return [] }
-        return shares.compactMap { share in
-            guard let account = accounts.first(where: { $0.page.id == share.page.id }) else { return nil }
-            let fraction = Double(share.tokens) / total
+        let shares = self.model.shares(
+            metric: self.metric, days: self.state.days, now: self.state.inspectionDate ?? self.state.now)
+        let total = shares.map(\.value).reduce(0, +)
+        let values = Dictionary(uniqueKeysWithValues: shares.map { ($0.id, $0.value) })
+        // Provider/account order stays fixed across units. Interpolated adjacent boundaries then remain a
+        // partition of the ring, and a missing account can collapse smoothly to zero without losing its identity.
+        return accounts.map { account in
+            let amount = values[account.page.id] ?? 0
+            let fraction = total > 0 ? amount / total : 0
             return .init(
-                id: share.page.id,
+                id: account.page.id,
                 fraction: fraction,
                 accent: account.accent,
-                productID: share.page.account.gauge.productID,
-                help: "\(account.name): \(fraction.formatted(.percent.precision(.fractionLength(0)))) of tokens "
-                    + NativeOrbitTooltip.during(days: self.state.days))
+                productID: account.page.account.gauge.productID,
+                companyID: UsageProduct.companyID(account.page.account.gauge.provider),
+                accountSymbol: account.badge,
+                help: "\(account.name)\n\(self.metric.formatted(amount)) · "
+                    + fraction.formatted(.percent.precision(.fractionLength(0))))
         }
     }
 
-    /// The account corners that add up across accounts: spend and tokens. Banked resets and extra usage belong to
-    /// one account each, so the bottom corners stay empty.
     private var corners: some View {
-        let summary = self.model.summary(days: self.state.days, now: self.state.now)
-        return NativeOrbitInstrumentSurface {
-            ZStack {
-                if summary.costs.count == 1, let currency = summary.costs.keys.first,
-                   let cost = summary.costs[currency]
-                {
-                    let money = NativeOrbitInstruments.money(cost, currency: currency)
-                    NativeOrbitComplication(
-                        value: money,
-                        corner: .topLeading,
-                        help: (summary.isPartial ? "At least " : "") + "\(money) "
-                            + NativeOrbitTooltip.during(days: self.state.days),
-                        numericValue: cost)
-                }
-                if let tokens = summary.tokens {
-                    NativeOrbitComplication(
-                        value: NativeOrbitInstruments.compact(tokens),
-                        corner: .topTrailing,
-                        help: (summary.isPartial ? "At least " : "") + "\(tokens.formatted()) tokens "
-                            + NativeOrbitTooltip.during(days: self.state.days),
-                        monospaced: true,
-                        numericValue: Double(tokens))
-                }
-            }
+        let summary = self.model.summary(days: self.state.days, now: self.state.inspectionDate ?? self.state.now)
+        let currency = self.moneyCurrency
+        let moneyMetric = NativeCombinedMetric.money(currency: currency ?? "USD")
+        let cost = currency.flatMap { summary.costs[$0] }
+        let money = cost.map { moneyMetric.formatted($0) } ?? "—"
+        let tokens = summary.tokens.map(NativeOrbitInstruments.compact) ?? "—"
+        let usesTokens = self.metric == .tokens
+        return ZStack {
+            NativeCombinedMetricSelectionInk(
+                degrees: usesTokens ? -45 : -135,
+                length: NativeCombinedMetricButton.textWidth(usesTokens ? tokens : money, monospaced: usesTokens) + 20,
+                money: money,
+                tokens: tokens,
+                moneyValue: cost,
+                tokenValue: summary.tokens.map(Double.init))
+            NativeCombinedMetricButton(
+                value: money,
+                corner: .topLeading,
+                selected: self.metric == moneyMetric,
+                help: currency == nil ? "Spend unavailable in a single currency" : "Show spend · "
+                    + NativeOrbitTooltip.range(days: self.state.days))
+            { self.metric = moneyMetric }
+                .disabled(currency == nil)
+            NativeCombinedMetricButton(
+                value: tokens,
+                corner: .topTrailing,
+                selected: self.metric == .tokens,
+                help: "Show tokens · " + NativeOrbitTooltip.range(days: self.state.days))
+            { self.metric = .tokens }
         }
         .frame(width: 224, height: 224)
     }
+}
 
-    /// Each account's longest quota lane from its own prepared chart, drawn together in the account chart.
-    private func chart(_ accounts: [Account]) -> some View {
-        var lanes: [NativeOrbitHistoryWidget.Lane] = []
-        var accents: [String: Color] = [:]
-        var labels: [String: String] = [:]
-        for (index, account) in accounts.enumerated() {
-            guard let source = self.sources.first(where: { $0.provider == account.page.provider }),
-                  let lane = source.state.renderLanes(for: account.page.account)
-                      .max(by: { $0.history.windowMinutes < $1.history.windowMinutes })
-            else { continue }
-            let name = PlanUtilizationSeriesName(rawValue: "nativeQuota:combined-\(index)")
-            lanes.append(.init(
-                history: lane.history.renamed(name),
-                samples: lane.samples,
-                resetEvents: [],
-                start: lane.start,
-                now: lane.now,
-                styleIndex: 0))
-            accents[name.rawValue] = account.accent
-            labels[name.rawValue] = account.name
+/// A true round-ended pill following the same outer arc as the selected readout.
+private struct NativeCombinedMetricButton: View {
+    let value: String
+    let corner: NativeOrbitComplication.Corner
+    let selected: Bool
+    let help: String
+    let select: () -> Void
+
+    var body: some View {
+        Button(action: self.select) {
+            Color.clear
+                .frame(width: 224, height: 224)
+                .contentShape(NativeOrbitCornerRegion(corner: self.corner))
         }
-        return NativeOrbitHistoryWidget(
-            histories: [],
-            now: self.state.now,
-            days: self.state.days,
-            laneAccents: accents,
-            quotaLabels: labels,
-            preparedLanes: lanes,
-            preparedObservationDates: [],
-            selectedDate: self.state.inspectionDate,
-            onSelect: { [state = self.state] in state.inspect($0, source: "hover") },
-            showsEmptyState: true,
-            dataDays: NativeOrbitPopupState.dataDays)
+        .buttonStyle(.plain)
+        .help(self.help)
+        .accessibilityIdentifier(self.corner == .topLeading ? "combined-metric:money" : "combined-metric:tokens")
+        .accessibilityLabel(self.help)
+        .accessibilityValue(self.value)
+        .accessibilityAddTraits(self.selected ? .isSelected : [])
+    }
+
+    static func textWidth(_ value: String, monospaced: Bool) -> CGFloat {
+        let font = NativeOrbitArcText.font(monospaced: monospaced, size: 16)
+        return min(88, (value as NSString).size(withAttributes: [.font: font]).width)
     }
 }

@@ -19,7 +19,8 @@ extension UsageStore {
         return NativeOrbitLocalUsage(
             snapshot: report,
             scope: .localMachine,
-            bucketTimeZoneIdentifier: publication.bucketTimeZoneIdentifier)
+            bucketTimeZoneIdentifier: publication.bucketTimeZoneIdentifier,
+            isAccountAttributed: true)
     }
 
     /// Owner digest of a ClaudeSwap row's organization report: the slot, its organization (unique among the visible
@@ -70,7 +71,12 @@ extension UsageStore {
         {
             return nil
         }
-        return self.nativeLastKnownUsage.usage(.claude, owner: owner)
+        guard let retained = self.nativeLastKnownUsage.usage(.claude, owner: owner) else { return nil }
+        // This digest already proves the slot, principal and uniquely owned organization. Older cache files
+        // predate the attribution flag; retain that ownership instead of treating their reports as one machine sum.
+        var usage = retained.usage
+        usage.isAccountAttributed = true
+        return NativeOrbitResolvedLocalUsage(usage: usage, lastKnownAt: retained.lastKnownAt)
     }
 
     private func nativeOrbitClaudeResolvedAmbientUsage() -> NativeOrbitResolvedLocalUsage? {

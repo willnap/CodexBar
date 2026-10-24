@@ -203,7 +203,7 @@ struct NativeOrbitSpendingHistory {
         guard let latest = reports.last else { return [] }
         var sourceCalendar = Calendar(identifier: .gregorian)
         sourceCalendar.timeZone = latest.zone.flatMap(TimeZone.init(identifier:)) ?? calendar.timeZone
-        let start = CostReportingPeriod.rolling(days: max(1, days)).bounds(now: now, calendar: calendar).lowerBound
+        let start = NativeOrbitChartAxis.start(now: now, days: days, calendar: calendar)
         let formatter = DateFormatter()
         formatter.calendar = sourceCalendar
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -215,7 +215,7 @@ struct NativeOrbitSpendingHistory {
             for entry in report.snapshot.daily {
                 guard let day = formatter.date(from: entry.date), formatter.string(from: day) == entry.date,
                       let end = sourceCalendar.date(byAdding: .day, value: 1, to: day),
-                      day <= now, end > start,
+                      day >= start, day <= now, end > start,
                       report.snapshot.updatedAt <= now || end <= now else { continue }
                 // A later receipt corrects the day, including a correction to unknown. Polls are not new spend.
                 daily[day] = (entry, report, end)

@@ -223,8 +223,11 @@ struct NativeOrbitAccountProjection {
     let resetInventory: NativeOrbitResetObservation?
     /// The account's live readings with its recorded history applied, made once here so hovering never redoes it.
     let liveMetrics: NativeOrbitAccountMetrics
-    /// Recorded totals depend on the fixed origin and civil-day count, not the pointer's subsecond position.
-    let summaryMemo = NativeOrbitProjectionSummaryMemo()
+    let cursorCurves = NativeOrbitProjectionCurveCache()
+
+    func markerCurve(_ lane: NativeOrbitLaneProjection, through end: Date) -> NativeOrbitHistoryCurve {
+        self.cursorCurves.curve(lane, through: end)
+    }
 
     var isActive: Bool {
         self.lastActivity != nil
@@ -430,18 +433,12 @@ struct NativeOrbitProjectedSummary {
 }
 
 extension NativeOrbitAccountProjection {
-    /// The selected Day / 7D / 30D period ending at `date`, respecting its calendar bounds: what is recorded from
-    /// the period's start through now, plus this period's pace over the rest. A period that begins after now holds
+    /// The selected Day / 7D / 30D trailing period ending at `date`: what is recorded from
+    /// the exact rolling start through now, plus this period's pace over the rest. A period that begins after now holds
     /// only the projected part. Unknown recorded totals stay unknown.
     func summary(days: Int, at date: Date, calendar: Calendar = .current) -> NativeOrbitProjectedSummary {
         let days = max(1, days)
-        let period = CostReportingPeriod.rolling(days: days)
-        let periodStart = period.bounds(now: date, calendar: calendar).lowerBound
-        let ahead = calendar.dateComponents(
-            [.day],
-            from: calendar.startOfDay(for: self.now),
-            to: calendar.startOfDay(for: date)).day ?? 0
-        let recordedDays = days - max(0, ahead)
+        let periodStart = NativeOrbitChartAxis.start(now: date, days: days, calendar: calendar)
         let span = max(0, date.timeIntervalSince(max(self.now, periodStart)))
         func projectedCount(from recorded: Int) -> Int? {
             guard recorded >= 0, let rate = self.tokenRate, rate.isFinite, rate >= 0, span.isFinite,
@@ -458,10 +455,8 @@ extension NativeOrbitAccountProjection {
         var result: NativeOrbitMetricSummary
         var recordedTokens: Int?
         var recordedCost: Double?
-        if recordedDays >= 1 {
-            result = self.summaryMemo.summary(days: recordedDays, calendar: calendar) {
-                self.liveMetrics.summary(days: recordedDays, now: self.now, calendar: calendar)
-            }
+        if periodStart < self.now {
+            result = self.liveMetrics.summary(days: days, now: self.now, calendar: calendar, since: periodStart)
             recordedTokens = result.tokens
             recordedCost = result.cost
             result.tokens = result.tokens.flatMap { projectedCount(from: $0) }
@@ -485,7 +480,7 @@ extension NativeOrbitAccountProjection {
 /// Every column shares one time axis, so one hovered instant means the same moment everywhere.
 enum NativeOrbitChartAxis {
     static func start(now: Date, days: Int, calendar: Calendar = .current) -> Date {
-        CostReportingPeriod.rolling(days: days).bounds(now: now, calendar: calendar).lowerBound
+        now.addingTimeInterval(-self.span(days: days))
     }
 
     /// The past span a projecting chart mirrors into the future: a whole day, week or month.
@@ -493,15 +488,13 @@ enum NativeOrbitChartAxis {
         Double(max(1, days)) * 86400
     }
 
-    /// Projecting: a full range span either side of now, both edges on the nearest whole hour so they read as clean
-    /// times or dates and mirror each other; now sits at the center to within half an hour.
+    /// Projecting mirrors the exact trailing span into the future; now is always at the center.
     static func projectingBounds(
         now: Date,
         days: Int,
         calendar: Calendar = .current) -> (start: Date, end: Date)
     {
-        let anchor = calendar.dateInterval(of: .hour, for: now.addingTimeInterval(1800))?.start ?? now
         let span = self.span(days: days)
-        return (anchor.addingTimeInterval(-span), anchor.addingTimeInterval(span))
+        return (now.addingTimeInterval(-span), now.addingTimeInterval(span))
     }
 }

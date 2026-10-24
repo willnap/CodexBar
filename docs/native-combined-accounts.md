@@ -67,20 +67,92 @@ of 1.6 GB was compressed once), and an opening that has to decompress what it dr
 memory footprint is the remaining cause there. A click during a refresh can also wait behind the menu bar icon's
 rebuild of the account rows (one measured at 94 ms).
 
+## Scrolling
+
+Scrolling the pages ran at about 20 frames a second on a 120 Hz display. Three causes, largest first:
+
+- Hover followed the pages. Charts sliding under a resting pointer reported a new hovered instant every frame, and
+  every column re-rendered its dial, instruments and lights at that instant, about 40 ms a frame. While the pages
+  move (`NativeOrbitPopupState.isScrolling`) hover is ignored and the dials show live readings; the next pointer
+  move inspects again.
+- Background changes rebuilt the columns mid-gesture. Each store change replaced every account, recomputed every
+  chart and light, and made SwiftUI compare the old and new histories entry by entry. Changes now wait while the
+  pages move (`holdsPresentation`) and land when they settle, and a rebuilt row equal to the shown one keeps it
+  with everything prepared from it: rows are `Equatable`, and metrics compare their readings, not their caches.
+- The lazy stack built a page as it scrolled in and discarded it as it left, 40–70 ms a page. Pages are now built
+  once per showing: an opening builds and updates only the pages on screen (`pagesInView`), the rest are built a
+  frame apart once the popup has appeared, and the ones off screen are released when it closes, so the next
+  opening still updates only its own. A swipe that starts before every page is built builds the rest at once
+  rather than slide in a placeholder.
+
+Per swipe of about a second (release app, 2026-10-22; `CODEXBAR_SCROLL_PROBE=1` logs a `Combined scroll frames`
+line per scroll with the display-link frame intervals and the pages built during it):
+
+| | Before | After |
+| --- | --- | --- |
+| Frames drawn | 14–23 | 86–94 |
+| Typical frame | 42–66 ms | 8.3 ms |
+| Longest frame | 86–136 ms | about 45 ms |
+| Frames missed | 93–122 | 5–13 |
+| Pages built while scrolling | 2 | 0 |
+
+The first swipe after an opening still misses about 40 frames while the pages built after it appeared draw for the
+first time, and the menu bar's minute refresh, which rebuilds every account's row on the main thread, can stall a
+swipe it coincides with.
+
 ## Overview data
 
-The overview is laid out like an account page, with no captions. Its dial is a pie on the account dials' outer
-lane, in their glass: each account's share of the range's tokens as one rounded island in that account's colour,
-marked with its service where it fits, with the share in the island's tooltip. The top corners total spend (when
-every cost is in one currency) and tokens, as on an account page. Banked resets and extra usage belong to one
-account each and do not add up meaningfully, so the bottom corners stay empty.
+The overview compares recorded tokens by default. Clicking the top-left spend or top-right token readout
+switches both charts to that absolute unit. Spend is available when the recorded amounts share one currency;
+different currencies never share a scale. Missing readings remain unknown.
 
-Its chart is the account chart itself, with one lane per account: the account's longest quota window, from that
-account's own prepared lanes, in the same colour as its share and page tint. Hovering reads every lane at once.
+A solid, borderless capsule follows the selected complication's circle. The dial keeps the same center and
+top spacing as every account column; the popup clips the traveling capsule at its existing edge. The same
+interpolated shape fills the capsule and masks the inverted readout ink, so glyphs invert only where it covers
+them, including during a reversal. There is no selection-based text crossfade through an unreadable color.
+
+One smooth 0.35-second transition controls the capsule, pie boundaries, product/account marks, curves, area
+fills and reading beads. Reduce Motion suppresses that transition. Accounts keep their page order between
+units, and zero shares retain their identities while collapsing, so neighboring boundaries remain a partition
+of the ring. Icons consume the same interpolated angles as the bands and stay on their centerline; they fade
+as space becomes too tight for a full identity. Wider sectors give the secondary marks up to eight more
+design points of separation. Arc direction responds to the segment's position so provider marks stay above and
+account badges below the product, receding smoothly at the circle's vertical extrema before changing sides.
+The bands use true circular gauge-style corner fillets and parallel cuts of equal physical width, including
+the closing seam. Template icons remain content of native
+regular Liquid Glass for adaptive foreground contrast.
+
+Both token and spend histories are prepared in one sample pass. Unit selection reads the already prepared
+arrays rather than clearing the graph or scheduling another scan. The native plot hosting boundary installs
+its own copy of the shared transition. All accounts use one absolute scale per metric; rendering normalizes
+against that one common maximum and keeps the plot domain fixed so curves and overlay beads interpolate to
+the same heights. Raw amounts and accessibility values retain their actual units. A different range or changed
+source waits for matching prepared data instead of displaying old totals under new bounds.
+
+The history shares the account graphs' line weight, area fill, grid, glass reading beads, rounded reference
+marker, time detail pill and axis row. Hour labels and hover times retain the user's **system clock cycle** even
+when app language or a SwiftUI display locale has another regional default. For example, a British display
+locale with the user's US 12-hour clock shows `1 pm`; an actual 24-hour preference retains `13`. Day-period
+wording and date order still follow the display language and region. Hover detail keeps minute precision.
+Each plotted instant uses the trailing selected window ending there. Hovering or dragging reads that same
+instant for the ring, both totals and chart markers; leaving restores live readings.
+
+Day is the trailing 24 hours, Week the trailing 7 × 24 hours, and Month the trailing 30 × 24 hours, including across
+daylight-saving changes. The same bounds apply to the account charts, spending bars, reset counts and
+complications. Dated requests split boundary days exactly when their coverage is complete. A whole-day or
+whole-hour bucket is never prorated; incomplete boundary coverage stays marked partial. Nonprojected charts
+label the start, exact midpoint and Now, evenly spaced across the plot. Column tints extend under the divider
+and its top and bottom margins.
 
 Distinct account-attributed machine reports and distinct profile reports contribute independently. Repeated,
 unattributed machine-wide reports contribute once per provider (to that provider's first account), and do not
 overlap known account totals.
+
+Claude transcript reports carry account attribution when their organization belongs uniquely to the verified
+ClaudeSwap row. Their physical collection scope remains this Mac, but separate organizations are separate
+account reports in All. Restored reports recover that attribution from their validated slot/principal/organization
+owner digest, including cache files written before the flag was recorded. Ambiguous organization ownership and
+ambient machine reports retain the existing exclusion and deduplication rules.
 
 ## Offline validation
 
@@ -134,3 +206,15 @@ supported by the component. Reduce Motion and Reduce Transparency follow the sys
 The fixture comparison sheet includes a render using the same standard SF Symbols as the Catalyst reference.
 This is an independently rendered port, not Apple's UIKit binary. Automated geometry and input verification
 does not establish pixel identity, physical trackpad behavior, or the user's visual acceptance.
+
+### Recorded chart continuity
+
+The combined chart prepares every range from the native range control together, including tokens and each range's available money currency. Selecting a range synchronously selects its cached snapshot; the selection is excluded from the preparation task's source identity, so a click cannot start or restart the 49-sample calculation. Initial display waits for the complete range set.
+
+Account data or the clock can start a replacement preparation. Every range from the preceding set stays available during that work, and all replacements publish together. Series, time bounds, labels and scrubbed readings come from the selected snapshot; cancelled or superseded source revisions cannot replace it.
+
+Samples use their fixed position within the plotted range as identity, while retaining their exact observation dates. Missing prefixes do not renumber the first recorded run, and real internal gaps still split lines. The hosted native chart applies the shared transition to its whole configuration, including recorded lines and their shaded areas, so refreshes and Day/Week/Month changes do not briefly erase the plot or hard-cut its fill.
+
+Pie account badges follow the same policy as individual columns: use the existing badge only when the provider has multiple accounts. A provider with one account has its product mark and any configured provider mark, without an invented account symbol.
+
+Segment identity artwork stays in template rendering mode inside its tinted native glass. The sector does not impose a foreground style outside that glass: the material owns the adaptive vibrant foreground for product, provider and account marks. Named account artwork also explicitly requests template rendering, matching website and product artwork.

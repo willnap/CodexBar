@@ -45,7 +45,7 @@ struct NativeOrbitHistoryWidget: View {
         if self.isProjecting {
             return NativeOrbitChartAxis.projectingBounds(now: self.now, days: self.days, calendar: self.calendar).start
         }
-        return CostReportingPeriod.rolling(days: self.days).bounds(now: self.now, calendar: self.calendar).lowerBound
+        return NativeOrbitChartAxis.start(now: self.now, days: self.days, calendar: self.calendar)
     }
 
     /// Where the drawn data begins: the range start, or `dataDays` before now when that reaches further back.
@@ -148,18 +148,43 @@ struct NativeOrbitHistoryWidget: View {
         let start: Date
         let now: Date
         let styleIndex: Int
+        private(set) var cursorCurve = NativeOrbitHistoryCurve(points: [])
+
+        init(
+            history: PlanUtilizationSeriesHistory,
+            samples: [Sample],
+            resetEvents: [NativeOrbitResetEvent],
+            start: Date,
+            now: Date,
+            styleIndex: Int)
+        {
+            self.history = history
+            self.samples = samples
+            self.resetEvents = resetEvents
+            self.start = start
+            self.now = now
+            self.styleIndex = styleIndex
+            self.cursorCurve = NativeOrbitHistoryCurve(points: self.renderSamples.map {
+                .init(date: $0.renderDate, available: $0.available, seriesID: self.seriesID($0))
+            })
+        }
 
         var renderSamples: [Sample] {
             // Draw only measured instants. Missing boundaries and stale tails remain empty.
             let visible = self.samples.filter { $0.id.historicalPeriod == nil && $0.date >= self.start }
             guard visible.count > 2 else { return visible }
-            // Thin flat runs only inside one observed segment, retaining both ends of every gap.
+            // Charts recalculates every supplied vertex when its domain changes. Straight runs need only their
+            // endpoints; keep source receipts separately for inspection, and never thin a reset edge or a gap.
             return visible.enumerated().compactMap { index, sample in
-                guard index > 0, index < visible.count - 1 else { return sample }
+                guard index > 0, index < visible.count - 1, !sample.isResetEdge else { return sample }
                 let previous = visible[index - 1]
                 let next = visible[index + 1]
-                return previous.segment == sample.segment && next.segment == sample.segment
-                    && previous.available == sample.available && next.available == sample.available ? nil : sample
+                guard previous.segment == sample.segment, next.segment == sample.segment else { return sample }
+                let span = next.renderDate.timeIntervalSince(previous.renderDate)
+                let elapsed = sample.renderDate.timeIntervalSince(previous.renderDate)
+                guard span > 0, elapsed > 0, elapsed < span else { return sample }
+                let interpolated = previous.available + (next.available - previous.available) * elapsed / span
+                return abs(sample.available - interpolated) <= 1e-10 ? nil : sample
             }
         }
 
@@ -380,15 +405,7 @@ struct NativeOrbitHistoryWidget: View {
             key: self.plotKey(lanes),
             onPlotFrame: { frame in if self.plotFrame != frame { self.plotFrame = frame } })
             .equatable()
-            // Now is always marked, projecting or not: it is the reference every hovered moment is read against.
-            // Ahead of now the marker and its dots blur with the projection they read.
-            .overlay(alignment: .topLeading) {
-                self.nowMarker(lanes)
-            }
             .overlay(alignment: .topLeading) { self.spendingScale }
-            // No tooltip: the pill names the inspected moment and the dial reads it. VoiceOver gets each lane's
-            // reading there, and every reset rule carries its own label.
-            .accessibilityValue(self.inspectionHelp(lanes))
     }
 
     private func inspectionHelp(_ lanes: [Lane]) -> String {
@@ -445,11 +462,13 @@ struct NativeOrbitHistoryWidget: View {
 
     /// Recorded and projected layers zoom the same stable vertices together when their visible domain changes.
     /// Readings and projecting-layout changes retain their existing animations.
-    fileprivate func renderedChart(_ lanes: [Lane]) -> some View {
+    func renderedChart(_ lanes: [Lane]) -> some View {
         self.chart(lanes)
             .overlay { self.futureLayer(lanes) }
             .animation(Self.rangeAnimation(reduceMotion: self.reduceMotion), value: self.days)
             .animation(Self.rangeAnimation(reduceMotion: self.reduceMotion), value: lanes.map(\.samples.count))
+            .animation(
+                Self.rangeAnimation(reduceMotion: self.reduceMotion), value: self.drawnProjection?.signature ?? [])
             .animation(self.reduceMotion ? nil : NativeOrbitProjectionStyle.axisAnimation, value: self.isProjecting)
     }
 
@@ -737,8 +756,7 @@ struct NativeOrbitHistoryWidget: View {
         guard lower > 0, lower < lane.samples.count else { return nil }
         let previous = lane.samples[lower - 1]
         let next = lane.samples[lower]
-        guard previous.segment == next.segment,
-              previous.date >= start,
+        guard previous.date >= lane.start, previous.segment == next.segment,
               previous.id.historicalPeriod == nil, next.id.historicalPeriod == nil else { return nil }
         let progress = date.timeIntervalSince(previous.date) / next.date.timeIntervalSince(previous.date)
         return Sample(
@@ -776,7 +794,8 @@ struct NativeOrbitHistoryWidget: View {
     }
 
     private var timeLocale: Locale {
-        codexBarLocalizationSignature().isEmpty ? self.locale : codexBarLocalizedResourceLocale()
+        NativeOrbitChartTimeFormatter.locale(
+            displayLocale: codexBarLocalizationSignature().isEmpty ? self.locale : codexBarLocalizedResourceLocale())
     }
 
     /// Light vertical rules halfway between the labelled instants, so the span reads in even steps: while projecting,
@@ -797,11 +816,7 @@ struct NativeOrbitHistoryWidget: View {
         guard interval > 1 else { return [self.now] }
         // Projecting: the range start, now at the center, and the end of the projected span.
         if self.isProjecting { return [self.start, self.now, self.chartEnd] }
-        let middle = self.start.addingTimeInterval(interval / 2)
-        let aligned = self.days == 1 ? self.calendar.dateInterval(of: .hour, for: middle)?.start
-            : self.calendar.startOfDay(for: middle)
-        guard let aligned, aligned > self.start, aligned < self.now else { return [self.start, self.now] }
-        return [self.start, aligned, self.now]
+        return [self.start, self.start.addingTimeInterval(interval / 2), self.now]
     }
 
     private func axisAnchor(_ date: Date?) -> UnitPoint {
@@ -820,8 +835,10 @@ struct NativeOrbitHistoryWidget: View {
             formatter.timeStyle = .none
             return formatter.string(from: date)
         }
-        let wholeHour = self.calendar.component(.minute, from: date) == 0
-        formatter.setLocalizedDateFormatFromTemplate(self.days == 1 ? (wholeHour ? "j" : "jmm") : "MMMd")
+        if self.days == 1 {
+            return NativeOrbitChartTimeFormatter.hourLabel(date, calendar: self.calendar, locale: self.timeLocale)
+        }
+        formatter.setLocalizedDateFormatFromTemplate("MMMd")
         return formatter.string(from: date)
     }
 
@@ -829,51 +846,13 @@ struct NativeOrbitHistoryWidget: View {
     /// at its trailing edge, and any other (now, while projecting) is centered on its instant. "Now" takes the now
     /// line's accent and weight, and greys out while the pointer inspects another instant.
     private var axisRow: some View {
-        GeometryReader { geometry in
-            let frame = self.plotFrame
-            let dates = self.axisDates
-            ZStack(alignment: .topLeading) {
-                if frame.width > 0 {
-                    ForEach(Array(dates.enumerated()), id: \.offset) { index, date in
-                        let label = self.axisText(date)
-                        if index == 0 {
-                            label
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.leading, frame.minX)
-                        } else if index == dates.count - 1 {
-                            label
-                                .frame(maxWidth: .infinity, alignment: .trailing)
-                                .padding(.trailing, max(0, geometry.size.width - frame.maxX))
-                        } else {
-                            label.position(x: self.plotX(date, in: frame), y: 7)
-                        }
-                    }
-                }
-            }
-        }
-        .frame(height: 16)
-        .padding(.top, 3)
-        .animation(self.reduceMotion ? nil : .smooth(duration: 0.22), value: self.selectedDate == nil)
-        .accessibilityHidden(true)
-    }
-
-    private func axisText(_ date: Date) -> some View {
-        let isNow = date == self.now
-        let emphasized = isNow && self.selectedDate == nil
-        let key = NativeOrbitAxisLabelKey(
-            date: date,
+        NativeOrbitChartAxisRow(
+            dates: self.axisDates,
             now: self.now,
-            days: self.days,
-            projecting: self.isProjecting,
-            calendar: self.calendar,
-            locale: self.timeLocale)
-        return NativeOrbitStaticAxisLabel(widget: self, date: date, key: key)
-            .equatable()
-            .font(.system(size: 10, weight: emphasized ? .bold : isNow ? .medium : .regular))
-            .monospacedDigit()
-            .foregroundStyle(emphasized ? AnyShapeStyle(self.plotAccent) : AnyShapeStyle(Color.secondary))
-            .lineLimit(1)
-            .fixedSize()
+            frame: self.plotFrame,
+            accent: self.plotAccent,
+            inspecting: self.selectedDate != nil,
+            label: self.axisLabel)
     }
 
     private func label(_ history: PlanUtilizationSeriesHistory) -> String {
@@ -1052,7 +1031,7 @@ extension NativeOrbitHistoryWidget {
     /// Projected points keyed by their instant and their order at it (a reset draws two points at one instant), not by
     /// their place in the list: a longer or shorter span keeps every shared point's key, so Charts moves each point
     /// into itself instead of into a neighbour.
-    /// A reset's first point is drawn half a minute early, like a recorded reset's held edge (`edgeSeparation`).
+    /// A reset's held edge leads by up to half a minute, bounded by its preceding vertex to preserve order.
     static func keyedPoints(
         _ points: [NativeOrbitLaneProjection.Point])
         -> [(key: String, point: NativeOrbitLaneProjection.Point, renderDate: Date)]
@@ -1062,8 +1041,10 @@ extension NativeOrbitHistoryWidget {
             let order = seen[point.date, default: 0]
             seen[point.date] = order + 1
             let pairedAfter = index + 1 < points.count && points[index + 1].date == point.date
+            let distance = index > 0 ? max(0, point.date.timeIntervalSince(points[index - 1].date)) : 0
+            let lead = min(Self.edgeSeparation, distance / 2)
             let renderDate = point.isResetEdge && order == 0 && pairedAfter
-                ? point.date.addingTimeInterval(-Self.edgeSeparation) : point.date
+                ? point.date.addingTimeInterval(-lead) : point.date
             return (key: "\(point.date.timeIntervalSinceReferenceDate)|\(order)", point: point, renderDate: renderDate)
         }
     }
@@ -1109,21 +1090,32 @@ extension NativeOrbitHistoryWidget {
         return self.futureColor(lane.history)
     }
 
-    /// The reading a marker dot shows: the hovered instant's, or at now each lane's current reading, which sits at
-    /// now from its latest measurement (or the projection's start) when that measurement is recent.
-    private func markerReading(_ lane: Lane, at date: Date) -> Sample? {
-        if let point = self.nearest(lane, to: date), point.date >= self.start { return point }
-        guard date == self.now, let latest = lane.latestMeasuredSample,
+    /// Sample the rendered curve for a bead; numerical inspection separately retains the source timestamps.
+    /// At rest, a recent current reading can still sit on the reference at now.
+    func markerReading(_ lane: Lane, at date: Date, visibleStart: Date? = nil) -> NativeOrbitHistoryCurve.Reading? {
+        guard date >= (visibleStart ?? self.start), date <= self.now else { return nil }
+        if let point = lane.cursorCurve.reading(at: date) { return point }
+        // A recent projection can continue the visible line from its last receipt through now.
+        // Use only its actual drawn coverage; a missing line must not acquire a hover tail.
+        if let projected = self.drawnProjection?.lane(lane.history.name.rawValue),
+           let point = self.projectedMarkerReading(projected, at: date) { return point }
+        if let point = self.nearest(lane, to: date), point.id.historicalPeriod != nil {
+            return .init(date: point.date, available: point.available)
+        }
+        guard date == self.now, self.selectedDate == nil, let latest = lane.latestMeasuredSample,
               self.now.timeIntervalSince(latest.date) <= NativeOrbitAccountProjection.maximumReadingAge
         else { return nil }
         let available = self.drawnProjection?.lane(lane.history.name.rawValue)?.available(at: self.now)
             ?? latest.available
-        return Sample(
-            id: latest.id,
-            date: self.now,
-            available: available,
-            segment: latest.segment,
-            period: latest.period)
+        return .init(date: self.now, available: available)
+    }
+
+    func projectedMarkerReading(
+        _ lane: NativeOrbitLaneProjection, at date: Date) -> NativeOrbitHistoryCurve.Reading?
+    {
+        let curve = self.drawnProjection?.markerCurve(lane, through: self.dataEnd)
+            ?? NativeOrbitHistoryCurve(points: self.projectionPlotPoints(lane, seriesID: lane.id))
+        return curve.reading(at: date)
     }
 
     /// Horizontal position of an instant in the plot, mirroring the chart's linear time scale.
@@ -1140,81 +1132,89 @@ extension NativeOrbitHistoryWidget {
         return NativeOrbitProjectionStyle.blurRadius(fraction: fraction, days: self.days)
     }
 
-    /// Now is a thick accent line. Hovering springs it to the pointer and leaves a dim neutral line at now; when the
-    /// pointer leaves, it springs back. Past instants mark the recorded readings, future ones the projected values
-    /// (open dots).
+    /// Active pointer movement is direct. Returning to now samples one animated time against the drawn curves.
     @ViewBuilder
-    func nowMarker(_ lanes: [Lane]) -> some View {
-        if self.plotFrame.width > 0, self.plotFrame.height > 16 {
-            let frame = self.plotFrame
-            let topPadding = self.plotTopPadding(lanes)
-            let y = { (available: Double) in
-                frame.maxY - 3 - CGFloat(min(100, max(0, available)) / 100) * (frame.height - 3 - topPadding)
-            }
-            let marker = self.selectedDate ?? self.now
-            ZStack(alignment: .topLeading) {
-                Capsule()
-                    .fill(self.accent.gradient)
-                    .overlay {
-                        Capsule().strokeBorder(
-                            Color.primary.opacity(self.colorScheme == .dark ? 0.5 : 0.18),
-                            lineWidth: 0.65)
-                    }
-                    .shadow(color: .black.opacity(0.25), radius: 1, x: 0, y: 0.5)
-                    .frame(width: self.selectedDate == nil ? 3.5 : 2.5, height: frame.height)
-                    .position(x: self.plotX(marker, in: frame), y: frame.midY)
-                // The hovered moment's readings, or at rest each lane's current one on the now line.
-                let date = self.selectedDate ?? self.now
-                let spendingBar = date <= self.now ? self.spending.flatMap { spending in
-                    spending.bar(at: date).map { (spending, $0) }
-                } : nil
-                if let spendingBar, self.selectedDate != nil, spendingBar.1.granularity != .event {
-                    let (spending, bar) = spendingBar
-                    let start = max(self.start, bar.start)
-                    let end = min(self.chartEnd, min(self.now, bar.end))
-                    let left = self.plotX(start, in: frame)
-                    let right = self.plotX(end, in: frame)
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(self.plotAccent.opacity(0.10))
-                        .overlay { RoundedRectangle(cornerRadius: 2).strokeBorder(self.plotAccent, lineWidth: 0.8) }
-                        .frame(width: max(0, right - left), height: max(1, frame.maxY - y(spending.height(bar))))
-                        .position(x: (left + right) / 2, y: (frame.maxY + y(spending.height(bar))) / 2)
-                }
-                // Glass beads refract the lines they sit on; close readings flow together instead of stacking.
-                GlassEffectContainer(spacing: 3) {
-                    ZStack(alignment: .topLeading) {
-                        ForEach(lanes) { lane in
-                            if date > self.now,
-                               let projected = self.drawnProjection?.lane(lane.history.name.rawValue)
-                            {
-                                self.readingBead(self.futureColor(lane.history), .projected)
-                                    .position(x: self.plotX(date, in: frame), y: y(projected.available(at: date)))
-                            } else if date <= self.now, let point = self.markerReading(lane, at: date) {
-                                self.readingBead(self.color(lane.history), .recorded)
-                                    .position(x: self.plotX(point.date, in: frame), y: y(point.available))
-                            }
-                        }
-                        if let spendingBar {
-                            let (spending, bar) = spendingBar
-                            self.readingBead(self.plotAccent, .spending(emphasizesQuota: spending.emphasizesQuota))
-                                .position(x: self.plotX(date, in: frame), y: y(spending.height(bar)))
-                        }
-                    }
-                }
-            }
-            .blur(radius: self.markerBlurRadius(at: marker))
-            .background(alignment: .topLeading) {
-                Capsule()
-                    .fill(Color.secondary.opacity(0.55))
-                    .frame(width: 1.5, height: frame.height)
-                    .position(x: self.plotX(self.now, in: frame), y: frame.midY)
-                    .opacity(self.selectedDate == nil ? 0 : 1)
+    func nowMarker(_ lanes: [Lane], in frame: CGRect) -> some View {
+        if frame.width > 0, frame.height > 16 {
+            NativeOrbitChartCursor(
+                date: self.selectedDate ?? self.now,
+                bounds: self.start...self.chartEnd)
+            { date, bounds in
+                self.cursorContent(lanes, at: date, frame: frame, bounds: bounds)
             }
             .animation(
-                self.reduceMotion ? nil : NativeOrbitProjectionStyle.markerSpring,
+                NativeOrbitChartCursorMotion.animation(
+                    inspecting: self.selectedDate != nil, reduceMotion: self.reduceMotion),
                 value: self.selectedDate)
+            .animation(Self.rangeAnimation(reduceMotion: self.reduceMotion), value: self.days)
+            .animation(self.reduceMotion ? nil : NativeOrbitProjectionStyle.axisAnimation, value: self.isProjecting)
+            .transaction {
+                $0 = NativeOrbitChartCursorMotion.transaction($0, inspecting: self.selectedDate != nil)
+            }
             .allowsHitTesting(false)
             .transition(.opacity)
+        }
+    }
+
+    private func cursorContent(
+        _ lanes: [Lane], at date: Date, frame: CGRect, bounds: ClosedRange<Date>) -> some View
+    {
+        let topPadding = self.plotTopPadding(lanes)
+        let x = { (date: Date) in
+            frame.minX + CGFloat(date.timeIntervalSince(bounds.lowerBound)
+                / max(1, bounds.upperBound.timeIntervalSince(bounds.lowerBound))) * frame.width
+        }
+        let y = { (available: Double) in
+            frame.maxY - 3 - CGFloat(min(100, max(0, available)) / 100) * (frame.height - 3 - topPadding)
+        }
+        let spendingBar = date <= self.now ? self.spending.flatMap { spending in
+            spending.bar(at: date).map { (spending, $0) }
+        } : nil
+        return ZStack(alignment: .topLeading) {
+            NativeOrbitChartMarkerLine(
+                accent: self.accent, inspecting: self.selectedDate != nil, height: frame.height)
+                .position(x: x(date), y: frame.midY)
+            if let spendingBar, self.selectedDate != nil, spendingBar.1.granularity != .event {
+                let (spending, bar) = spendingBar
+                let left = x(max(bounds.lowerBound, bar.start))
+                let right = x(min(bounds.upperBound, min(self.now, bar.end)))
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(self.plotAccent.opacity(0.10))
+                    .overlay { RoundedRectangle(cornerRadius: 2).strokeBorder(self.plotAccent, lineWidth: 0.8) }
+                    .frame(width: max(0, right - left), height: max(1, frame.maxY - y(spending.height(bar))))
+                    .position(x: (left + right) / 2, y: (frame.maxY + y(spending.height(bar))) / 2)
+            }
+            GlassEffectContainer(spacing: 3) {
+                ZStack(alignment: .topLeading) {
+                    ForEach(lanes) { lane in
+                        if date > self.now,
+                           let projected = self.drawnProjection?.lane(lane.history.name.rawValue),
+                           let point = self.projectedMarkerReading(projected, at: date)
+                        {
+                            self.readingBead(self.futureColor(lane.history), .projected)
+                                .position(x: x(date), y: y(point.available))
+                        } else if date <= self.now,
+                                  let point = self.markerReading(lane, at: date, visibleStart: bounds.lowerBound)
+                        {
+                            self.readingBead(self.color(lane.history), .recorded)
+                                .position(x: x(date), y: y(point.available))
+                        }
+                    }
+                    if let spendingBar {
+                        let (spending, bar) = spendingBar
+                        self.readingBead(self.plotAccent, .spending(emphasizesQuota: spending.emphasizesQuota))
+                            .position(x: x(date), y: y(spending.height(bar)))
+                    }
+                }
+            }
+        }
+        .blur(radius: self.markerBlurRadius(at: date))
+        .background(alignment: .topLeading) {
+            Capsule()
+                .fill(Color.secondary.opacity(0.55))
+                .frame(width: 1.5, height: frame.height)
+                .position(x: x(self.now), y: frame.midY)
+                .opacity(self.selectedDate == nil ? 0 : 1)
         }
     }
 }
@@ -1314,28 +1314,39 @@ extension NativeOrbitHistoryWidget {
 extension NativeOrbitHistoryWidget {
     var body: some View {
         let lanes = self.lanes
-        return NativeOrbitChartReveal(
-            phase: self.startup,
-            contentKey: NativeOrbitHistoryRevealKey(
-                plot: self.plotKey(lanes),
-                selectedDate: self.selectedDate,
-                plotFrame: self.plotFrame,
-                showsEmptyState: self.showsEmptyState))
-        {
-            self.content(lanes)
+        let hasPlot = !lanes.isEmpty || !self.metricObservationDates.isEmpty || !self.visibleEvents.isEmpty
+            || !(self.spending?.bars.isEmpty ?? true) || !(self.drawnProjection?.lanes.isEmpty ?? true)
+        return NativeOrbitChartReveal(phase: self.startup, contentKey: self.revealKey(lanes)) {
+            self.content(lanes, hasPlot: hasPlot)
         }
+        .overlay(alignment: .topLeading) {
+            if hasPlot {
+                self.nowMarker(lanes, in: self.plotFrame.offsetBy(dx: Self.chartInset, dy: Self.chartHeadroom))
+                    .modifier(NativeOrbitChartCursorReveal(
+                        progress: self.startup.graphReveal, inspecting: self.selectedDate != nil))
+            }
+        }
+        .accessibilityValue(self.inspectionHelp(lanes))
         .frame(width: 224, height: 224)
     }
 
-    private func content(_ lanes: [Lane]) -> some View {
+    func revealKey(_ lanes: [Lane]) -> NativeOrbitHistoryRevealKey {
+        NativeOrbitHistoryRevealKey(
+            plot: self.plotKey(lanes),
+            isInspecting: self.selectedDate != nil,
+            plotFrame: self.plotFrame,
+            showsEmptyState: self.showsEmptyState)
+    }
+
+    private static let chartInset: CGFloat = 14
+    private static let chartHeadroom: CGFloat = 12
+
+    private func content(_ lanes: [Lane], hasPlot: Bool) -> some View {
         Group {
-            if !lanes.isEmpty || !self.metricObservationDates.isEmpty || !self.visibleEvents.isEmpty
-                || !(self.spending?.bars.isEmpty ?? true)
-                || !(self.drawnProjection?.lanes.isEmpty ?? true)
-            {
+            if hasPlot {
                 VStack(spacing: 0) {
                     // Clear space under the separator, where the hover pill sits.
-                    Color.clear.frame(height: 12)
+                    Color.clear.frame(height: Self.chartHeadroom)
                     self.plot(lanes)
                     self.axisRow
                 }
@@ -1351,16 +1362,16 @@ extension NativeOrbitHistoryWidget {
                 Color.clear
             }
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, Self.chartInset)
         .padding(.bottom, 6)
         .frame(width: 224, height: 224)
         .onChange(of: self.days) { self.select(nil) }
     }
 }
 
-private struct NativeOrbitHistoryRevealKey: Equatable {
+struct NativeOrbitHistoryRevealKey: Equatable {
     let plot: NativeOrbitPlotKey
-    let selectedDate: Date?
+    let isInspecting: Bool
     let plotFrame: CGRect
     let showsEmptyState: Bool
 }
@@ -1408,14 +1419,35 @@ private struct NativeOrbitStaticPlot: NSViewRepresentable, Equatable {
 
     final class Coordinator {
         var key: NativeOrbitPlotKey?
+        let presentation: Presentation
+
+        init(content: AnyView) {
+            self.presentation = Presentation(content: content)
+        }
+    }
+
+    @Observable final class Presentation {
+        var content: AnyView
+
+        init(content: AnyView) {
+            self.content = content
+        }
+    }
+
+    private struct RetainedPlot: View {
+        let presentation: Presentation
+
+        var body: some View {
+            self.presentation.content
+        }
     }
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.key == rhs.key }
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(content: self.content) }
 
     func makeNSView(context: Context) -> NSHostingView<AnyView> {
-        let host = NSHostingView(rootView: self.content)
+        let host = NSHostingView(rootView: AnyView(RetainedPlot(presentation: context.coordinator.presentation)))
         // SwiftUI's parent owns the chart's proposed dimensions; intrinsic hosting constraints must not feed back
         // into layout or resize the plot when its hidden axes/mark annotations change.
         host.sizingOptions = []
@@ -1426,7 +1458,11 @@ private struct NativeOrbitStaticPlot: NSViewRepresentable, Equatable {
     func updateNSView(_ host: NSHostingView<AnyView>, context: Context) {
         guard context.coordinator.key != self.key else { return }
         context.coordinator.key = self.key
-        host.rootView = self.content
+        // Replacing NSHostingView.rootView discards Charts' previous presentation values. Update the retained
+        // SwiftUI graph instead, so value animations can interpolate both recorded and projected marks.
+        withTransaction(context.transaction) {
+            context.coordinator.presentation.content = self.content
+        }
     }
 
     func sizeThatFits(
@@ -1442,28 +1478,6 @@ private struct NativeOrbitStaticPlot: NSViewRepresentable, Equatable {
     private var content: AnyView {
         AnyView(self.widget.renderedChart(self.lanes)
             .onPreferenceChange(NativeOrbitPlotFrameKey.self, perform: self.onPlotFrame))
-    }
-}
-
-/// Tick wording stays fixed while the pointer moves; emphasis remains outside this child and updates immediately.
-private struct NativeOrbitAxisLabelKey: Equatable, Sendable {
-    let date: Date
-    let now: Date
-    let days: Int
-    let projecting: Bool
-    let calendar: Calendar
-    let locale: Locale
-}
-
-private struct NativeOrbitStaticAxisLabel: View, Equatable {
-    let widget: NativeOrbitHistoryWidget
-    let date: Date
-    nonisolated let key: NativeOrbitAxisLabelKey
-
-    nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.key == rhs.key }
-
-    var body: some View {
-        Text(self.widget.axisLabel(self.date))
     }
 }
 

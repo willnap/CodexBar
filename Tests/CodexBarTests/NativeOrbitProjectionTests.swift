@@ -145,15 +145,14 @@ struct NativeOrbitProjectionTests {
     // MARK: - Shared axis
 
     @Test func `projecting centers now and gives the future the past's span in every column`() {
-        // Projecting mirrors a whole range span either side of the nearest whole hour: clean, even edges with now
-        // within half an hour of the center.
+        // The recorded side is exactly the selected trailing span, mirrored into the future.
         for days in [1, 7, 30] {
             let bounds = NativeOrbitChartAxis.projectingBounds(now: self.now, days: days)
             #expect(bounds.end.timeIntervalSince(bounds.start) == 2 * NativeOrbitChartAxis.span(days: days))
-            #expect(Calendar.current.component(.minute, from: bounds.start) == 0)
-            #expect(Calendar.current.component(.minute, from: bounds.end) == 0)
+            #expect(self.now.timeIntervalSince(bounds.start) == Double(days) * 86400)
+            #expect(bounds.end.timeIntervalSince(self.now) == Double(days) * 86400)
             let center = bounds.start.addingTimeInterval(NativeOrbitChartAxis.span(days: days))
-            #expect(abs(center.timeIntervalSince(self.now)) <= 1800)
+            #expect(center == self.now)
         }
 
         let reset = self.now.addingTimeInterval(2 * self.hour)
@@ -263,6 +262,25 @@ struct NativeOrbitProjectionTests {
         #expect(!Self.sameStorage(state.warningLights(for: state.accounts[0]), lights))
     }
 
+    @Test func `a rebuilt row equal to the shown one keeps its prepared charts`() {
+        let reset = self.now.addingTimeInterval(2 * self.hour)
+        func busy(latest: Double) -> NativeOrbitAccountPresentation {
+            self.account(id: "busy", histories: [self.quota("nativeQuota:primary", minutes: 300, [
+                (-600, 20, reset), (0, latest, reset),
+            ])])
+        }
+        let state = NativeOrbitPopupState()
+        state.now = self.now
+        state.accounts = [busy(latest: 25)]
+        let lanes = state.lanes(for: state.accounts[0])
+        // A store rebuild yields equal readings in new storage.
+        state.accounts = [busy(latest: 25)]
+        #expect(Self.sameStorage(state.lanes(for: state.accounts[0]), lanes))
+        state.accounts = [busy(latest: 30)]
+        #expect(!Self.sameStorage(state.lanes(for: state.accounts[0]), lanes))
+        #expect(state.lanes(for: state.accounts[0]).first?.samples.last?.available == 70)
+    }
+
     private static func sameStorage<Element>(_ first: [Element], _ second: [Element]) -> Bool {
         first.count == second.count && first.withUnsafeBufferPointer { lhs in
             second.withUnsafeBufferPointer { lhs.baseAddress == $0.baseAddress }
@@ -303,7 +321,7 @@ struct NativeOrbitProjectionTests {
             == account.gauge.resolvedWindows)
     }
 
-    @Test func `period totals ahead add this period's pace to what is recorded and respect day boundaries`() throws {
+    @Test func `period totals ahead preserve unknown usage at a rolling boundary`() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try #require(TimeZone(secondsFromGMT: 0))
         let midnight = calendar.startOfDay(for: self.now)
@@ -328,9 +346,9 @@ struct NativeOrbitProjectionTests {
         #expect(evening.summary.tokens == 1_800_000)
         #expect(evening.recordedTokens == 1_200_000)
         #expect(abs((evening.summary.cost ?? 0) - 18) < 0.0001)
-        // Tomorrow's Day starts at midnight: only the pace since then.
+        // Tomorrow's trailing day cuts through today's aggregate; its recorded part cannot be placed exactly.
         let tomorrow = projection.summary(days: 1, at: midnight.addingTimeInterval(30 * self.hour), calendar: calendar)
-        #expect(tomorrow.summary.tokens == 600_000)
+        #expect(tomorrow.summary.tokens == nil)
         #expect(tomorrow.recordedTokens == nil)
 
         // 7D two days ahead keeps the five recorded days still inside it.
@@ -360,7 +378,7 @@ struct NativeOrbitProjectionTests {
         #expect(quiet.summary(days: 1, at: self.now.addingTimeInterval(6 * self.hour), calendar: calendar)
             .summary.tokens == 1_200_000)
         #expect(quiet.summary(days: 1, at: midnight.addingTimeInterval(30 * self.hour), calendar: calendar)
-            .summary.tokens == 0)
+            .summary.tokens == nil)
     }
 
     @Test func `banked resets expire and an additional usage cycle starts over ahead`() {

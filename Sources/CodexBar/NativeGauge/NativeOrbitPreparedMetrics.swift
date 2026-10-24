@@ -220,24 +220,32 @@ private func nativeOrbitSharesArrayStorage<Element>(_ first: [Element], _ second
     }
 }
 
-/// Value copies of one projection share its fixed-origin summaries; account replacements create a new memo.
-final class NativeOrbitProjectionSummaryMemo {
+/// Copies of one account's readings share civil-day boundaries, including restored receipts and merged reports.
+/// Parsing belongs to the first reading of a bucket, never to every pointer or plotted sample.
+final class NativeOrbitUsageDayMemo {
     private struct Key: Hashable {
-        let days: Int
+        let day: String
         let calendar: Calendar
     }
 
     private let lock = NSLock()
-    private var summaries: [Key: NativeOrbitMetricSummary] = [:]
+    private var intervals: [Key: DateInterval] = [:]
 
-    func summary(days: Int, calendar: Calendar, make: () -> NativeOrbitMetricSummary) -> NativeOrbitMetricSummary {
-        self.lock.withLock {
-            let key = Key(days: days, calendar: calendar)
-            if let cached = self.summaries[key] { return cached }
-            let summary = make()
-            if self.summaries.count >= 64 { self.summaries.removeAll(keepingCapacity: true) }
-            self.summaries[key] = summary
-            return summary
+    func interval(for day: String, calendar: Calendar) -> DateInterval? {
+        let key = Key(day: day, calendar: calendar)
+        return self.lock.withLock {
+            if let cached = self.intervals[key] { return cached }
+            let fields = day.split(separator: "-")
+            guard fields.count == 3, fields[0].count == 4, fields[1].count == 2, fields[2].count == 2,
+                  let year = Int(fields[0]), let month = Int(fields[1]), let date = Int(fields[2]),
+                  let start = calendar.date(from: DateComponents(year: year, month: month, day: date)),
+                  calendar.component(.year, from: start) == year,
+                  calendar.component(.month, from: start) == month,
+                  calendar.component(.day, from: start) == date,
+                  let interval = calendar.dateInterval(of: .day, for: start) else { return nil }
+            if self.intervals.count >= 512 { self.intervals.removeAll(keepingCapacity: true) }
+            self.intervals[key] = interval
+            return interval
         }
     }
 }

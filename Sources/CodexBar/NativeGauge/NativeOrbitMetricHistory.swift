@@ -271,9 +271,9 @@ extension NativeOrbitAccountMetrics {
     }
 
     func recordedCreditUsage(days: Int, now: Date, calendar: Calendar = .current) -> Double? {
-        let bounds = CostReportingPeriod.rolling(days: max(1, days)).bounds(now: now, calendar: calendar)
+        let start = NativeOrbitChartAxis.start(now: now, days: days, calendar: calendar)
         let events = self.creditUsageEvents.filter {
-            $0.date >= bounds.lowerBound && $0.date <= now && $0.creditsUsed.isFinite && $0.creditsUsed >= 0
+            $0.date >= start && $0.date <= now && $0.creditsUsed.isFinite && $0.creditsUsed >= 0
         }
         guard !events.isEmpty else { return nil }
         let total = events.reduce(0) { $0 + $1.creditsUsed }

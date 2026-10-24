@@ -58,6 +58,7 @@ final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate
         for controller in self.controllers {
             controller.combinedPresentationDidShow()
         }
+        self.showing.shown()
     }
 
     func popoverDidClose(_: Notification) {
@@ -65,6 +66,9 @@ final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate
             controller.endCombinedPresentation()
         }
         self.button?.highlight(false)
+        // Release the pages built off screen now, while nothing is drawn, so the next opening updates only its own.
+        self.showing.closed()
+        if self.isViewLoaded { self.view.layoutSubtreeIfNeeded() }
         self.didClose()
     }
 }
@@ -220,10 +224,22 @@ final class NativeCombinedShowing {
     private(set) var pageOrder: [String] = []
     private(set) var width = NativeCombinedPopupView.pageWidth
 
+    /// Bumped once the popup has finished appearing, and once it has closed.
+    private(set) var shownGeneration = 0
+    private(set) var closedGeneration = 0
+
     func begin(openingID: String, pageOrder: [String], width: CGFloat) {
         self.openingID = openingID
         self.pageOrder = pageOrder
         self.width = width
         self.generation += 1
+    }
+
+    func shown() {
+        self.shownGeneration += 1
+    }
+
+    func closed() {
+        self.closedGeneration += 1
     }
 }

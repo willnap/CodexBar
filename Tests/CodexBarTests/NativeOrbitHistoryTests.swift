@@ -90,14 +90,13 @@ struct NativeOrbitHistoryTests {
     }
 
     @Test
-    func `chart ranges use the same local calendar days as metrics across daylight savings`() throws {
+    func `chart ranges retain their elapsed duration across daylight savings`() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try #require(TimeZone(identifier: "Europe/London"))
         let now = try #require(calendar.date(from: DateComponents(year: 2026, month: 10, day: 25, hour: 12)))
         for days in [1, 7, 30] {
             let widget = NativeOrbitHistoryWidget(histories: [], now: now, days: days, calendar: calendar)
-            #expect(widget.start == CostReportingPeriod.rolling(days: days).bounds(now: now, calendar: calendar)
-                .lowerBound)
+            #expect(now.timeIntervalSince(widget.start) == Double(days) * 86400)
         }
         let midnight = calendar.startOfDay(for: now)
         let history = self.history("weekly", minutes: 10080, dates: [-1, 0, 60], now: midnight)
@@ -105,7 +104,7 @@ struct NativeOrbitHistoryTests {
         #expect(today.points(history).map(\.date) == [
             midnight.addingTimeInterval(-1), midnight, midnight.addingTimeInterval(60),
         ])
-        #expect(today.start != now.addingTimeInterval(-86400))
+        #expect(today.start == now.addingTimeInterval(-86400))
     }
 
     @Test
@@ -526,7 +525,7 @@ struct NativeOrbitHistoryTests {
     }
 
     @Test
-    func `coverage uses the selected calendar boundary and excludes future readings`() throws {
+    func `coverage uses the selected rolling boundary and excludes future readings`() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000.875)
         let start = NativeOrbitHistoryWidget(histories: [], now: now).start
         let dates = [
@@ -545,7 +544,7 @@ struct NativeOrbitHistoryTests {
         let widget = NativeOrbitHistoryWidget(histories: [history], now: now)
         let coverage = try widget.coverage(#require(widget.lanes.first))
         #expect(coverage.observationCount == 3)
-        #expect(coverage.observedDayCount == 1)
+        #expect(coverage.observedDayCount == 2)
         #expect(coverage.firstObservedAt == start)
         #expect(coverage.lastObservedAt == now)
         #expect(coverage.priorObservedAt == dates.first)
@@ -763,7 +762,7 @@ struct NativeOrbitHistoryTests {
         let history = self.history("nativeQuota:primary", minutes: 300, dates: [-600], now: now)
         let widget = NativeOrbitHistoryWidget(histories: [history], now: now)
         #expect(widget.inspectionDate(at: recorded.addingTimeInterval(1), plotWidth: 180) == recorded)
-        let gap = now.addingTimeInterval(-1800)
+        let gap = now.addingTimeInterval(-3600)
         #expect(widget.inspectionDate(at: gap, plotWidth: 180) == gap)
     }
 
@@ -772,7 +771,7 @@ struct NativeOrbitHistoryTests {
         let now = Date(timeIntervalSince1970: 1_800_043_200)
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
-        let start = CostReportingPeriod.rolling(days: days).bounds(now: now, calendar: calendar).lowerBound
+        let start = now.addingTimeInterval(-Double(days) * 86400)
         let span = now.timeIntervalSince(start)
         let dates = [start.addingTimeInterval(span * 0.4), start.addingTimeInterval(span * 0.7)]
         let names = ["nativeQuota:primary", "nativeQuota:secondary"]

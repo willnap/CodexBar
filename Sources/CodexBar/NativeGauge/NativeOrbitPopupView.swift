@@ -7,14 +7,25 @@ import SwiftUI
 @Observable
 final class NativeOrbitPopupState {
     private var preparedAccounts: [NativeOrbitAccountPresentation] = []
+    /// Store rebuilds publish equal rows whenever any input changes; an equal row keeps the shown one, and an unchanged
+    /// set leaves the columns, their charts and lights exactly as they are.
     var accounts: [NativeOrbitAccountPresentation] {
         get { self.preparedAccounts }
         set {
-            self.preparedAccounts = newValue.map { account in
+            let shown = Dictionary(self.preparedAccounts.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            var changed = newValue.count != self.preparedAccounts.count
+            let next = newValue.enumerated().map { index, account in
+                if let kept = shown[account.id], kept == account {
+                    if !changed, self.preparedAccounts[index].id != account.id { changed = true }
+                    return kept
+                }
+                changed = true
                 var prepared = account
                 prepared.metrics = account.metrics.preparingInspection(history: account.history)
                 return prepared
             }
+            guard changed else { return }
+            self.preparedAccounts = next
             self.invalidatePreparedHistory()
         }
     }
@@ -373,8 +384,16 @@ final class NativeOrbitPopupState {
         return NativeOrbitWarningLight.reconciled(lights)
     }
 
+    /// While the combined popup's pages move, charts slide under a resting pointer: that is not pointing at a moment.
+    /// Every column would re-render at a new instant each frame, so hover waits for the pages to settle and the dials
+    /// show live readings meanwhile.
+    @ObservationIgnored var isScrolling = false {
+        didSet { if self.isScrolling, self.inspectionDate != nil { self.inspectionDate = nil } }
+    }
+
     /// Hover reports every pointer move; only a changed instant should invalidate the columns.
     func inspect(_ date: Date?, source: String = "programmatic", pointerLocation: CGPoint? = nil) {
+        if source == "hover", self.isScrolling { return }
         if self.startup.isActive, source == "hover", let policy = self.startupHoverPolicy,
            !policy.acceptsHover(at: pointerLocation ?? NSEvent.mouseLocation)
         {
@@ -466,7 +485,16 @@ struct NativeOrbitPopupView: View {
                     HStack(alignment: .top, spacing: 0) {
                         ForEach(Array(self.state.accounts.enumerated()), id: \.element.id) { index, account in
                             if index > 0 {
-                                Divider().frame(height: 464).padding(.top, 12)
+                                Divider().frame(width: 1, height: 464).padding(.top, 12)
+                                    .frame(
+                                        height: Self.contentHeight(showsFooter: true) - NativeOrbitToolbar.height,
+                                        alignment: .top)
+                                    .background {
+                                        let previous = self.state.accounts[index - 1]
+                                        if self.drawsColumnBackground, previous.isActive {
+                                            Self.activeColumnTint(self.state.accent)
+                                        }
+                                    }
                             }
                             AccountColumn(popup: self, account: account)
                         }
@@ -620,35 +648,8 @@ struct NativeOrbitPopupView: View {
             // On a mark the pill names it, with the mark's glyph, and keeps the time short so it fits one column.
             let time = event == nil ? Self.inspectedInstant(date, now: self.state.now)
                 : NativeOrbitTooltip.moment(date, now: self.state.now)
-            HStack(spacing: 5) {
-                if let event {
-                    if let symbol = event.symbol {
-                        Image(systemName: symbol)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(event.isScheduled ? Color.secondary : self.state.accent)
-                    }
-                    Text(event.title)
-                        .foregroundStyle(.primary)
-                    Text(time)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text(time)
-                        .foregroundStyle(.primary)
-                }
-            }
-            .font(.system(size: 12, weight: .semibold))
-            .monospacedDigit()
-            .lineLimit(1)
-            .padding(.horizontal, 10)
-            .frame(height: 22)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .fixedSize()
-            .offset(y: -4)
-            .animation(self.reduceMotion ? nil : .smooth(duration: 0.2), value: event)
-            .transition(.opacity.combined(with: .scale(scale: 0.92)))
-            .allowsHitTesting(false)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(event.map { "\($0.title), \(time)" } ?? time)
+            NativeOrbitInspectionPill(time: time, event: event, accent: self.state.accent)
+                .animation(self.reduceMotion ? nil : .smooth(duration: 0.2), value: event)
         }
     }
 
@@ -656,7 +657,10 @@ struct NativeOrbitPopupView: View {
     @MainActor
     static func inspectedInstant(_ date: Date, now: Date, calendar: Calendar = .current) -> String {
         NativeOrbitInspectedInstantFormatter.shared.string(
-            from: date, now: now, calendar: calendar, locale: codexBarLocalizedResourceLocale())
+            from: date,
+            now: now,
+            calendar: calendar,
+            locale: NativeOrbitChartTimeFormatter.locale(displayLocale: codexBarLocalizedLocale()))
     }
 
     /// Evidence-dependent lights follow the same inspected moment as the dial.

@@ -232,7 +232,7 @@ struct NativeOrbitKimiHistoryRestoreTests {
             now: self.now,
             localUsage: .init(snapshot: snapshot, scope: .localMachine, bucketTimeZoneIdentifier: "UTC"))
         let current = metrics.summary(days: 1, now: self.now)
-        #expect(current.tokens == 58)
+        #expect(current.tokens == 106)
         #expect(!current.isPartial)
         // Yesterday 05:30 UTC: after midnight, before that day's only turn at 09:46.
         let quietMorning = Date(timeIntervalSince1970: 1_799_904_600)
@@ -242,13 +242,13 @@ struct NativeOrbitKimiHistoryRestoreTests {
         let todayMorning = Date(timeIntervalSince1970: 1_799_991_000)
         let week = metrics.at(todayMorning, observedAt: self.now).summary(days: 7, now: todayMorning)
         #expect(week.tokens == 48)
-        // A quiet stretch earlier today, before today's first turn, is a known zero too.
+        // Before today's first turn, yesterday's turn still belongs to the trailing day.
         let quietToday = metrics.at(todayMorning, observedAt: self.now).summary(days: 1, now: todayMorning)
-        #expect(quietToday.tokens == 0)
+        #expect(quietToday.tokens == 48)
         // A day with no activity at all inside a complete scan is a known zero, not an unknown.
         let emptyDay = Date(timeIntervalSince1970: 1_800_000_000 - 3 * 86400)
         #expect(metrics.at(emptyDay, observedAt: self.now).summary(days: 1, now: emptyDay).tokens == 0)
-        // Before today's first turn, the live dial reads a complete zero rather than an unknown.
+        // A live rolling day retains yesterday's turn when today has no turns.
         try Data((yesterday + "\n").utf8).write(to: wire)
         try FileManager.default.setAttributes([.modificationDate: self.now], ofItemAtPath: wire.path)
         let quiet = try #require(await NativeKimiLocalUsageScanner().scan(
@@ -262,7 +262,7 @@ struct NativeOrbitKimiHistoryRestoreTests {
             now: self.now,
             localUsage: .init(snapshot: quiet, scope: .localMachine, bucketTimeZoneIdentifier: "UTC"))
             .summary(days: 1, now: self.now)
-        #expect(live.tokens == 0)
+        #expect(live.tokens == 48)
         #expect(!live.isPartial)
     }
 

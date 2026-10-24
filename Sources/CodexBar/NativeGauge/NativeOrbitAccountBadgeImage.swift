@@ -13,7 +13,7 @@ struct NativeOrbitAccountBadgeImage: View {
                     Image(systemName: "globe").resizable().scaledToFit()
                 }
             } else if self.symbol.hasPrefix("account.") {
-                Image(self.symbol).resizable().scaledToFit()
+                Image(self.symbol).renderingMode(.template).resizable().scaledToFit()
             } else {
                 Image(systemName: self.symbol).resizable().scaledToFit().symbolVariant(.fill)
             }

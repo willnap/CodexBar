@@ -53,10 +53,10 @@ struct NativeOrbitClaudeComplicationTests {
             now: self.now,
             localUsage: NativeOrbitLocalUsage(snapshot: report, scope: .localMachine, bucketTimeZoneIdentifier: "UTC"))
         let today = self.corners(metrics, days: 1)
-        #expect(today[.topLeading]?.value.hasSuffix("3.00") == true)
-        #expect(today[.topLeading]?.help.contains("spent today on this Mac") == true)
+        #expect(today[.topLeading]?.value.hasSuffix("5.00") == true)
+        #expect(today[.topLeading]?.help.contains("spent in the last 24 hours on this Mac") == true)
         #expect(today[.topLeading]?.help.hasSuffix(", at list prices") == true)
-        #expect(today[.topTrailing]?.value == "3K")
+        #expect(today[.topTrailing]?.value == "5K")
         let week = self.corners(metrics, days: 7)
         #expect(week[.topLeading]?.value.hasSuffix("10.00") == true)
         #expect(week[.topTrailing]?.value == "10K")
@@ -67,7 +67,7 @@ struct NativeOrbitClaudeComplicationTests {
         #expect(month[.bottomTrailing]?.help == "Additional usage is off")
     }
 
-    @Test func `idle covered organization day reads zero, not unknown`() {
+    @Test func `a quiet calendar day retains yesterday requests within the rolling day`() {
         let report = self.organizationReport(includeToday: false)
         let metrics = NativeOrbitAccountMetrics.make(
             provider: .claude,
@@ -76,13 +76,13 @@ struct NativeOrbitClaudeComplicationTests {
             now: self.now,
             localUsage: NativeOrbitLocalUsage(snapshot: report, scope: .localMachine, bucketTimeZoneIdentifier: "UTC"))
         let summary = metrics.summary(days: 1, now: self.now, calendar: self.calendar)
-        // The organization's transcripts are covered for today and contain no usage: a measured zero.
-        #expect(summary.tokens == 0)
-        #expect(summary.cost == 0)
+        // The prior day's 14:00 request remains inside the last 24 hours.
+        #expect(summary.tokens == 2000)
+        #expect(summary.cost == 2)
         #expect(!summary.isPartial)
         let corners = self.corners(metrics, days: 1)
-        #expect(corners[.topLeading]?.value.hasSuffix("0.00") == true)
-        #expect(corners[.topTrailing]?.value == "0")
+        #expect(corners[.topLeading]?.value.hasSuffix("2.00") == true)
+        #expect(corners[.topTrailing]?.value == "2K")
         #expect(metrics.summary(days: 30, now: self.now, calendar: self.calendar).isPartial)
     }
 
@@ -94,12 +94,12 @@ struct NativeOrbitClaudeComplicationTests {
             usage: nil,
             now: self.now,
             localUsage: NativeOrbitLocalUsage(snapshot: report, scope: .localMachine, bucketTimeZoneIdentifier: "UTC"))
-        // Two days ago at 10:30: only the 10:00 slice of that day has happened.
+        // Two days ago at 10:30: that morning plus the preceding afternoon are inside the rolling day.
         let inspected = self.calendar.startOfDay(for: self.now).addingTimeInterval(-2 * 86400 + 10.5 * 3600)
         let past = metrics.at(inspected, observedAt: self.now).summary(
             days: 1, now: inspected, calendar: self.calendar)
-        #expect(past.tokens == 1000)
-        #expect(past.cost == 1)
+        #expect(past.tokens == 2000)
+        #expect(past.cost == 2)
     }
 
     @Test func `quiet history instants read zero only when the day's dated events survive`() {
@@ -122,7 +122,7 @@ struct NativeOrbitClaudeComplicationTests {
         #expect(tokens(at: quiet, prunedDayOffset: nil) == 0)
         // Only the archived day total survives: its 2,000 tokens could have run before 09:00.
         #expect(tokens(at: quiet, prunedDayOffset: -3) == nil)
-        #expect(tokens(at: quiet.addingTimeInterval(86400), prunedDayOffset: -3) == 0)
+        #expect(tokens(at: quiet.addingTimeInterval(86400), prunedDayOffset: -3) == nil)
     }
 
     @Test func `grouped organization events keep per render history reconstruction cheap`() {

@@ -23,7 +23,7 @@ struct NativeOrbitCachedUsageReportTests {
         let month = row.metrics.summary(days: 30, now: self.now, calendar: calendar)
         #expect(month.tokens == 700)
         #expect(month.cost == 7)
-        #expect(!month.isPartial)
+        #expect(month.isPartial)
     }
 
     @Test func `historical inspection keeps completed days from the published report`() throws {
@@ -35,7 +35,7 @@ struct NativeOrbitCachedUsageReportTests {
             .summary(days: 7, now: inspected, calendar: Self.utc)
         #expect(historical.tokens == 200)
         #expect(historical.cost == 2)
-        #expect(historical.isPartial)
+        #expect(!historical.isPartial)
     }
 
     @Test func `billing report keeps account scope and joins live spend`() throws {

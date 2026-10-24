@@ -14,11 +14,11 @@ struct NativeOrbitReportedBalance: Codable, Hashable, Sendable {
     let updatedAt: Date
 }
 
-struct NativeOrbitLocalUsage {
+struct NativeOrbitLocalUsage: Equatable {
     let snapshot: CostUsageTokenSnapshot
     let scope: NativeOrbitUsageScope
     let bucketTimeZoneIdentifier: String?
-    /// Only requests whose reported quota window belongs to this account; comparable with account totals.
+    /// Requests owned by this account through verified quota windows or a uniquely owned organization.
     var isAccountAttributed = false
     /// Retained after a failed or incomplete refresh, so its totals are lower bounds.
     var isStale = false
@@ -112,6 +112,7 @@ struct NativeOrbitAccountMetrics {
     var preparedAccountUsage: NativeOrbitPreparedAccountUsage?
     var preparedCreditEvents: [NativeOrbitCreditUsageEvent]?
     var preparedUsageSlices: [NativeOrbitPreparedUsageSlices] = []
+    var usageDayMemo = NativeOrbitUsageDayMemo()
 
     /// A value already prepared for this history is returned as it is: the combined popup hands every column's
     /// prepared rows to its toolbar on each opening, and rebuilding them delayed the popup by tens of milliseconds.
@@ -164,13 +165,15 @@ struct NativeOrbitAccountMetrics {
         return min(1, spend.used / spend.limit)
     }
 
-    func summary(days: Int, now: Date, calendar: Calendar = .current) -> NativeOrbitMetricSummary {
-        var result = self.measuredSummary(days: days, now: now, calendar: calendar)
+    func summary(
+        days: Int, now: Date, calendar: Calendar = .current, since: Date? = nil) -> NativeOrbitMetricSummary
+    {
+        var result = self.measuredSummary(days: days, now: now, calendar: calendar, since: since)
         // A zero contradicted by the account's own quota readings is not a measured zero: the account consumed quota
         // in this period where the token sources can't see it yet. It reads as unknown until a report covers it.
         guard result.tokens == 0 || result.cost == 0 else { return result }
-        let period = CostReportingPeriod.rolling(days: max(1, days)).bounds(now: now, calendar: calendar)
-        guard self.quotaConsumption.contains(where: { $0 >= period.lowerBound && $0 <= now }) else { return result }
+        let start = since ?? NativeOrbitChartAxis.start(now: now, days: days, calendar: calendar)
+        guard self.quotaConsumption.contains(where: { $0 >= start && $0 <= now }) else { return result }
         if result.tokens == 0 {
             result.tokens = nil
             result.requests = nil
@@ -180,8 +183,8 @@ struct NativeOrbitAccountMetrics {
         return result
     }
 
-    private func measuredSummary(days: Int, now: Date, calendar: Calendar) -> NativeOrbitMetricSummary {
-        var result = self.usageSummary(days: days, now: now, calendar: calendar)
+    private func measuredSummary(days: Int, now: Date, calendar: Calendar, since: Date?) -> NativeOrbitMetricSummary {
+        var result = self.usageSummary(days: days, now: now, calendar: calendar, since: since)
         if let primary = self.primaryLocalUsage,
            primary.isStale || primary.hasUnattributedActivity(days: days, now: now, calendar: calendar)
         {
@@ -195,7 +198,8 @@ struct NativeOrbitAccountMetrics {
             usageScope: local.scope,
             bucketTimeZoneIdentifier: local.bucketTimeZoneIdentifier)
         localMetrics.preparedUsageSlices = self.preparedUsageSlices
-        var localSummary = localMetrics.usageSummary(days: days, now: now, calendar: calendar)
+        localMetrics.usageDayMemo = self.usageDayMemo
+        var localSummary = localMetrics.usageSummary(days: days, now: now, calendar: calendar, since: since)
         if local.isStale || local.hasUnattributedActivity(days: days, now: now, calendar: calendar) {
             localSummary.isPartial = true
             localSummary.costIsPartial = true
@@ -208,7 +212,8 @@ struct NativeOrbitAccountMetrics {
                 usageScope: .account,
                 bucketTimeZoneIdentifier: local.bucketTimeZoneIdentifier)
             mergedMetrics.preparedUsageSlices = self.preparedUsageSlices
-            let merged = mergedMetrics.usageSummary(days: days, now: now, calendar: calendar)
+            mergedMetrics.usageDayMemo = self.usageDayMemo
+            let merged = mergedMetrics.usageSummary(days: days, now: now, calendar: calendar, since: since)
             if let tokens = merged.tokens {
                 result.tokens = tokens
                 result.requests = nil
@@ -273,7 +278,7 @@ struct NativeOrbitAccountMetrics {
             updatedAt: max(account.updatedAt, local.snapshot.updatedAt))
     }
 
-    private func usageSummary(days: Int, now: Date, calendar: Calendar) -> NativeOrbitMetricSummary {
+    private func usageSummary(days: Int, now: Date, calendar: Calendar, since: Date?) -> NativeOrbitMetricSummary {
         guard let usage else { return NativeOrbitMetricSummary() }
         var calendar = calendar
         if let identifier = usage.bucketTimeZoneIdentifier ?? self.bucketTimeZoneIdentifier,
@@ -281,113 +286,116 @@ struct NativeOrbitAccountMetrics {
         {
             calendar.timeZone = zone
         }
-        let period = CostReportingPeriod.rolling(days: max(1, days))
-        let requested = period.bounds(now: now, calendar: calendar)
-        let covered = CostReportingPeriod.rolling(days: usage.historyDays).bounds(
-            now: usage.coverageThrough ?? usage.updatedAt, calendar: calendar)
+        let start = min(now, since ?? NativeOrbitChartAxis.start(now: now, days: days, calendar: calendar))
+        let requested = start...now
+        let through = usage.coverageThrough ?? usage.updatedAt
+        // Sources advertise coverage in civil days; the display selects exact elapsed time within it.
+        let coveredStart = CostReportingPeriod.rolling(days: usage.historyDays)
+            .bounds(now: through, calendar: calendar).lowerBound
         var result = NativeOrbitMetricSummary(
             currencyCode: usage.currencyCode,
             costIsEstimated: usage.costProvenance == .listPriceEstimate || usage.costProvenance == .mixed,
-            isPartial: !usage.historyIsFullyScanned || covered.lowerBound > requested.lowerBound
-                || covered.upperBound < requested.upperBound,
+            isPartial: !usage.historyIsFullyScanned || coveredStart > start || through < now,
             usageScope: self.usageScope)
-        if now < usage.updatedAt {
-            // Completed civil days remain measured history. The inspection day's aggregate can contain
-            // activity after the pointer, so use only timestamped events for that day.
-            let currentDays = Set(CostReportingPeriod.rolling(days: 1)
-                .entries(usage.daily, now: now, calendar: calendar).map(\.date))
-            let completed = period.entries(usage.daily, now: now, calendar: calendar)
-                .filter { !currentDays.contains($0.date) }
-            let bounds = requested.lowerBound...now
-            let slices = self.preparedUsageSlices.lazy.compactMap {
-                $0.entries(matching: usage.quotaSlices, in: bounds)
-            }.first ?? usage.quotaSlices.filter { $0.timestamp >= requested.lowerBound && $0.timestamp <= now }
-            if !completed.isEmpty {
-                // Slices arrive in time order: evaluate each civil day once, not once per request.
-                var day: (interval: DateInterval, isCompleted: Bool)?
-                let remainingSlices = slices.filter { slice in
-                    if let day, slice.timestamp >= day.interval.start, slice.timestamp < day.interval.end {
-                        return !day.isCompleted
-                    }
-                    let isCompleted = !CostReportingPeriod.rolling(days: 1)
-                        .entries(completed, now: slice.timestamp, calendar: calendar).isEmpty
-                    if let interval = calendar.dateInterval(of: .day, for: slice.timestamp) {
-                        day = (interval, isCompleted)
-                    }
-                    return !isCompleted
-                }
-                result.tokens = Self.completeCount(completed.map(\.totalTokens) + remainingSlices.map(\.totalTokens))
-                result.requests = Self.completeCount(completed.map(\.requestCount))
-                // Missing current-day events cannot establish a complete intraday total.
-                result.isPartial = true
-                let costs = completed.compactMap(\.costUSD) + remainingSlices.compactMap(\.costUSD)
-                let validCosts = costs.filter { $0.isFinite && $0 >= 0 }
-                result.costIsPartial = true
-                if !validCosts.isEmpty {
-                    let cost = validCosts.reduce(0, +)
-                    result.cost = cost.isFinite ? cost : nil
-                }
-                return result
+        var completeDays = Set<Date>()
+        var entries: [CostUsageDailyReport.Entry] = []
+        var hasUnplacedActivity = false
+        for entry in usage.daily {
+            guard let interval = self.usageDayMemo.interval(for: entry.date, calendar: calendar),
+                  interval.start <= now, interval.end > start else { continue }
+            let day = interval.start
+            let end = interval.end
+            // A whole-day total cannot be split at the leading edge, or at an inspection before its receipt.
+            if day >= start, end <= now || usage.updatedAt <= now {
+                entries.append(entry)
+                completeDays.insert(day)
+            } else if (entry.totalTokens ?? 0) > 0 || (entry.costUSD ?? 0) > 0 {
+                let boundary = (self.preparedUsageSlices.lazy.compactMap {
+                    $0.entries(matching: usage.quotaSlices, in: day...end)
+                }.first ?? usage.quotaSlices.filter { $0.timestamp >= day && $0.timestamp < end })
+                    .filter { $0.timestamp < end }
+                // A surviving complete request stream can split its day's total exactly. Pruned transcripts or
+                // account totals larger than this machine's stream keep the boundary explicitly incomplete.
+                let tokensPlaced = !boundary.isEmpty && entry.totalTokens != nil
+                    && Self.completeCount(boundary.map(\.totalTokens)) == entry.totalTokens
+                    && boundary.allSatisfy(\.tokensAreComplete)
+                let costs = boundary.compactMap(\.costUSD).filter { $0.isFinite && $0 >= 0 }
+                let costPlaced = !boundary.isEmpty && costs.count == boundary.count
+                    && boundary.allSatisfy(\.costIsComplete)
+                    && entry.costUSD.map { abs($0 - costs.reduce(0, +)) < 0.00000001 } == true
+                result.isPartial = result.isPartial || !tokensPlaced
+                result.costIsPartial = result.costIsPartial || !costPlaced
+                hasUnplacedActivity = hasUnplacedActivity || ((entry.totalTokens ?? 0) > 0 && !tokensPlaced)
+                    || ((entry.costUSD ?? 0) > 0 && !costPlaced)
             }
-            guard !slices.isEmpty else {
-                var zero = Self.coveredZeroSummary(result, usage: usage)
-                // Covered data with no activity is a measured zero: a fully scanned stream, or established account
-                // buckets (which omit only zero days). Day bounds are start-of-day, so the scan itself must also
-                // reach the inspected instant. Without that coverage the reading stays unknown.
-                let accountBucketsProveZero = self.usageScope == .account
-                    && usage.daily.contains(where: { $0.totalTokens != nil })
-                guard usage.historyCoverageIsEstablished, usage.historyIsFullyScanned || accountBucketsProveZero,
-                      covered.lowerBound <= requested.lowerBound, covered.upperBound >= requested.upperBound,
-                      (usage.coverageThrough ?? usage.updatedAt) >= now,
-                      self.provesNoActivityBeforeInstant(usage, now: now, calendar: calendar)
-                else { return zero }
-                zero.tokens = 0
-                if usage.quotaSlices.contains(where: { $0.costUSD != nil })
-                    || usage.daily.contains(where: { $0.costUSD != nil })
-                {
-                    zero.cost = 0
+        }
+        var lastSliceDay: (interval: DateInterval, isComplete: Bool)?
+        let slices = (self.preparedUsageSlices.lazy.compactMap {
+            $0.entries(matching: usage.quotaSlices, in: requested)
+        }.first ?? usage.quotaSlices.filter { requested.contains($0.timestamp) })
+            .filter { slice in
+                if let day = lastSliceDay, slice.timestamp >= day.interval.start, slice.timestamp < day.interval.end {
+                    return !day.isComplete
                 }
-                return zero
+                guard let interval = calendar.dateInterval(of: .day, for: slice.timestamp) else { return true }
+                let isComplete = completeDays.contains(interval.start)
+                lastSliceDay = (interval, isComplete)
+                return !isComplete
             }
-            result.tokens = Self.completeCount(slices.map(\.totalTokens))
+        // Use hour buckets only if exact requests are unavailable, and only fully contained hours.
+        var hours: [CostUsageHourlyEntry] = []
+        if usage.quotaSlices.isEmpty {
+            for hour in usage.hourly {
+                let end = hour.hour.addingTimeInterval(3600)
+                guard hour.hour <= now, end > start,
+                      !completeDays.contains(calendar.startOfDay(for: hour.hour)) else { continue }
+                if hour.hour >= start, end <= now || usage.updatedAt <= now {
+                    hours.append(hour)
+                } else if (hour.totalTokens ?? 0) > 0 || (hour.costUSD ?? 0) > 0 {
+                    result.isPartial = true
+                    hasUnplacedActivity = true
+                }
+            }
+        }
+        let counts = entries.map(\.totalTokens) + slices.map(\.totalTokens) + hours.map(\.totalTokens)
+        let costs = entries.map(\.costUSD) + slices.map(\.costUSD) + hours.map(\.costUSD)
+        if !counts.isEmpty {
+            result.tokens = Self.completeCount(counts)
+            result.requests = slices.isEmpty && hours.isEmpty ? Self.completeCount(entries.map(\.requestCount)) : nil
             result.isPartial = result.isPartial || slices.contains { !$0.tokensAreComplete }
-            let costs = slices.compactMap(\.costUSD).filter { $0.isFinite && $0 >= 0 }
-            result.costIsPartial = result.isPartial || costs.count != slices.count
-                || slices.contains { !$0.costIsComplete }
-            if !costs.isEmpty {
-                let cost = costs.reduce(0, +)
+                || hours.contains { !$0.tokensAreComplete }
+            let validCosts = costs.compactMap(\.self).filter { $0.isFinite && $0 >= 0 }
+            result.costIsPartial = result.costIsPartial || result.isPartial || validCosts.count != costs.count
+                || slices.contains { !$0.costIsComplete } || hours.contains { !$0.costIsComplete }
+                || entries.contains {
+                    self.usageCostPartialDays.contains($0.date) || $0.costIsPartial == true
+                        || $0.incompleteRequestCount > 0 || ($0.unpricedRequestCount ?? 0) > 0
+                        || ($0.unmeteredRequestCount ?? 0) > 0
+                        || ($0.modelBreakdowns ?? []).contains { $0.costUSD.map { !$0.isFinite || $0 < 0 } ?? true }
+                }
+            if !validCosts.isEmpty {
+                let cost = validCosts.reduce(0, +)
                 result.cost = cost.isFinite ? cost : nil
             }
             return result
         }
-        let entries = period.entries(usage.daily, now: now, calendar: calendar)
-        if usage.daily.isEmpty, requested == covered, !result.isPartial {
-            // Aggregate-only reports are usable for their exact coverage window, never relabeled as another range.
+        if usage.daily.isEmpty, usage.quotaSlices.isEmpty, usage.hourly.isEmpty,
+           start <= coveredStart, usage.updatedAt <= now
+        {
+            // An aggregate contained in the range is a known subtotal, never an invented intraday history.
             result.tokens = Self.completeCount([usage.last30DaysTokens])
             result.requests = Self.completeCount([usage.last30DaysRequests])
             if let cost = usage.last30DaysCostUSD, cost.isFinite, cost >= 0 { result.cost = cost }
+            result.isPartial = true
+            result.costIsPartial = true
             return result
         }
-        guard !entries.isEmpty else {
-            return self.emptyPeriodSummary(result, usage: usage, requested: requested, covered: covered)
-        }
-        result.tokens = Self.completeCount(entries.map(\.totalTokens))
-        result.requests = Self.completeCount(entries.map(\.requestCount))
-        let costs = entries.compactMap(\.costUSD).filter { $0.isFinite && $0 >= 0 }
-        result.costIsPartial = result.isPartial || costs.count != entries.count || entries.contains {
-            self.usageCostPartialDays.contains($0.date)
-                || $0.costIsPartial == true
-                || $0.incompleteRequestCount > 0 || ($0.unpricedRequestCount ?? 0) > 0
-                || ($0.unmeteredRequestCount ?? 0) > 0
-                || ($0.modelBreakdowns ?? []).contains { breakdown in
-                    breakdown.costUSD.map { !$0.isFinite || $0 < 0 } ?? true
-                }
-        }
-        if !costs.isEmpty {
-            let cost = costs.reduce(0, +)
-            result.cost = cost.isFinite ? cost : nil
-        }
-        return result
+        if hasUnplacedActivity { return result }
+        return self.emptyPeriodSummary(
+            result,
+            usage: usage,
+            requested: requested,
+            covered: coveredStart...max(coveredStart, through))
     }
 
     func at(
@@ -490,40 +498,6 @@ struct NativeOrbitAccountMetrics {
             // Account buckets whose coverage is established omit only zero days. The latest statistics day may
             // still grow, so the zero stays a partial lower bound.
             result.tokens = 0
-        }
-        return result
-    }
-
-    /// A scanned local event stream (or a covered day with no activity at all) proves nothing ran before the
-    /// inspected instant; an account day total alone could include activity after it.
-    private func provesNoActivityBeforeInstant(
-        _ usage: CostUsageTokenSnapshot,
-        now: Date,
-        calendar: Calendar) -> Bool
-    {
-        let day = CostReportingPeriod.rolling(days: 1)
-        if self.usageScope != .account, !usage.quotaSlices.isEmpty {
-            // A day total whose dated events are gone (archived after its transcripts were pruned) cannot place its
-            // activity relative to the instant.
-            let dayTotal = day.entries(usage.daily, now: now, calendar: calendar).compactMap(\.totalTokens).reduce(0, +)
-            guard dayTotal > 0, let interval = calendar.dateInterval(of: .day, for: now) else { return true }
-            return usage.quotaSlices.contains { interval.contains($0.timestamp) }
-        }
-        return !usage.daily.contains {
-            ($0.totalTokens ?? 0) > 0 && !day.entries([$0], now: now, calendar: calendar).isEmpty
-        }
-    }
-
-    private static func coveredZeroSummary(
-        _ summary: NativeOrbitMetricSummary,
-        usage: CostUsageTokenSnapshot) -> NativeOrbitMetricSummary
-    {
-        var result = summary
-        // A complete nonnegative aggregate zero proves absence in a covered subrange.
-        if !result.isPartial {
-            if usage.last30DaysTokens == 0 { result.tokens = 0 }
-            if usage.last30DaysCostUSD == 0 { result.cost = 0 }
-            if usage.last30DaysRequests == 0 { result.requests = 0 }
         }
         return result
     }
@@ -635,5 +609,29 @@ struct NativeOrbitAccountMetrics {
         guard credits.balanceReadSucceeded else { return nil }
         if credits.codexCreditLimit == nil || credits.hasWorkspaceBalance { return credits.remaining }
         return CodexExtraUsageCost.purchasedExtraCreditsBalance(from: credits)
+    }
+}
+
+/// Equal readings, whatever has been prepared from them: a rebuilt row that equals the shown one keeps its preparation.
+extension NativeOrbitAccountMetrics: Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.accountUsageHistory == rhs.accountUsageHistory
+            && lhs.usage == rhs.usage
+            && lhs.usageCostPartialDays == rhs.usageCostPartialDays
+            && lhs.usageScope == rhs.usageScope
+            && lhs.bucketTimeZoneIdentifier == rhs.bucketTimeZoneIdentifier
+            && lhs.localCostUsage == rhs.localCostUsage
+            && lhs.primaryLocalUsage == rhs.primaryLocalUsage
+            && lhs.creditUsageEvents == rhs.creditUsageEvents
+            && lhs.reportedBalance == rhs.reportedBalance
+            && lhs.reportedSpend == rhs.reportedSpend
+            && lhs.reportedQuotaUsage == rhs.reportedQuotaUsage
+            && lhs.reportedPlan == rhs.reportedPlan
+            && lhs.reportedPlanExpiry == rhs.reportedPlanExpiry
+            && lhs.usedResets == rhs.usedResets
+            && lhs.quotaConsumption == rhs.quotaConsumption
+            && lhs.bankedResets == rhs.bankedResets
+            && lhs.nextResetCreditExpiry == rhs.nextResetCreditExpiry
+            && lhs.resetInventoryObservedAt == rhs.resetInventoryObservedAt
     }
 }

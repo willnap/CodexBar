@@ -24,12 +24,12 @@ enum NativeOrbitTooltip {
 
     /// "today" or "in the last 7 days", to end a sentence about the selected range.
     static func during(days: Int) -> String {
-        days == 1 ? "today" : "in the last \(days) days"
+        days == 1 ? "in the last 24 hours" : "in the last \(days) days"
     }
 
     /// "today" or "the last 7 days", as the object of "for".
     static func range(days: Int) -> String {
-        days == 1 ? "today" : "the last \(days) days"
+        days == 1 ? "the last 24 hours" : "the last \(days) days"
     }
 
     /// Where the figure comes from, when that is narrower than the whole account.

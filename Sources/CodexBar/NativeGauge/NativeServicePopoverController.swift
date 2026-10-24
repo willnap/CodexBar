@@ -134,8 +134,22 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
             appearance: self.isViewLoaded ? self.view.effectiveAppearance : nil)
     }
 
+    /// While the combined popup's pages are being scrolled, changes wait and land once they settle: rebuilding the
+    /// columns under the pointer recomputed every chart mid-gesture.
+    var holdsPresentation = false {
+        didSet {
+            guard self.holdsPresentation != oldValue else { return }
+            if self.holdsPresentation {
+                self.presentationRefreshTask?.cancel()
+                self.presentationRefreshTask = nil
+            } else if self.presentationDirty {
+                self.schedulePresentationRefresh()
+            }
+        }
+    }
+
     private func observePresentation() {
-        guard !self.orbitState.startup.isActive else {
+        guard !self.orbitState.startup.isActive, !self.holdsPresentation else {
             self.presentationDirty = true
             return
         }
@@ -159,7 +173,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
 
     private func schedulePresentationRefresh() {
         self.presentationDirty = true
-        guard self.presentationRefreshTask == nil else { return }
+        guard self.presentationRefreshTask == nil, !self.holdsPresentation else { return }
         let delay: Duration = (self.popover?.isShown == true || self.isInCombinedPresentation) ? .milliseconds(150) :
             self.hiddenPresentationDelay
         self.presentationRefreshTask = Task { @MainActor [weak self] in
@@ -173,7 +187,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     private func refreshPresentation() {
         // Account receipts and archive scans can publish several times during a sweep. Keep the prepared
         // chart and glass trees stable until it ends, then apply the latest complete presentation once.
-        guard !self.orbitState.startup.isActive else {
+        guard !self.orbitState.startup.isActive, !self.holdsPresentation else {
             self.presentationDirty = true
             return
         }
@@ -464,7 +478,8 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
             activate: { [weak self] in self?.activateAccount(id: $0) },
             lightAction: { [weak self] id, action in self?.handleLight(action, accountID: id) },
             refresh: { [weak self] in self?.refreshUsage() },
-            settings: { [weak self] in self?.openSettings() })
+            settings: { [weak self] in self?.openSettings() },
+            holdPresentation: { [weak self] in self?.holdsPresentation = $0 })
     }
 
     func beginCombinedPresentation() {
@@ -491,6 +506,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
 
     func endCombinedPresentation() {
         self.isInCombinedPresentation = false
+        self.holdsPresentation = false
         self.presentationClockTask?.cancel()
         self.presentationClockTask = nil
         self.orbitState.inspectionDate = nil

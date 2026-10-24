@@ -7,7 +7,7 @@ struct NativeOrbitRangeControl: View {
     let accent: Color
     /// Full "Day · Week · Month" where the bar has room; single letters in a single column.
     var fullWords = false
-    private static let ranges = [1, 7, 30]
+    static let ranges = [1, 7, 30]
 
     var body: some View {
         GeometryReader { geometry in

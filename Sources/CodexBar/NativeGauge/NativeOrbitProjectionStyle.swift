@@ -164,7 +164,7 @@ enum NativeOrbitProjectionStyle {
         }
     }
 
-    /// The now marker follows the pointer with a spring and returns to now when the pointer leaves.
+    /// Returning to now animates; continuous pointer tracking bypasses this spring entirely.
     static let markerSpring = Animation.spring(response: 0.32, dampingFraction: 0.82)
     /// Switching between the centered and the right-edge now animates like a range change.
     static let axisAnimation = Animation.smooth(duration: 0.35)

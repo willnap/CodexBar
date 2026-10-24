@@ -7,6 +7,23 @@ import Testing
 struct NativeOrbitHistoricalInspectionTests {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
+    @Test func `charts sliding under a resting pointer during a scroll are not inspected`() {
+        let state = NativeOrbitPopupState()
+        state.now = self.now
+        state.accounts = [self.account(id: "first", used: [20, 40])]
+        let hovered = self.now.addingTimeInterval(-300)
+        state.inspect(hovered, source: "hover")
+        #expect(state.inspectionDate == hovered)
+        // Scrolling returns the dials to live readings and ignores hover until the pages settle.
+        state.isScrolling = true
+        #expect(state.inspectionDate == nil)
+        state.inspect(self.now.addingTimeInterval(-600), source: "hover")
+        #expect(state.inspectionDate == nil)
+        state.isScrolling = false
+        state.inspect(hovered, source: "hover")
+        #expect(state.inspectionDate == hovered)
+    }
+
     @Test func `all account dials project the same pointer and return their original live state on exit`() {
         let date = self.now.addingTimeInterval(-300)
         let first = self.account(id: "first", used: [20, 40])

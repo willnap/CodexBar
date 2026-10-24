@@ -168,6 +168,15 @@ struct NativePopoverTests {
         viewController.combinedPresentationDidShow()
         await waitForUsed(0.5)
         #expect(used == 0.5)
+
+        // Pages being scrolled keep their columns; the change lands once they settle.
+        viewController.holdsPresentation = true
+        publish(60)
+        try? await Task.sleep(for: .milliseconds(500))
+        #expect(used == 0.5, "A scroll must not rebuild the columns under the pointer")
+        viewController.holdsPresentation = false
+        await waitForUsed(0.6)
+        #expect(used == 0.6)
         viewController.endCombinedPresentation()
     }
 

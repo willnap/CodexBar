@@ -183,7 +183,7 @@ extension NativeOrbitResetEvent {
         calendar: Calendar = .current,
         prepared: NativeOrbitPreparedMetricHistory? = nil) -> [Redemption]
     {
-        let start = CostReportingPeriod.rolling(days: max(1, days)).bounds(now: now, calendar: calendar).lowerBound
+        let start = NativeOrbitChartAxis.start(now: now, days: days, calendar: calendar)
         let all = prepared.flatMap { $0.matches(metricHistories) ? $0.resetRedemptions : nil }
             ?? self.redemptions(in: metricHistories)
         return all.filter { $0.date >= start && $0.date <= now }
