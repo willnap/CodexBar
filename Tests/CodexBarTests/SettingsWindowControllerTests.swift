@@ -73,7 +73,42 @@ struct SettingsWindowControllerTests {
         #expect(registeredWindows.allSatisfy { $0 === window })
         #expect(presentedPanes == [.about, .general])
         #expect(selection.pane == .general)
+        selection.goBack()
+        #expect(selection.pane == .about)
+        selection.goForward()
+        #expect(selection.pane == .general)
+        #expect(makeCount == 1)
         #expect(!window.isRestorable)
+    }
+
+    @Test
+    func `reopening Settings preserves the About page until About is explicitly requested`() {
+        _ = NSApplication.shared
+        let selection = self.makeSelection()
+        let window = self.makeWindow()
+        let controller = SettingsWindowController(
+            selection: selection,
+            makeWindow: { window },
+            prepareToPresent: {},
+            registerWindow: { _ in },
+            presentWindow: { _ in },
+            didPresentWindow: { _ in },
+            presentationFailed: {})
+
+        controller.open(pane: .about)
+        selection.showAcknowledgements()
+        #expect(selection.destination.aboutRoute == .acknowledgements)
+
+        // Reopening Settings preserves its page; explicitly opening About resets it.
+        window.close()
+        #expect(controller.open(pane: nil) == .reused)
+        #expect(selection.destination.aboutRoute == .acknowledgements)
+        #expect(controller.open(pane: .about) == .reused)
+        #expect(selection.destination.aboutRoute == nil)
+
+        controller.open(pane: nil)
+        controller.open(pane: .general)
+        #expect(selection.destination.aboutRoute == nil)
     }
 
     @Test

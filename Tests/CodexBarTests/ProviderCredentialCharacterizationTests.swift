@@ -54,6 +54,7 @@ struct ProviderCredentialCharacterizationTests {
             .init(provider: .warp, environmentKey: "WARP_API_KEY"),
             .init(provider: .codebuff, environmentKey: "CODEBUFF_API_KEY"),
             .init(provider: .doubao, environmentKey: "ARK_API_KEY"),
+            .init(provider: .commandcode, environmentKey: "COMMAND_CODE_API_KEY"),
         ]
 
         for fixture in fixtures {
@@ -225,6 +226,7 @@ struct ProviderCredentialCharacterizationTests {
         let cookieProviders: [UsageProvider] = [
             .claude, .cursor, .opencode, .opencodego, .factory, .minimax, .manus,
             .augment, .ollama, .abacus, .mistral, .qoder, .stepfun, .replicate, .typesafe, .kimi,
+            .commandcode,
         ]
 
         for (provider, key) in environmentProviders {
@@ -264,6 +266,7 @@ struct ProviderCredentialCharacterizationTests {
             .replicate: "account-token",
             .typesafe: "account-token",
             .kimi: "kimi-auth=account-token",
+            .commandcode: "account-token",
         ]
         for provider in cookieProviders {
             #expect(TokenAccountSupportCatalog.normalizedCookieHeader(

@@ -1,0 +1,628 @@
+import AppKit
+import CodexBarCore
+import SwiftUI
+
+/// Sidebar destinations of the settings window: fixed app panes plus one entry per provider.
+enum SettingsPane: Hashable {
+    case general
+    case iCloudSync
+    case usageSpend
+    case notifications
+    case menuBar
+    case menu
+    case advanced
+    case hooks
+    case plugins
+    case about
+    case debug
+    case provider(ProviderInstanceID)
+
+    static let windowWidth: CGFloat = 880
+    static let windowHeight: CGFloat = 620
+    static let windowMinWidth: CGFloat = 800
+    static let windowMinHeight: CGFloat = 540
+    static let sidebarWidth: CGFloat = 260
+    static let sidebarMinWidth: CGFloat = 200
+    static let sidebarMaxWidth: CGFloat = 380
+    static let sidebarWidthDefaultsKey = "settingsSidebarWidth"
+    static let detailMaxWidth: CGFloat = 780
+
+    var title: String {
+        switch self {
+        case .general: L("tab_general")
+        case .iCloudSync: L("iCloud Sync")
+        case .usageSpend: L("tab_usage_spend")
+        case .notifications: L("tab_notifications")
+        case .menuBar: L("tab_menu_bar")
+        case .menu: L("tab_menu")
+        case .advanced: L("tab_advanced")
+        case .hooks: L("tab_hooks")
+        case .plugins: L("Plugins")
+        case .about: L("tab_about")
+        case .debug: L("tab_debug")
+        case let .provider(instanceID):
+            instanceID.firstPartyProvider
+                .map { ProviderDescriptorRegistry.descriptor(for: $0).metadata.displayName }
+                ?? instanceID.rawValue
+        }
+    }
+}
+
+@MainActor
+struct PreferencesView: View {
+    @Bindable var settings: SettingsStore
+    @Bindable var store: UsageStore
+    @Bindable var cloudSyncState: CloudSyncState
+    let updater: UpdaterProviding
+    @Bindable var selection: PreferencesSelection
+    let managedCodexAccountCoordinator: ManagedCodexAccountCoordinator
+    let codexAccountPromotionCoordinator: CodexAccountPromotionCoordinator
+    let runProviderLoginFlow: @MainActor (UsageProvider) async -> Void
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(SettingsPane.sidebarWidthDefaultsKey) private var sidebarWidth: Double = SettingsPane.sidebarWidth
+    /// Measured titlebar height used to size the detail titlebar cover. Read from the window rather
+    /// than from a `GeometryReader`: SwiftUI hands the top safe-area inset to the detail scroll view as
+    /// a content inset, so a proxy read inside this column returns zero and collapses the cover.
+    @State private var detailTitlebarInset: CGFloat = 0
+
+    /// The persisted width, guarded against out-of-range values (edited defaults,
+    /// bounds that shrank in an update) so a bad stored value can't wreck the layout.
+    private var clampedSidebarWidth: CGFloat {
+        min(max(self.sidebarWidth, SettingsPane.sidebarMinWidth), SettingsPane.sidebarMaxWidth)
+    }
+
+    init(
+        settings: SettingsStore,
+        store: UsageStore,
+        cloudSyncState: CloudSyncState = CloudSyncState(),
+        updater: UpdaterProviding,
+        selection: PreferencesSelection,
+        managedCodexAccountCoordinator: ManagedCodexAccountCoordinator = ManagedCodexAccountCoordinator(),
+        codexAccountPromotionCoordinator: CodexAccountPromotionCoordinator? = nil,
+        runProviderLoginFlow: @escaping @MainActor (UsageProvider) async -> Void = { _ in })
+    {
+        self.settings = settings
+        self.store = store
+        self.cloudSyncState = cloudSyncState
+        self.updater = updater
+        self.selection = selection
+        self.managedCodexAccountCoordinator = managedCodexAccountCoordinator
+        self.codexAccountPromotionCoordinator = codexAccountPromotionCoordinator
+            ?? CodexAccountPromotionCoordinator(
+                settingsStore: settings,
+                usageStore: store,
+                managedAccountCoordinator: managedCodexAccountCoordinator)
+        self.runProviderLoginFlow = runProviderLoginFlow
+    }
+
+    var body: some View {
+        Group {
+            if #available(macOS 26.0, *) {
+                self.splitViewLayout
+            } else {
+                self.legacyLayout
+            }
+        }
+        .frame(
+            minWidth: SettingsPane.windowMinWidth,
+            idealWidth: SettingsPane.windowWidth,
+            maxWidth: .infinity,
+            minHeight: SettingsPane.windowMinHeight,
+            idealHeight: SettingsPane.windowHeight,
+            maxHeight: .infinity)
+        .id(self.settings.appLanguage)
+        .codexBarLocalized()
+        .background {
+            SettingsWindowAppearanceBridge(colorScheme: self.colorScheme, windowTitle: self.selection.title)
+                .allowsHitTesting(false)
+        }
+        .onAppear {
+            self.ensureValidSelection()
+        }
+        .onChange(of: self.settings.debugMenuEnabled) { _, _ in
+            self.ensureValidSelection()
+        }
+        .onChange(of: self.settings.shouldRequestAdaptiveActivityScanConsent) { _, shouldRequest in
+            guard shouldRequest else { return }
+            AdaptiveActivityConsentPresenter.presentIfNeeded(settings: self.settings)
+        }
+    }
+
+    /// macOS 26+: a standard split view, so the sidebar, toolbar, search field and scroll edge
+    /// effects all come from the system and adopt Liquid Glass natively.
+    @available(macOS 26.0, *)
+    private var splitViewLayout: some View {
+        NavigationSplitView {
+            SettingsSidebarView(
+                settings: self.settings,
+                store: self.store,
+                selection: self.$selection.pane,
+                onSelectAbout: { self.selection.requestAboutRoot() })
+                .modifier(SettingsSidebarSizing(width: self.$sidebarWidth))
+        } detail: {
+            self.detailView
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .navigationTitle(self.selection.title)
+                // Panes that draw their own heading keep the window title for accessibility and the
+                // Window menu, but drop it from the toolbar.
+                .toolbar(removing: self.showsToolbarTitle ? nil : .title)
+                .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        SettingsHistoryButtons(selection: self.selection)
+                    }
+                }
+        }
+    }
+
+    private var showsToolbarTitle: Bool {
+        switch self.selection.pane {
+        case .usageSpend: false
+        case let .provider(instanceID): instanceID.firstPartyProvider == nil
+        default: true
+        }
+    }
+
+    /// macOS 14/15: hand-built sidebar and titlebar backing.
+    private var legacyLayout: some View {
+        HStack(spacing: 0) {
+            // Golden Gate-style sidebar: edge-to-edge material with a hairline separator,
+            // no floating card chrome. The material ignores the safe area so it runs up
+            // behind the transparent titlebar. The width is user-resizable via the
+            // input-only drag strip overlaid on the detail pane's leading edge.
+            SettingsSidebarView(
+                settings: self.settings,
+                store: self.store,
+                selection: self.$selection.pane,
+                onSelectAbout: { self.selection.requestAboutRoot() })
+                .frame(width: self.clampedSidebarWidth)
+                .background {
+                    SettingsSidebarMaterial()
+                        .ignoresSafeArea()
+                }
+
+            Divider()
+                .ignoresSafeArea()
+
+            self.detailView
+                .frame(
+                    maxWidth: SettingsPane.detailMaxWidth,
+                    maxHeight: .infinity,
+                    alignment: .topLeading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                // The panes hide their scroll background, and the window uses a transparent full-size
+                // titlebar, so without an opaque detail backing the grouped Form content renders through
+                // the titlebar region and overlaps the window title. Mirror the sidebar's material so the
+                // detail-side titlebar region has a stable backing in every pane and appearance. The
+                // zero-sized reader reports the window's titlebar height so the cover below matches it.
+                .background {
+                    SettingsDetailMaterial()
+                        .ignoresSafeArea()
+                        .overlay {
+                            SettingsTitlebarInsetReader(inset: self.$detailTitlebarInset)
+                                .frame(width: 0, height: 0)
+                        }
+                }
+                // Cover the transparent titlebar strip over the detail so scrolling Form content stays
+                // below it — matching the sidebar's clean top edge instead of riding up over the window
+                // title. The window draws its title above this cover.
+                .overlay(alignment: .top) {
+                    SettingsDetailTitlebarCoverMaterial()
+                        .frame(height: self.detailTitlebarInset)
+                        .frame(maxWidth: .infinity)
+                        .ignoresSafeArea(edges: .top)
+                        .allowsHitTesting(false)
+                }
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    SettingsHistoryButtons(selection: self.selection)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                }
+                .overlay(alignment: .leading) {
+                    self.sidebarResizeHandle
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var sidebarResizeHandle: some View {
+        let handle = SidebarResizeHandle(
+            width: self.$sidebarWidth,
+            minWidth: SettingsPane.sidebarMinWidth,
+            maxWidth: SettingsPane.sidebarMaxWidth)
+            .frame(width: SidebarResizeHandleView.grabWidth)
+            .ignoresSafeArea()
+        if #available(macOS 15.0, *) {
+            handle.pointerStyle(.columnResize)
+        } else {
+            handle
+        }
+    }
+
+    @ViewBuilder
+    private var detailView: some View {
+        switch self.selection.pane {
+        case .general:
+            GeneralPane(settings: self.settings)
+        case .iCloudSync:
+            ICloudSyncPane(settings: self.settings, state: self.cloudSyncState)
+        case .usageSpend:
+            SpendDashboardPane(settings: self.settings, store: self.store)
+        case .notifications:
+            NotificationsPane(settings: self.settings)
+        case .menuBar:
+            MenuBarPane(settings: self.settings, store: self.store)
+        case .menu:
+            MenuPane(settings: self.settings, store: self.store)
+        case .advanced:
+            AdvancedPane(settings: self.settings, store: self.store)
+        case .hooks:
+            HooksPane(settings: self.settings)
+        case .plugins:
+            PluginsPane(settings: self.settings, store: self.store)
+        case .about:
+            AboutPane(updater: self.updater, selection: self.selection)
+        case .debug:
+            DebugPane(settings: self.settings, store: self.store)
+        case let .provider(instanceID):
+            if let provider = instanceID.firstPartyProvider {
+                ProvidersPane(
+                    provider: provider,
+                    settings: self.settings,
+                    store: self.store,
+                    managedCodexAccountCoordinator: self.managedCodexAccountCoordinator,
+                    codexAccountPromotionCoordinator: self.codexAccountPromotionCoordinator,
+                    runProviderLoginFlow: self.runProviderLoginFlow)
+                    .id(instanceID)
+            }
+        }
+    }
+
+    private func ensureValidSelection() {
+        guard !self.settings.debugMenuEnabled else { return }
+        if self.selection.pane == .debug {
+            self.selection.pane = .general
+        }
+        self.selection.removeFromHistory { $0 == .debug }
+    }
+}
+
+@MainActor
+enum SettingsWindowSizing {
+    static func enforceMinimumSize(_ window: NSWindow) {
+        let toolbarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
+        let minimumSize = NSSize(
+            width: SettingsPane.windowMinWidth,
+            height: SettingsPane.windowMinHeight + toolbarHeight)
+        window.minSize = minimumSize
+
+        if window.frame.width < minimumSize.width || window.frame.height < minimumSize.height {
+            var frame = window.frame
+            let repairedSize = NSSize(
+                width: max(frame.width, minimumSize.width),
+                height: max(frame.height, minimumSize.height))
+            frame.origin.y += frame.height - repairedSize.height
+            frame.size = repairedSize
+            window.setFrame(frame, display: true)
+        }
+    }
+}
+
+@MainActor
+enum SettingsWindowStageBehavior {
+    /// Keep Settings on the current Stage Manager stage / Space instead of
+    /// yanking focus back to wherever the window last appeared.
+    static let collectionBehavior: NSWindow.CollectionBehavior = [
+        .moveToActiveSpace,
+        .fullScreenAuxiliary,
+    ]
+
+    static func applyCollectionBehavior(_ window: NSWindow) {
+        // Assign the exact OptionSet. `.canJoinAllSpaces` is mutually exclusive
+        // with `.moveToActiveSpace`, and SwiftUI may restore a stale Space mask.
+        if window.collectionBehavior != self.collectionBehavior {
+            window.collectionBehavior = self.collectionBehavior
+        }
+    }
+
+    static func present(_ window: NSWindow) {
+        self.applyCollectionBehavior(window)
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
+        window.makeKeyAndOrderFront(nil)
+    }
+}
+
+@MainActor
+enum SettingsWindowAppearance {
+    typealias ResetAction = @MainActor @Sendable () -> Void
+    typealias ResetScheduler = @MainActor @Sendable (@escaping ResetAction) -> Void
+
+    static func refresh(
+        _ window: NSWindow,
+        application: NSApplication = NSApp,
+        scheduleReset: ResetScheduler = Self.scheduleReset)
+    {
+        SettingsWindowSizing.enforceMinimumSize(window)
+        window.appearanceSource = application
+        // Pulse the exact effective appearance so the native toolbar redraws without
+        // dropping inherited accessibility attributes, then restore KVO inheritance.
+        window.appearance = application.effectiveAppearance
+        scheduleReset { [weak window] in
+            if let window {
+                SettingsWindowSizing.enforceMinimumSize(window)
+            }
+            window?.appearance = nil
+            window?.viewsNeedDisplay = true
+        }
+    }
+
+    static func scheduleReset(_ action: @escaping ResetAction) {
+        Task { @MainActor in
+            await Task.yield()
+            action()
+        }
+    }
+}
+
+@MainActor
+struct SettingsWindowAppearanceBridge: NSViewRepresentable {
+    let colorScheme: ColorScheme
+    let windowTitle: String
+
+    func makeNSView(context: Context) -> SettingsWindowAppearanceView {
+        SettingsWindowAppearanceView()
+    }
+
+    func updateNSView(_ nsView: SettingsWindowAppearanceView, context: Context) {
+        nsView.refreshWindowAppearance(for: self.colorScheme, windowTitle: self.windowTitle)
+    }
+}
+
+@MainActor
+final class SettingsWindowAppearanceView: NSView {
+    private let scheduleReset: SettingsWindowAppearance.ResetScheduler
+    private var colorScheme: ColorScheme?
+    private var windowTitle: String?
+
+    init(scheduleReset: @escaping SettingsWindowAppearance.ResetScheduler = SettingsWindowAppearance.scheduleReset) {
+        self.scheduleReset = scheduleReset
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didUpdateNotification, object: nil)
+        if let window {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(self.windowDidUpdate(_:)),
+                name: NSWindow.didUpdateNotification,
+                object: window)
+        }
+        self.configureWindowStyle()
+        self.refreshWindowAppearance()
+    }
+
+    @objc private func windowDidUpdate(_ notification: Notification) {
+        self.configureWindowStyle()
+    }
+
+    func refreshWindowAppearance(for colorScheme: ColorScheme, windowTitle: String? = nil) {
+        let colorSchemeChanged = self.colorScheme != colorScheme
+        let windowTitleChanged = self.windowTitle != windowTitle
+        guard colorSchemeChanged || windowTitleChanged else { return }
+        self.colorScheme = colorScheme
+        self.windowTitle = windowTitle
+
+        guard let window else { return }
+        self.configureWindowStyle()
+        if windowTitleChanged, let windowTitle {
+            window.title = windowTitle
+        }
+        if colorSchemeChanged {
+            SettingsWindowAppearance.refresh(window, scheduleReset: self.scheduleReset)
+        }
+    }
+
+    private func refreshWindowAppearance() {
+        guard let window else { return }
+        self.configureWindowStyle()
+        if let windowTitle {
+            window.title = windowTitle
+        }
+        SettingsWindowAppearance.refresh(window, scheduleReset: self.scheduleReset)
+    }
+
+    override func layout() {
+        super.layout()
+        self.configureWindowStyle()
+    }
+
+    private func configureWindowStyle() {
+        guard let window else { return }
+        if !window.styleMask.contains(.resizable) {
+            window.styleMask.insert(.resizable)
+        }
+        if !window.styleMask.contains(.miniaturizable) {
+            window.styleMask.insert(.miniaturizable)
+        }
+        SettingsWindowToolbar.configure(window)
+        // Full-size content lets the sidebar material extend behind the titlebar so the
+        // edge-to-edge sidebar reaches the top of the window; content stays below the
+        // titlebar via the safe area.
+        if !window.styleMask.contains(.fullSizeContentView) {
+            window.styleMask.insert(.fullSizeContentView)
+        }
+    }
+}
+
+@MainActor
+enum SettingsWindowToolbar {
+    static func configure(_ window: NSWindow) {
+        // On macOS 26+ the split view owns the toolbar and title through the hosting controller's
+        // scene bridging, so the titlebar keeps its native Liquid Glass and scroll edge behavior.
+        guard #unavailable(macOS 26.0) else { return }
+        if !window.titlebarAppearsTransparent {
+            window.titlebarAppearsTransparent = true
+        }
+        if window.titleVisibility != .visible {
+            window.titleVisibility = .visible
+        }
+        if window.toolbar != nil {
+            window.toolbar = nil
+        }
+        if window.titlebarSeparatorStyle != .none {
+            window.titlebarSeparatorStyle = .none
+        }
+    }
+}
+
+@MainActor
+struct SettingsHistoryButtons: View {
+    @Bindable var selection: PreferencesSelection
+
+    var body: some View {
+        ControlGroup {
+            Button {
+                self.selection.goBack()
+            } label: {
+                Label(L("Back"), systemImage: "chevron.backward")
+            }
+            .disabled(!self.selection.canGoBack)
+            .keyboardShortcut("[", modifiers: .command)
+            .help(L("Back"))
+
+            Button {
+                self.selection.goForward()
+            } label: {
+                Label(L("Forward"), systemImage: "chevron.forward")
+            }
+            .disabled(!self.selection.canGoForward)
+            .keyboardShortcut("]", modifiers: .command)
+            .help(L("Forward"))
+        }
+        .controlGroupStyle(.navigation)
+        .labelStyle(.iconOnly)
+        .fixedSize()
+    }
+}
+
+@MainActor
+private struct SettingsSidebarMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        self.configure(view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        self.configure(nsView)
+    }
+
+    private func configure(_ view: NSVisualEffectView) {
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+    }
+}
+
+/// Opaque window-background backing for the detail column. Because the detail panes hide their
+/// grouped-Form scroll background and the window uses a transparent full-size titlebar, the detail
+/// needs its own backing so scrolling content cannot render through the titlebar region.
+@MainActor
+private struct SettingsDetailMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        self.configure(view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        self.configure(nsView)
+    }
+
+    private func configure(_ view: NSVisualEffectView) {
+        view.material = .windowBackground
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+    }
+}
+
+/// Reports the window's titlebar height - the strip the transparent full-size titlebar draws over - so the
+/// detail cover can match it exactly.
+@MainActor
+private struct SettingsTitlebarInsetReader: NSViewRepresentable {
+    @Binding var inset: CGFloat
+
+    @MainActor
+    final class InsetReadingView: NSView {
+        var onChange: ((CGFloat) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            self.report()
+        }
+
+        override func layout() {
+            super.layout()
+            self.report()
+        }
+
+        private func report() {
+            guard let window else { return }
+            self.onChange?(max(0, window.frame.height - window.contentLayoutRect.height))
+        }
+    }
+
+    func makeNSView(context: Context) -> InsetReadingView {
+        let view = InsetReadingView()
+        self.configure(view)
+        return view
+    }
+
+    func updateNSView(_ nsView: InsetReadingView, context: Context) {
+        self.configure(nsView)
+    }
+
+    private func configure(_ view: InsetReadingView) {
+        view.onChange = { value in
+            // Reported from AppKit's layout pass; defer so SwiftUI state does not change mid-update.
+            DispatchQueue.main.async {
+                guard self.inset != value else { return }
+                self.inset = value
+            }
+        }
+    }
+}
+
+/// The titlebar strip over the detail column. Blends *within* the window so scrolled Form content frosts
+/// as it passes underneath, the way a standard macOS toolbar treats content scrolling under it, instead of
+/// being cut off against a flat fill.
+@MainActor
+private struct SettingsDetailTitlebarCoverMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        self.configure(view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        self.configure(nsView)
+    }
+
+    private func configure(_ view: NSVisualEffectView) {
+        view.material = .headerView
+        view.blendingMode = .withinWindow
+        view.state = .followsWindowActiveState
+    }
+}

@@ -204,14 +204,7 @@ enum TTYProcessTreeTerminator {
         guard pid > 0 else { return nil }
 
         #if canImport(Darwin)
-        var info = proc_bsdinfo()
-        let size = proc_pidinfo(
-            pid,
-            PROC_PIDTBSDINFO,
-            0,
-            &info,
-            Int32(MemoryLayout<proc_bsdinfo>.stride))
-        guard size == Int32(MemoryLayout<proc_bsdinfo>.stride) else { return nil }
+        guard let info = DarwinProcessEnumerator.processInfo(pid: pid) else { return nil }
         let startToken = UInt64(info.pbi_start_tvsec) * 1_000_000 + UInt64(info.pbi_start_tvusec)
         return ProcessIdentity(pid: pid, startToken: startToken)
         #else
@@ -273,6 +266,8 @@ public struct TTYCommandRunner {
     @TaskLocal static var allocatePTY: @Sendable (inout Int32, inout Int32, inout winsize) -> Int32 = {
         openpty(&$0, &$1, nil, nil, &$2)
     }
+
+    @TaskLocal static var beforeInitialReadForTesting: (@Sendable (SpawnedProcessGroup) throws -> Void)?
 
     public struct Result: Sendable {
         public enum Completion: Sendable, Equatable {
@@ -612,7 +607,6 @@ public struct TTYCommandRunner {
                 workingDirectory: workingDirectory,
                 fileDescriptors: (primary: primaryFD, secondary: secondaryFD))
             launchedProcess = process
-            try? secondaryHandle.close()
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -710,6 +704,7 @@ public struct TTYCommandRunner {
         let cursorQuery = Data([0x1B, 0x5B, 0x36, 0x6E])
 
         usleep(UInt32(options.initialDelay * 1_000_000))
+        try Self.beforeInitialReadForTesting?(process)
         try checkCancellation()
 
         // Generic path for non-Codex (e.g. Claude /login)
@@ -829,13 +824,8 @@ public struct TTYCommandRunner {
 
             let exitedBeforeDeadline = !stoppedEarly
                 && process.exitObservationDate.map { $0 <= deadline } == true
-            let exitStatusBeforeDrain: Int32?
-            if exitedBeforeDeadline {
-                exitStatusBeforeDrain = process.terminateSynchronously()
-                didTerminateSynchronously = true
-            } else {
-                exitStatusBeforeDrain = nil
-            }
+            let exitStatusBeforeDrain = exitedBeforeDeadline ? process.terminateSynchronously() : nil
+            didTerminateSynchronously = exitedBeforeDeadline
 
             func drainNonCodexOutput(for duration: TimeInterval) throws -> Bool {
                 let drainFor = max(0, duration)
@@ -871,8 +861,10 @@ public struct TTYCommandRunner {
                     }
                 }
             } else if exitedBeforeDeadline {
-                // Exit observation, reaping, and PTY delivery are separate kernel events. Reaping alone is not
-                // enough: do not classify an empty result until the master has also drained through EOF/EIO.
+                // Darwin can discard unread output when the last slave closes. Harvest it before closing
+                // our copy, then drain through EOF/EIO before classifying an empty result.
+                _ = processNonCodexChunk(readChunk(), allowSends: false, allowStop: false)
+                try? secondaryHandle.close()
                 guard try drainNonCodexOutput(for: Self.postExitDrainTimeout) else {
                     Self.log.warning("PTY did not close after process exit", metadata: ["binary": binaryName])
                     throw Error.timedOut

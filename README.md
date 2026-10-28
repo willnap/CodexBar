@@ -10,7 +10,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-6e5aff?style=flat-square)](LICENSE)
 [![Site](https://img.shields.io/badge/site-codexbar.app-16d3b4?style=flat-square)](https://codexbar.app)
 
-<a href="https://codexbar.app"><img src="docs/social.png?v=2da5e6df9ee2b2ef" alt="CodexBar — every AI coding limit in your menu bar. 100 providers." width="100%" /></a>
+<a href="https://codexbar.app"><img src="docs/social.png?v=1436859e75bb3a24" alt="CodexBar — every AI coding limit in your menu bar. 110 providers." width="100%" /></a>
 
 Tiny macOS 14+ menu bar app that keeps **AI coding-provider limits visible** and shows when each window resets. See the [supported providers](#providers) below. One status item per provider, or Merge Icons mode with a provider switcher. No Dock icon, minimal UI, dynamic bar icons.
 
@@ -141,7 +141,7 @@ See [CLI configuration](docs/cli-configuration.md) for the full flow.
 - [Moonshot / Kimi API](docs/moonshot.md) — API key for Moonshot/Kimi API account balance tracking.
 - [Venice](docs/venice.md) — API key for DIEM or USD balance tracking.
 - [Codebuff](docs/codebuff.md) — API token (or `~/.config/manicode/credentials.json`) for credit balance + weekly rate limit.
-- [Command Code](docs/command-code.md) — Browser or manual cookies for monthly USD credits from Command Code billing.
+- [Command Code](docs/command-code.md) — API key or browser/manual cookies for monthly USD credits and rolling usage limits.
 - [Qoder](docs/qoder.md) — Browser or manual cookies for Qoder big model credit usage.
 - [StepFun](docs/stepfun.md) — Username + password login for Step Plan rate limits (5‑hour + weekly windows) and subscription plan name.
 - [AWS Bedrock](docs/bedrock.md) — AWS access keys or a named AWS profile (SSO/assume-role via the AWS CLI) for Cost Explorer spend, monthly budgets, and optional CloudWatch Claude activity.
@@ -174,7 +174,7 @@ See [CLI configuration](docs/cli-configuration.md) for the full flow.
 - [Raycast](docs/raycast.md) — Chrome or manual website session for monthly AI credits and renewal.
 - [Pi](docs/pi.md) — Local Pi/OMP transcripts for token history and API-rate cost estimates.
 - [v0](docs/v0.md) — Platform API key for billing and on-demand balances, plus rate limits.
-- [TypeSafe](docs/typesafe.md) — Chrome or manual console cookies for billing spend, balance, and credit expirations.
+- [TypeSafe](docs/typesafe.md) — Browser or manual console cookies for billing spend, balance, and credit expirations.
 - [GitKraken AI](docs/gitkraken.md) — Account access token for personal weekly credits, reset time, and organization pool sharing.
 - [DevPass](docs/devpass.md) — API key for plan credits, premium weekly allowances, and key-scoped spending.
 - [Atlas Cloud](docs/atlascloud.md) — API key for the account's available USD balance.
@@ -184,17 +184,27 @@ See [CLI configuration](docs/cli-configuration.md) for the full flow.
 
 <!-- Generated provider additions: Scripts/regenerate-provider-docs.mjs -->
 - [Langdock](docs/langdock.md) — Selected Edge, Chrome, or Safari profile → personal included session and weekly limits (`web`, macOS).
-- [X API](docs/xapi.md) — Chrome or manual console.x.com cookies for prepaid and free credits, including negative balances.
-- [LithosAI](docs/lithosai.md) — Chrome or manual console cookies for prepaid USD balance and optional UTC spend.
+- [Soniox](docs/soniox.md) — Organization API key for prepaid USD balance and monthly spend against the organization budget.
+- [X API](docs/xapi.md) — Browser or manual console.x.com cookies for prepaid and free credits, including negative balances.
+- [Future AGI](docs/futureagi.md) — API key and secret key (billing-period usage, allowances, and estimated cost).
+- [LithosAI](docs/lithosai.md) — Browser or manual console cookies for prepaid USD balance and optional UTC spend.
 - [WorkBuddy](docs/workbuddy.md) — Chrome or manual www.workbuddy.cn cookies for the monthly credits allowance, plan name, and cycle reset.
 - [Tavily](docs/tavily.md) — API key for account-plan, per-key, and pay-as-you-go credit totals.
 - [Linkup](docs/linkup.md) — API key for the current prepaid USD credit balance.
-- [TinyApi](docs/tinyapi.md) — Chrome or manual session cookies for aggregate available credits.
+- [TinyApi](docs/tinyapi.md) — Browser or manual session cookies for aggregate available credits.
 - [Exa](docs/exa.md) — Team Management service key plus an explicit API key ID for month-to-date USD spend.
 - [Cosmic AI](docs/cosmic.md) — Explicit Personal Access Token and Project ID for separate project AI input/output counters and allowances.
 - [Aerostack](docs/aerostack.md) — Explicit account JWT for monthly AI tokens used and the observed account allowance.
 - [Sail Research](docs/sailresearch.md) — API key for organization credit balance and combined inference/Sailbox spend.
 - [Sofya](docs/sofya.md) — API key for separate account plan and purchased credit balances, eligibility, and the reported monthly reset.
+- [fal](docs/fal.md) — API key with billing read access for the current account credit balance.
+- [FLORA](docs/flora.md) — API key with billing permission plus a workspace ID for the available USD balance and month-to-date spend.
+- [Parallel](docs/parallel.md) — Browser session on platform.parallel.ai for the prepaid credit balance and pending debit.
+- [Claude Platform](docs/claudeplatform.md) — Browser or manual platform.claude.com session cookies for Console API credit balance, expiring credit grants, and month-to-date spend.
+- [Munito](docs/munito.md) — Admin API key with Read account data permission for today's and this month's spend against the organization's spend limits.
+- [Trae CN](docs/traecn.md) — Browser session for account credit usage.
+- [Chatbox AI](docs/chatbox.md) — API token
+- [abliteration.ai](docs/abliteration.md) — API key for prepaid USD credits and cumulative usage.
 <!-- End generated provider additions -->
 
 ## Icon & Screenshot
@@ -295,6 +305,7 @@ CLI install:
 ## Linux desktop integration?
 - [Linux desktop app](Integrations/Linux/README.md) — x86_64/ARM64 release archives with an installer; Qt 6 usage and spending windows, separate settings, optional system tray, and desktop notifications using the Linux CLI.
 - [Omarchy native widget](Integrations/Omarchy/README.md) — Compact Quickshell usage popup sharing the Linux desktop app’s backend.
+- [CodexBar GTK](https://github.com/SaahiilM/codexbar-gtk) — Community GTK4/libadwaita front-end with usage, spending, and agent sessions from the CodexBar Linux CLI.
 - [codexbar-waybar](https://github.com/Marouan-chak/codexbar-waybar) — Waybar custom module + GTK4 popover for Hyprland / Sway / other Wayland compositors, built on top of the bundled Linux CLI.
 - [codexbar-cosmic-applet](https://github.com/andrew-verde/codexbar-cosmic-applet) — Native COSMIC (System76) desktop panel applet with a tab per provider, pace projections, and cost/token stats, built on top of the bundled Linux CLI.
 - [Codexbar GNOME](https://extensions.gnome.org/extension/9841/codexbar/) — GNOME Shell extension that brings CodexBar usage into the desktop panel.
@@ -303,19 +314,23 @@ CLI install:
 - [KodexBar](https://github.com/tylxr59/KodexBar) — KDE Plasma widget that shows CodexBar usage in the Plasma panel, built on top of the bundled Linux CLI.
 - [codexbar-plasmoid](https://github.com/psimaker/codexbar-plasmoid) — KDE Plasma 6 widget for CodexBar's meter icon, provider switcher, quota windows, pace, credits, local cost, and status, powered by the bundled Linux CLI.
 - [CodexBar Plasma](https://github.com/Lucenx9/codexbar-plasma) — KDE Plasma 6 widget with multi-provider views, account selection, cost history, notifications, configurable providers, and installable `.plasmoid` releases, powered by the bundled Linux CLI.
-- [codexbar-kde](https://github.com/materemias/codexbar-kde) — KDE Plasma 6 widget with usage meters, agent-session search, terminal focus, and kitty session restoration, powered by the bundled Linux CLI.
+- [CodexBar AgentView](https://github.com/materemias/codexbar-agentview) — KDE Plasma 6 widget with usage meters, agent-session search, terminal focus, and kitty session restoration, powered by the bundled Linux CLI.
 - [CodexBar Meter](https://github.com/noctalia-dev/community-plugins/tree/main/codexbar-meter) — Noctalia v5 bar widget and panel showing every enabled provider's quota windows, credits, and pace, installable from Noctalia's plugin store, built on the bundled Linux CLI.
+- [codexbar-dms](https://github.com/quantmind-br/codexbar-dms) — DankMaterialShell bar widget with provider logo pills, a popout of quota windows, reset times, and local spending, and shortcuts to the Linux desktop app's Usage & Spend and Settings windows, sharing that app's backend.
 
 ## Desk display
 - [AI Monitor](https://github.com/tobymarks/esp32-ai-monitor) — ESP32 desk display (Cheap Yellow Display) plus a macOS companion app that shows Claude, ChatGPT, Gemini, Copilot, Cursor and Antigravity limits as rings or bars, fed over USB by the bundled CLI. No Wi-Fi on the device, 3D-printable case.
+- [TokenTV](https://github.com/click6067-ship-it/token-tv) — Python host that shows Claude and Codex 5-hour and weekly limits on compatible 240×240 Wi-Fi desk clocks (GeekMagic SmallTV style), using the bundled CLI or `codexbar serve`. It uploads rendered screens to the clock's stock photo album without changing its firmware.
 
 ## Status bar & terminal integration
 - [showy-quota](https://github.com/enieuwy/showy-quota) — always-on AI plan quota strips for SketchyBar, tmux, and Zellij (standalone WASM plugin), built on `codexbar serve` / the bundled CLI.
 - [AI Usage Limits](https://github.com/lenadweb/stream-deck-ai-limits) — Elgato Stream Deck integration for macOS: shows a selected CodexBar provider, account, and configurable quota or payload metrics on keys and Stream Deck+ dials, using local `codexbar serve`.
+- [ccx](https://github.com/aaronwong1999/ccx) — macOS menu bar companion for Claude Code/Codex task handoff, using `codexbar usage --provider both --format json` for quota warnings.
 
 ## Phone & web
 
 - [Starbridge](https://github.com/T0mSIlver/starbridge) — Community-maintained Android and web app that displays quota windows from the CodexBar CLI on macOS and Linux, with optional quota alerts.
+- [Notify! CodexBar](https://github.com/simplytoast1/notify-codexbar) — Community-maintained macOS companion that reads CodexBar CLI or local `codexbar serve` output and sends selected usage through [Notify!](https://getnotifyapp.com/) for iPhone/iPad widgets, Live Activities, and quota notifications.
 
 ## Credits
 Inspired by [ccusage](https://github.com/ryoppippi/ccusage) (MIT), specifically the cost usage tracking.

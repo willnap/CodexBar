@@ -8,6 +8,39 @@ import Testing
 // swiftlint:disable:next type_body_length
 struct CostHistoryChartMenuViewTests {
     @Test
+    func `recorded model costs do not claim token price estimation`() {
+        let entry = CostUsageDailyReport.Entry(
+            date: "2026-10-26",
+            inputTokens: nil,
+            outputTokens: nil,
+            totalTokens: nil,
+            costUSD: 3,
+            modelsUsed: ["fixture-model"],
+            modelBreakdowns: [
+                .init(modelName: "fixture-model", costUSD: 3, totalTokens: nil, sourceRecorded: true),
+            ])
+        #expect(CostHistoryChartMenuView.estimateDisclaimer(provider: .codex, daily: [entry]) == nil)
+        #expect(CostHistoryChartMenuView.estimateDisclaimer(provider: .codex) != nil)
+    }
+
+    @Test
+    func `source recorded spend has a visible label and invalidates its render fingerprint`() {
+        let native = CostUsageDailyReport.ModelBreakdown(modelName: "fixture-model", costUSD: 0, totalTokens: 10)
+        let recorded = CostUsageDailyReport.ModelBreakdown(
+            modelName: "fixture-model", costUSD: 0, totalTokens: 10, sourceRecorded: true)
+        let chart = CostHistoryChartMenuView(
+            provider: .codex,
+            daily: [],
+            totalCostUSD: 0,
+            hidePersonalInfo: false,
+            width: 320)
+        #expect(chart.modelBreakdownModeSubtitle(native) == nil)
+        #expect(chart.modelBreakdownModeSubtitle(recorded) == L("Recorded spend"))
+        #expect(CostHistoryChartMenuView.VisibleModelBreakdownFingerprint(native)
+            != CostHistoryChartMenuView.VisibleModelBreakdownFingerprint(recorded))
+    }
+
+    @Test
     func `privacy masks project and source identity without changing visible costs or grouping`() {
         let projects = Self.makeProjects(count: 6, sourcesPerProject: 3)
         let snapshot = Self.makeSnapshot(projects: projects)
@@ -1321,6 +1354,35 @@ extension CostHistoryChartMenuViewTests {
             }
         }
         return nil
+    }
+
+    @Test
+    func `conversation title changes invalidate visible rows but not privacy masked rows`() {
+        let untitled = CostUsageSessionBreakdown(
+            sessionID: "01a10000-0000-0000-0000-00006c0a5925",
+            lastActivity: Date(timeIntervalSince1970: 100),
+            inputTokens: 100,
+            cachedInputTokens: 20,
+            outputTokens: 10,
+            totalTokens: 110,
+            requestCount: 1,
+            costUSD: 0.88,
+            modelBreakdowns: [])
+        let titled = untitled.withTitle("Python Complexity Tools")
+        let renamed = untitled.withTitle("OpenAPI CLI Tools")
+
+        let fallback = L("Session %@", "01a1...6c0a5925")
+        #expect(Self.fingerprint(sessions: [titled, untitled, untitled.withTitle(" \n ")])
+            .sessions.map(\.name) == ["Python Complexity Tools", fallback, fallback])
+        #expect(Self.fingerprint(sessions: [untitled]) != Self.fingerprint(sessions: [titled]))
+        #expect(Self.fingerprint(sessions: [titled]) != Self.fingerprint(sessions: [renamed]))
+        let hidden = CostHistoryChartMenuView.renderFingerprint(
+            from: Self.makeSnapshot(sessions: [titled]), provider: .codex, hidePersonalInfo: true)
+        #expect(hidden.sessions.map(\.name) == [fallback])
+        #expect(hidden == CostHistoryChartMenuView.renderFingerprint(
+            from: Self.makeSnapshot(sessions: [renamed]), provider: .codex, hidePersonalInfo: true))
+        #expect(hidden == CostHistoryChartMenuView.renderFingerprint(
+            from: Self.makeSnapshot(sessions: [untitled]), provider: .codex, hidePersonalInfo: true))
     }
 
     @Test

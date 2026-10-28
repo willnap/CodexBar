@@ -19,7 +19,7 @@ struct ProviderSettingsDescriptorTests {
         #expect(fixture.settings.providerConfig(for: .xkiro)?.apiKey == "fixture-key")
     }
 
-    @Test(arguments: [UsageProvider.atlascloud, .vercel])
+    @Test(arguments: [UsageProvider.atlascloud])
     func `balance providers keep API keys in their own config`(provider: UsageProvider) throws {
         let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-\(provider.rawValue)")
         let implementation = try #require(ProviderCatalog.implementation(for: provider))
@@ -454,7 +454,7 @@ struct ProviderSettingsDescriptorTests {
     }
 
     @Test
-    func `open code cookie refresh permits explicit retry and preserves unvalidated cookie`() async throws {
+    func `open code cookie refresh respects denial cooldown and preserves unvalidated cookie`() async throws {
         let fixture = try self.makeSettingsFixture(suite: "ProviderSettingsDescriptorTests-opencode-cooldown")
         let context = fixture.settingsContext(provider: .opencode)
         let picker = try #require(OpenCodeProviderImplementation().settingsPickers(context: context).first)
@@ -481,7 +481,7 @@ struct ProviderSettingsDescriptorTests {
 
                 await action.perform()
 
-                #expect(explicitRetryAllowed)
+                #expect(!explicitRetryAllowed)
                 #expect(CookieHeaderCache.load(provider: .opencode)?.cookieHeader == "old-test-cookie")
                 #expect(picker.trailingText?() == L("Failed"))
             }
@@ -563,19 +563,11 @@ struct ProviderSettingsDescriptorTests {
         #expect(fixture.settings.antigravityPrioritizeExhaustedQuotas)
         #expect(fixture.settings.providerConfig(for: .antigravity)?.antigravityPrioritizeExhaustedQuotas == true)
 
-        let reopened = try SettingsStore(
-            userDefaults: #require(UserDefaults(suiteName: suite)),
-            configStore: testConfigStore(suiteName: suite, reset: false),
-            zaiTokenStore: NoopZaiTokenStore(),
-            syntheticTokenStore: NoopSyntheticTokenStore())
+        let reopened = try self.makeSettingsFixture(suite: suite, resetConfig: false).settings
         #expect(reopened.antigravityPrioritizeExhaustedQuotas)
 
         reopened.antigravityPrioritizeExhaustedQuotas = false
-        let reopenedAfterDisabling = try SettingsStore(
-            userDefaults: #require(UserDefaults(suiteName: suite)),
-            configStore: testConfigStore(suiteName: suite, reset: false),
-            zaiTokenStore: NoopZaiTokenStore(),
-            syntheticTokenStore: NoopSyntheticTokenStore())
+        let reopenedAfterDisabling = try self.makeSettingsFixture(suite: suite, resetConfig: false).settings
         #expect(reopenedAfterDisabling.antigravityPrioritizeExhaustedQuotas == false)
     }
 
@@ -1631,14 +1623,28 @@ extension ProviderSettingsDescriptorTests {
 
     func makeSettingsFixture(
         suite: String,
+        resetConfig: Bool = true,
         environmentBase: [String: String] = [:]) throws -> ProviderSettingsFixture
     {
         let defaults = InMemoryUserDefaults()
         let settings = SettingsStore(
             userDefaults: defaults,
-            configStore: testConfigStore(suiteName: suite),
+            configStore: testConfigStore(suiteName: suite, reset: resetConfig),
             zaiTokenStore: NoopZaiTokenStore(),
-            syntheticTokenStore: NoopSyntheticTokenStore())
+            syntheticTokenStore: NoopSyntheticTokenStore(),
+            codexCookieStore: InMemoryCookieHeaderStore(),
+            claudeCookieStore: InMemoryCookieHeaderStore(),
+            cursorCookieStore: InMemoryCookieHeaderStore(),
+            opencodeCookieStore: InMemoryCookieHeaderStore(),
+            factoryCookieStore: InMemoryCookieHeaderStore(),
+            minimaxCookieStore: InMemoryMiniMaxCookieStore(),
+            minimaxAPITokenStore: InMemoryMiniMaxAPITokenStore(),
+            kimiTokenStore: InMemoryKimiTokenStore(),
+            augmentCookieStore: InMemoryCookieHeaderStore(),
+            ampCookieStore: InMemoryCookieHeaderStore(),
+            copilotTokenStore: InMemoryCopilotTokenStore(),
+            tokenAccountStore: InMemoryTokenAccountStore(),
+            keychainAccessPolicy: .init(setDisabled: { _ in }, isExplicitlyDisabled: { false }))
         let store = UsageStore(
             fetcher: UsageFetcher(environment: [:]),
             browserDetection: BrowserDetection(cacheTTL: 0),

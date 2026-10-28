@@ -42,6 +42,9 @@ public struct ProviderIntentPayload: Codable, Sendable {
     public var accentColor: String?
     /// Three-state like accentColor: nil means an older sender, [] clears all hidden items.
     public var hiddenUsageItemIDs: [String]?
+    public var modelRateLimits: [ProviderModelRateLimit]?
+    /// Monotonic upgrade marker; older senders omit it and cannot undo the receiving Mac's migration.
+    public var claudeResetCreditsVisibilityMigrated: Bool?
     public var kiloKnownOrganizations: [KiloOrganization]?
     public var kiloEnabledOrganizationIDs: [String]?
     public var deepseekProfileID: String?
@@ -66,6 +69,8 @@ public struct ProviderIntentPayload: Codable, Sendable {
         self.accentColor = config.accentColor ?? ""
         // Preserve the three states: nil predates the preference, [] explicitly shows every item.
         self.hiddenUsageItemIDs = config.hiddenUsageItemIDs
+        self.modelRateLimits = config.modelRateLimits ?? []
+        self.claudeResetCreditsVisibilityMigrated = config.claudeResetCreditsVisibilityMigrated
         self.kiloKnownOrganizations = config.kiloKnownOrganizations
         self.kiloEnabledOrganizationIDs = config.kiloEnabledOrganizationIDs
         self.deepseekProfileID = config.deepseekProfileID
@@ -106,6 +111,12 @@ public struct ProviderIntentPayload: Codable, Sendable {
         if let hiddenUsageItemIDs = self.hiddenUsageItemIDs {
             result.hiddenUsageItemIDs = hiddenUsageItemIDs
         }
+        if let modelRateLimits = self.modelRateLimits {
+            result.modelRateLimits = ProviderModelRateLimit.validated(modelRateLimits)
+        }
+        if self.claudeResetCreditsVisibilityMigrated == true {
+            result.claudeResetCreditsVisibilityMigrated = true
+        }
         result.kiloKnownOrganizations = self.kiloKnownOrganizations
         result.kiloEnabledOrganizationIDs = self.kiloEnabledOrganizationIDs
         result.deepseekProfileID = self.deepseekProfileID
@@ -123,9 +134,21 @@ public struct ProviderIntentPayload: Codable, Sendable {
             result.cookieHeader = value.isEmpty ? nil : value
         }
         if let value = secretFields[ProviderIntentSecretField.tokenAccounts.rawValue] {
-            result.tokenAccounts = value.isEmpty
-                ? nil
-                : try CanonicalSyncJSON.decode(ProviderTokenAccountData.self, from: value)
+            if value.isEmpty {
+                result.tokenAccounts = nil
+            } else {
+                let incoming = try CanonicalSyncJSON.decode(ProviderTokenAccountData.self, from: value)
+                let accounts = incoming.accounts.map { account in
+                    // Older senders cannot encode per-account limits; nil means unknown, [] is an explicit clear.
+                    guard account.modelRateLimits == nil,
+                          let limits = local.tokenAccounts?.accounts.first(where: { $0.id == account.id })?
+                              .modelRateLimits
+                    else { return account }
+                    return account.withModelRateLimits(limits)
+                }
+                result.tokenAccounts = ProviderTokenAccountData(
+                    version: incoming.version, accounts: accounts, activeIndex: incoming.activeIndex)
+            }
         }
         return result
     }
@@ -241,17 +264,18 @@ public struct AccountSnapshotSyncPayload: Codable, Sendable {
         return CanonicalSyncJSON.hash(data: Data(identity.lowercased().utf8))
     }
 
-    /// CloudKit record IDs cannot be renamed. Claude Swap snapshots keyed by
-    /// `claude-swap:<slot>` replace a same-device email-keyed record; that
+    /// CloudKit record IDs cannot be renamed. Account-source snapshots keyed by
+    /// `claude-swap:<slot>` or `tcr:<slot>` replace a same-device email-keyed record; that
     /// predecessor is deleted only after the slot-keyed replacement is saved.
     /// Other providers must not classify an email-to-durable-ID change as obsolete.
     public func emailKeyedPredecessorRecordName() -> String? {
-        // Provider-specific by design: only Claude Swap slot keys retire leftover email-keyed CloudKit snapshots.
+        // Provider-specific by design: only account-source slot keys (claude-swap, tcr) retire leftover
+        // email-keyed CloudKit snapshots.
         guard self.provider == .claude,
-              self.usage.identity?.loginMethod == ClaudeSwapAccountProjection.sourceLabel
+              let source = self.usage.identity?.loginMethod.flatMap(ClaudeSwapAccountSource.init(identitySource:))
         else { return nil }
         let accountID = self.usage.identity?.accountID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard accountID.hasPrefix("\(ClaudeSwapAccountProjection.sourceName):") else { return nil }
+        guard accountID.hasPrefix("\(source.label):") else { return nil }
         let emailKey = Self.accountKey(for: self.usage.identity?.accountEmail)
         guard emailKey != "default",
               Self.accountKey(for: accountID) == self.accountKey,

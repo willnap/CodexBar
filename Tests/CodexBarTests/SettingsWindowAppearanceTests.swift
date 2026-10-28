@@ -218,7 +218,32 @@ struct SettingsWindowAppearanceTests {
         window.contentView = bridge
 
         #expect(window.styleMask.contains(.fullSizeContentView))
-        #expect(window.titlebarAppearsTransparent)
+        if #unavailable(macOS 26.0) {
+            #expect(window.titlebarAppearsTransparent)
+        }
+    }
+
+    @Test
+    func `settings titlebar follows OS availability without losing the native title`() {
+        let bridge = SettingsWindowAppearanceView()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false)
+
+        window.contentView = bridge
+
+        bridge.refreshWindowAppearance(for: .light, windowTitle: "General")
+        #expect(window.title == "General")
+        if #available(macOS 26.0, *) {
+            // The split view owns the toolbar through scene bridging; the bridge leaves it native.
+            #expect(!window.titlebarAppearsTransparent)
+            #expect(window.titlebarSeparatorStyle == .automatic)
+        } else {
+            #expect(window.toolbar == nil)
+            #expect(window.titleVisibility == .visible)
+        }
     }
 
     @Test

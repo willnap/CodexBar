@@ -62,6 +62,16 @@
 "7d" = "7d";
 "A managed Codex login is already running. Wait for it to finish before adding " = "Đăng nhập Codex được quản lý đã chạy. Đợi quá trình này hoàn tất trước khi thêm";
 "API key" = "API khóa";
+
+/* Future AGI provider */
+"Secret key" = "Khóa bí mật";
+"Required with the API key. Saved in the local config file. Or set FI_SECRET_KEY." = "Bắt buộc cùng với khóa API. Được lưu trong tệp cấu hình cục bộ. Hoặc đặt FI_SECRET_KEY.";
+"Paste secret key…" = "Dán khóa bí mật…";
+"AI credits" = "Tín dụng AI";
+"Gateway requests" = "Yêu cầu qua cổng";
+"Future AGI cost history is not available." = "Lịch sử chi phí Future AGI không khả dụng.";
+"Saved in CodexBar's local config file. Or set FI_API_KEY." = "Được lưu trong tệp cấu hình cục bộ của CodexBar. Hoặc đặt FI_API_KEY.";
+
 "API region" = "API khu vực";
 "API token" = "API token";
 "API tokens" = "API mã thông báo";
@@ -158,7 +168,7 @@
 "Local token history is unavailable or incomplete." = "Lịch sử token cục bộ không có hoặc chưa đầy đủ.";
 "Could not add Codex account" = "Không thể thêm tài khoản Codex";
 "Could not open Terminal for Gemini" = "Không thể mở Terminal cho Gemini";
-"Could not start claude /login" = "Không thể bắt đầu claude /đăng nhập";
+"Claude OAuth credentials read failed: CodexBar's Claude OAuth cache is temporarily unavailable in macOS Keychain. Check that the login keychain is unlocked in Keychain Access, then retry Refresh." = "Không thể đọc thông tin xác thực Claude OAuth: bộ nhớ đệm Claude OAuth của CodexBar tạm thời không khả dụng trong Chuỗi khóa macOS. Kiểm tra xem chuỗi khóa đăng nhập đã được mở khóa trong Truy cập chuỗi khóa chưa, rồi thử làm mới lại.";
 "Could not start codex login" = "Không thể bắt đầu đăng nhập codex";
 "Could not switch system account" = "Không thể không chuyển đổi tài khoản hệ thống";
 "Credits" = "Tín dụng";
@@ -607,7 +617,6 @@
 
 /* Display Pane */
 "menu_bar_style_title" = "Kiểu thanh menu";
-"menu_bar_style_subtitle" = "Cách hiển thị mục trên thanh menu.";
 "menu_bar_inactive_display_contrast_title" = "Cải thiện khả năng hiển thị trên màn hình không hoạt động";
 "menu_bar_inactive_display_contrast_subtitle" = "Sử dụng hiển thị tương phản cao để biểu tượng và chỉ số vẫn dễ đọc trên các màn hình khác.";
 "menu_bar_style_critters" = "Sinh vật";
@@ -646,6 +655,7 @@
 "workday_tick_appearance_subtle" = "Nhẹ";
 "workday_tick_appearance_high_contrast" = "Tương phản cao";
 "show_provider_changelog_links_title" = "Hiển thị Nhà cung cấp liên kết nhật ký thay đổi";
+"highlight_menu_cards_on_hover_title" = "Tô sáng thẻ menu khi rê chuột qua";
 "show_provider_changelog_links_subtitle" = "Thêm liên kết ghi chú phát hành cho các nhà cung cấp được hỗ trợ CLI vào menu.";
 "show_credits_extra_usage_title" = "Hiển thị tín dụng + phần Mức sử dụng";
 "show_credits_extra_usage_subtitle" = "Hiển thị tín dụng và mức sử dụng bổ sung cho các nhà cung cấp được hỗ trợ.";
@@ -660,6 +670,8 @@
 "overview_rows_follow_order" = "Các hàng tổng quan luôn tuân theo thứ tự Nhà cung cấp.";
 "overview_no_providers_selected" = "Không có nhà cung cấp nào được chọn";
 "agent_sessions_title" = "Phiên tác nhân";
+"agent_sessions_remote_title" = "Phiên từ xa (Tailscale / SSH)";
+"agent_sessions_remote_subtitle" = "Tìm và kết nối với máy từ xa. Tắt để chỉ theo dõi máy Mac này.";
 "agent_sessions_subtitle" = "Hiển thị các phiên Codex và Claude Code cục bộ cùng các phiên được phát hiện qua SSH trong menu.";
 "agent_sessions_hosts_title" = "Máy chủ SSH bổ sung";
 "agent_sessions_footer" = "Các máy Mac trên tailnet của bạn được tự động phát hiện. Các phiên cục bộ được làm mới 30 giây một lần; các máy chủ từ xa được làm mới 60 giây một lần và khi menu mở.";
@@ -711,7 +723,15 @@
 "link_website" = "Trang web";
 "link_twitter" = "Twitter";
 "link_email" = "Email";
+"link_acknowledgements" = "Lời cảm ơn";
+"acknowledgements_footer" = "CodexBar được xây dựng bằng các dự án mã nguồn mở này.";
+"acknowledgements_others" = "%d người khác";
+"acknowledgements_author" = "Tác giả";
+"acknowledgements_authors" = "Tác giả";
+"acknowledgements_license" = "Giấy phép";
 "check_updates_auto" = "Tự động kiểm tra các bản cập nhật";
+"install_updates_auto" = "Tự động tải về và cài đặt các bản cập nhật";
+"install_updates_auto_subtitle" = "Khi tắt, bạn sẽ được hỏi trước khi cài đặt phiên bản mới.";
 "update_channel" = "Kênh cập nhật";
 "check_for_updates" = "Kiểm tra các bản cập nhật…";
 "updates_unavailable" = "Các bản cập nhật không có sẵn trong bản dựng này.";
@@ -1144,17 +1164,12 @@
 "CodexBar found another managed account that already uses the current system account. Resolve the duplicate account before switching." = "CodexBar đã tìm thấy một tài khoản được quản lý khác đã sử dụng tài khoản hệ thống hiện tại. Giải quyết tài khoản trùng lặp trước khi chuyển đổi.";
 "CodexBar will ask macOS Keychain for “%@” so it can decrypt browser cookies and authenticate your account. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cho “ %@ ” để nó có thể giải mã cookie của trình duyệt và xác thực tài khoản của bạn. Nhấn OK để tiếp tục.";
 "CodexBar will ask macOS Keychain for the Claude Code OAuth token so it can fetch your Claude usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cung cấp Claude Mã OAuth token để nó có thể tìm nạp Claude Mức sử dụng của bạn. Nhấn OK để tiếp tục.";
-"CodexBar will ask macOS Keychain for your Amp cookie header so it can fetch usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cho tiêu đề cookie Amp của bạn để nó có thể tìm nạp Mức sử dụng . Nhấn OK để tiếp tục.";
-"CodexBar will ask macOS Keychain for your Augment cookie header so it can fetch usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cho tiêu đề cookie Augment của bạn để nó có thể tìm nạp Mức sử dụng . Nhấn OK để tiếp tục.";
+"CodexBar will ask macOS Keychain for your %@ cookie header so it can fetch usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cho tiêu đề cookie %@ của bạn để nó có thể tìm nạp Mức sử dụng . Nhấn OK để tiếp tục.";
 "CodexBar will ask macOS Keychain for your Claude cookie header so it can fetch Claude web usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain về tiêu đề cookie Claude của bạn để nó có thể tìm nạp Claude web Mức sử dụng . Nhấn OK để tiếp tục.";
-"CodexBar will ask macOS Keychain for your Cursor cookie header so it can fetch usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cho tiêu đề cookie Con trỏ của bạn để nó có thể tìm nạp Mức sử dụng . Nhấn OK để tiếp tục.";
-"CodexBar will ask macOS Keychain for your Factory cookie header so it can fetch usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cho tiêu đề cookie Factory của bạn để nó có thể tìm nạp Mức sử dụng . Nhấn OK để tiếp tục.";
 "CodexBar will ask macOS Keychain for your GitHub Copilot token so it can fetch usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cho GitHub Copilot token của bạn để nó có thể tìm nạp Mức sử dụng . Nhấn OK để tiếp tục.";
 "CodexBar will ask macOS Keychain for your Kimi auth token so it can fetch usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cho Kimi auth token của bạn để nó có thể tìm nạp Mức sử dụng . Nhấn OK để tiếp tục.";
 "CodexBar will ask macOS Keychain for your MiniMax API token so it can fetch usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cung cấp MiniMax API token của bạn để nó có thể tìm nạp Mức sử dụng . Nhấn OK để tiếp tục.";
-"CodexBar will ask macOS Keychain for your MiniMax cookie header so it can fetch usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cho tiêu đề cookie MiniMax của bạn để nó có thể tìm nạp Mức sử dụng . Nhấn OK để tiếp tục.";
 "CodexBar will ask macOS Keychain for your OpenAI cookie header so it can fetch Codex dashboard extras. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cho tiêu đề cookie OpenAI của bạn để nó có thể tìm nạp các tính năng bổ sung của trang tổng quan Codex. Nhấn OK để tiếp tục.";
-"CodexBar will ask macOS Keychain for your OpenCode cookie header so it can fetch usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cho tiêu đề cookie OpenCode của bạn để nó có thể tìm nạp Mức sử dụng . Nhấn OK để tiếp tục.";
 "CodexBar will ask macOS Keychain for your Synthetic API key so it can fetch usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cung cấp khóa Tổng hợp API của bạn để nó có thể tìm nạp Mức sử dụng . Nhấn OK để tiếp tục.";
 "CodexBar will ask macOS Keychain for your z.ai API token so it can fetch usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cung cấp z.ai API token của bạn để nó có thể tìm nạp Mức sử dụng . Nhấn OK để tiếp tục.";
 "Could not open Cursor login in your browser." = "Không thể mở đăng nhập Con trỏ trong trình duyệt của bạn.";
@@ -1204,6 +1219,7 @@
 "Password" = "Mật khẩu";
 "%@ authentication is disabled." = "%@ xác thực bị tắt. Cookie";
 "%@ cookies are disabled." = "%@ bị tắt. Quyền truy cập";
+"%@ is unavailable. Edit the widget to choose a provider." = "%@ không khả dụng. Chỉnh sửa widget để chọn một nhà cung cấp.";
 "%@ web API access is disabled." = "%@ web API bị vô hiệu hóa.";
 "Disable %@ dashboard cookie usage." = "Tắt %@ cookie trang tổng quan Mức sử dụng . Quyền truy cập";
 "Keychain access is disabled in Advanced, so browser cookie import is unavailable." = "Keychain bị vô hiệu hóa trong Nâng cao, do đó, tính năng nhập cookie trình duyệt không khả dụng.";
@@ -1269,7 +1285,6 @@
 "Windsurf session JSON bundle" = "Phiên lướt ván buồm JSON gói";
 "Workspace ID" = "ID không gian làm việc";
 "Your StepFun platform password. Used to login and obtain a session token." = "Mật khẩu nền tảng StepFun của bạn. Được sử dụng để đăng nhập và nhận phiên token .";
-"claude /login exited with status %d." = "claude /đăng nhập đã thoát với trạng thái %d .";
 "codex login exited with status %d." = "đăng nhập codex đã thoát với trạng thái %d .";
 "Cookie: …\n\nor paste a cURL capture from the Abacus AI dashboard" = "Cookie: …\n\nhoặc dán bản chụp cURL từ bảng thông tin Abacus AI";
 "Cookie: …\n\nor paste the __Secure-next-auth.session-token value" = "Cookie: …\n\nhoặc dán giá trị __Secure-next-auth.session- token";
@@ -1397,6 +1412,7 @@
 /* Menu bar layout editor */
 "menu_bar_layout_title" = "Bố cục";
 "menu_bar_layout_footer" = "Kéo các thẻ để sắp xếp thanh menu. Bấm vào thẻ để thêm; chọn thẻ đã đặt rồi nhấn Delete để xóa.";
+"menu_bar_layout_footer_requires_icon_and_percent" = "Bố cục chỉ áp dụng cho kiểu thanh menu “%@”. Chọn kiểu đó ở trên để chỉnh sửa.";
 "menu_bar_layout_group_identity" = "Danh tính";
 "menu_bar_layout_group_usage" = "Mức sử dụng";
 "menu_bar_layout_group_time" = "Thời gian";
@@ -1410,6 +1426,7 @@
 "menu_bar_layout_preset_icon_only" = "Chỉ biểu tượng";
 "menu_bar_layout_preset_percent_reset" = "Phần trăm và đặt lại";
 "menu_bar_layout_preset_compact_stacked" = "Xếp chồng gọn";
+"menu_bar_layout_preset_bars_stacked" = "Thanh tiến độ xếp chồng";
 "menu_bar_layout_preset_custom" = "Tùy chỉnh";
 "menu_bar_layout_live_preview" = "Xem trước trực tiếp";
 "menu_bar_layout_default_preview" = "Xem trước bố cục mặc định";
@@ -1426,6 +1443,9 @@
 "menu_bar_layout_size" = "Kích thước";
 "menu_bar_layout_size_small" = "Nhỏ";
 "menu_bar_layout_size_regular" = "Thường";
+"menu_bar_layout_size_large" = "Lớn";
+"menu_bar_layout_monospaced_digits" = "Chữ số có độ rộng cố định";
+"menu_bar_layout_show_window_labels" = "Hiển thị nhãn khoảng thời gian";
 "menu_bar_layout_gap" = "Khoảng cách";
 "menu_bar_layout_gap_tight" = "Hẹp";
 "menu_bar_layout_gap_regular" = "Thường";
@@ -1447,7 +1467,10 @@
 "menu_bar_layout_token_reset_at" = "Đặt lại lúc";
 "menu_bar_layout_token_runs_out" = "Sắp hết";
 "menu_bar_layout_token_cost_today" = "Chi phí hôm nay";
-"menu_bar_layout_token_cost_30d" = "Chi phí 30 ngày";
+"menu_bar_layout_token_cost_window" = "Chi phí (Cửa sổ lịch sử)";
+"menu_bar_layout_token_spend" = "Chi phí %";
+"menu_bar_layout_token_spend_pace" = "Tốc độ chi phí";
+"menu_bar_layout_token_spend_budget" = "Chi phí / ngân sách";
 "menu_bar_layout_token_space" = "Khoảng trắng";
 "menu_bar_layout_token_line_break" = "Ngắt dòng";
 "menu_bar_layout_token_separator_accessibility" = "Dấu chấm phân cách";
@@ -1465,7 +1488,6 @@
 "Reset time unavailable" = "Đặt lại lúc: Không có sẵn";
 "Run-out estimate unavailable" = "Sắp hết: Không có sẵn";
 "Cost today unavailable" = "Chi phí hôm nay: Không có sẵn";
-"30-day cost unavailable" = "Chi phí 30 ngày: Không có sẵn";
 "Resets" = "Lần đặt lại";
 "codex_workspaces_cost_unavailable" = "Không có dữ liệu chi phí";
 "codex_workspaces_elevated_usage" = "Mức sử dụng tăng";
@@ -1550,6 +1572,7 @@
 "5-hour usage" = "Mức sử dụng 5 giờ";
 "7-day usage" = "Mức sử dụng 7 ngày";
 "Total usage" = "Tổng mức sử dụng";
+"claude_oauth_keychain_access_disabled" = "Quyền truy cập Keychain bị tắt nên CodexBar không thể đọc thông tin đăng nhập Claude.";
 "claude_oauth_keychain_access_revoked" = "Quyền truy cập Chuỗi khóa Claude đã bị thu hồi do Claude Code xoay vòng mã thông báo. Nhấp vào Làm mới để cấp lại quyền truy cập hoặc chuyển nguồn sử dụng Claude sang CLI/Web.";
 "claude_showing_last_known_usage" = "Đang hiển thị mức sử dụng đã biết gần nhất, được ghi nhận %@.";
 "claude_limited_usage_detail" = "Thông tin sử dụng ít chi tiết";
@@ -1610,6 +1633,7 @@
 "menu_bar_layout_conditional_default_session_spent" = "Phiên gần cạn";
 "menu_bar_layout_conditional_default_either_high" = "Phiên hoặc tuần đang ở mức cao";
 "menu_bar_layout_conditional_default_scoped_weekly" = "Tuần theo mô hình đã dùng trên 60%";
+"menu_bar_layout_conditional_default_spend_high" = "Chi phí đã dùng trên 90%";
 "Visible usage items" = "Mục sử dụng hiển thị";
 "Restore Defaults" = "Khôi phục mặc định";
 "Choose which usage rows appear in this provider's menu, Settings preview, and Overview." = "Chọn các hàng sử dụng xuất hiện trong menu của nhà cung cấp này, bản xem trước Cài đặt và Tổng quan.";
@@ -1779,6 +1803,7 @@
 "Details for %@" = "Thông tin chi tiết về %@";
 "EST. %@" = "Ước tính %@";
 "Enable Antigravity provider" = "Kích hoạt nhà cung cấp Antigravity";
+"Enable a provider in CodexBar → Settings → Providers." = "Bật một nhà cung cấp trong CodexBar → Cài đặt → Nhà cung cấp.";
 "Enable account widgets in CodexBar → Settings → Menu → Widgets. Then edit this widget to choose an account." = "Kích hoạt tiện ích tài khoản trong CodexBar → Cài đặt → Menu → Tiện ích. Sau đó chỉnh sửa tiện ích này để chọn tài khoản.";
 "Error: %@" = "Lỗi: %@";
 "Examples: alt+cmd+2, shift+right. Refresh (cmd+r), Settings (cmd+,) and Quit (cmd+q) are reserved." = "Ví dụ: alt+cmd+2, shift+right. Làm mới (cmd+r), Cài đặt (cmd+,) và Thoát (cmd+q) được bảo lưu.";
@@ -1793,6 +1818,9 @@
 "Gateway URL" = "Cổng URL";
 "Gemini CLI login is no longer supported" = "Đăng nhập Gemini CLI không còn được hỗ trợ";
 "Gemini CLI migration" = "Di chuyển Gemini CLI";
+"Gemini app" = "Ứng dụng Gemini";
+"Gemini CLI" = "Gemini CLI";
+"Gemini app limits use your browser account and are separate from Gemini CLI quotas." = "Giới hạn của ứng dụng Gemini áp dụng cho tài khoản của bạn trong trình duyệt và tách biệt với hạn mức của Gemini CLI.";
 "Generated locally by CodexBar · Data through %@" = "Được tạo cục bộ bởi CodexBar · Dữ liệu đến %@";
 "GitHub cookies" = "GitHub cookies";
 "GitHub does not publish this value. Enter it to show a usage bar. Applies to the selected GitHub account." = "GitHub không công bố giá trị này. Nhập nó để hiển thị một thanh sử dụng. Áp dụng cho tài khoản GitHub đã chọn.";
@@ -1896,6 +1924,7 @@
 "Paste the Cookie header from a billing-page request. It must contain sessionid." = "Dán tiêu đề Cookie từ yêu cầu trang thanh toán. Nó phải chứa sessionid.";
 "Paste z.ai / GLM API key…" = "Dán khóa z.ai / GLM API…";
 "Path to the cswap executable (github.com/realiti4/claude-swap)." = "Đường dẫn đến tệp thực thi cswap (github.com/realiti4/claude-swap).";
+"Path to the tcr executable (github.com/dhkts1/teamclaude-rs)." = "Đường dẫn đến tệp thực thi tcr (github.com/dhkts1/teamclaude-rs).";
 "Peak %@" = "Đỉnh %@";
 "Percent left" = "Phần trăm còn lại";
 "Pick another Codex account before importing OpenAI cookies." = "Chọn một tài khoản Codex khác trước khi nhập OpenAI cookies.";
@@ -1927,7 +1956,7 @@
 "Refresh the profile before refreshing OpenAI web data." = "Làm mới cấu hình trước khi làm mới dữ liệu web OpenAI.";
 "Refreshing account status…" = "Đang làm mới trạng thái tài khoản…";
 "Remaining budget compared with an ideal steady burn rate." = "Ngân sách còn lại so với tốc độ đốt ổn định lý tưởng.";
-"Renews: %@" = "Gia hạn: %@";
+"Plan renews: %@" = "Gia hạn gói: %@";
 "Request quota" = "Yêu cầu Hạn mức";
 "Requesting login…" = "Đang yêu cầu đăng nhập…";
 "Required. Enter a regular API key or a Management API key here. Management keys also enable account Activity on the official OpenRouter API." = "Bắt buộc. Nhập khóa API thông thường hoặc khóa API quản lý tại đây. Khóa quản lý cũng cho phép Hoạt động tài khoản trên OpenRouter API chính thức.";
@@ -1950,6 +1979,8 @@
 "Select the provider to display." = "Chọn nhà cung cấp để hiển thị.";
 "Session (5-hour)" = "Phiên (5 giờ)";
 "Session and weekly usage with credits and costs." = "Phiên và mức sử dụng hàng tuần với Tín dụng và chi phí.";
+"Set the cswap executable path below." = "Đặt đường dẫn tệp thực thi cswap bên dưới.";
+"Set the tcr executable path below." = "Đặt đường dẫn tệp thực thi tcr bên dưới.";
 "Settings unavailable." = "Cài đặt không có sẵn.";
 "Show account card when only one account is available" = "Hiển thị thẻ tài khoản khi chỉ có một tài khoản";
 "Show model-specific weekly usage in widgets" = "Hiển thị mức sử dụng hàng tuần theo từng mẫu cụ thể trong các tiện ích";
@@ -1957,6 +1988,7 @@
 "Shows model-specific Claude quotas, such as Fable, in desktop widgets." = "Hiển thị Claude Hạn mức dành riêng cho mẫu máy, chẳng hạn như Fable, trong các tiện ích trên máy tính để bàn.";
 "Shows the hidden accounts" = "Hiển thị các tài khoản ẩn";
 "Shows usage and lets you switch accounts through `cswap`. Credentials stay managed by claude-swap; CodexBar never reads them." = "Hiển thị mức sử dụng và cho phép bạn chuyển đổi tài khoản thông qua `cswap`. Thông tin xác thực vẫn được quản lý bởi claude-swap; CodexBar không bao giờ đọc chúng.";
+"Shows usage from `tcr`; it does not switch accounts, because tcr picks the account for each request. Credentials stay managed by tcr; CodexBar never reads them." = "Hiển thị mức sử dụng từ `tcr`; không chuyển đổi tài khoản, vì tcr tự chọn tài khoản cho mỗi yêu cầu. Thông tin xác thực vẫn được quản lý bởi tcr; CodexBar không bao giờ đọc chúng.";
 "Stay Awake" = "Luôn tỉnh táo";
 "Stored in the CodexBar config file. Reads monthly budget and routed usage from /v1/usage." = "Được lưu trữ trong tệp cấu hình CodexBar. Đọc ngân sách hàng tháng và định tuyến mức sử dụng từ /v1/usage.";
 "Stored in ~/.codexbar/config.json. OPENAI_ADMIN_KEY is required for organization usage; legacy/user keys only get a best-effort balance fallback." = "Được lưu trữ trong ~/.codexbar/config.json. OPENAI_ADMIN_KEY là bắt buộc để sử dụng trong tổ chức; Khóa kế thừa/người dùng chỉ nhận được dự phòng số dư nỗ lực tốt nhất.";
@@ -1965,6 +1997,7 @@
 "SuperGrok OAuth" = "SuperGrok OAuth";
 "Switch Account…" = "Chuyển đổi tài khoản…";
 "Switch Claude Code account" = "Chuyển tài khoản Claude Code";
+"Claude accounts in tcr" = "Tài khoản Claude trong tcr";
 "Switch Claude Code to %@" = "Chuyển Claude Code sang %@";
 "Switch Provider" = "Chuyển đổi nhà cung cấp";
 "Switch the provider shown in the widget." = "Chuyển đổi nhà cung cấp được hiển thị trong widget.";
@@ -1985,10 +2018,7 @@
 "Top models:" = "Những mẫu hàng đầu:";
 "Two quota burn-down charts in one tile." = "Hai biểu đồ ghi lại Hạn mức trong một ô.";
 "Usage & spend come from your console.groq.com browser session automatically. An API key is optional and only adds Enterprise Prometheus metrics." = "Việc sử dụng và chi tiêu tự động đến từ phiên trình duyệt console.groq.com của bạn. Khóa API là tùy chọn và chỉ thêm Enterprise Prometheus Chỉ số.";
-"Usage data appears after a refresh." = "Dữ liệu sử dụng xuất hiện sau khi làm mới.";
-"Usage data will appear once the app refreshes." = "Dữ liệu sử dụng sẽ xuất hiện sau khi ứng dụng được làm mới.";
 "Usage history chart with recent totals." = "Biểu đồ lịch sử sử dụng với tổng số gần đây.";
-"Usage history will appear after a refresh." = "Lịch sử sử dụng sẽ xuất hiện sau khi làm mới.";
 "Usage limit" = "Giới hạn sử dụng";
 "Usage limits and reset countdowns for one saved account." = "Giới hạn sử dụng và đặt lại đếm ngược cho một tài khoản đã lưu.";
 "Usage widget with a provider switcher." = "Tiện ích sử dụng với trình chuyển đổi nhà cung cấp.";
@@ -2051,6 +2081,7 @@
 "sk-ant-admin..." = "sk-ant-admin...";
 "sk-or-v1-..." = "sk-or-v1-...";
 "spent" = "Hạn mức đã cạn kiệt";
+"tcr executable" = "tcr có thể thực thi được";
 "under pace" = "sử dụng dưới tốc độ dự kiến";
 "us-east-1" = "us-east-1";
 "used" = "đã dùng";
@@ -2061,6 +2092,7 @@
 "~%@ est" = "~%@ ước tính";
 "~%@ tracked tokens (partial)" = "~%@ Token đã ghi nhận (MỘT PHẦN)";
 "~/.local/bin/cswap" = "~/.local/bin/cswap";
+"/Applications/TcrBar.app/Contents/MacOS/tcr" = "/Applications/TcrBar.app/Contents/MacOS/tcr";
 "~/Library/Application Support/JetBrains/IntelliJIdea2024.3" = "~/Library/Application Support/JetBrains/IntelliJIdea2024.3";
 "00000000-0000-0000-0000-000000000000" = "00000000-0000-0000-0000-000000000000";
 
@@ -2084,6 +2116,8 @@
 "Poe usage history is unavailable." = "Lịch sử sử dụng Poe không khả dụng.";
 "Stored in ~/.codexbar/config.json. Get your key from poe.com/api/keys." = "Được lưu trữ trong ~/.codexbar/config.json. Nhận khóa của bạn từ poe.com/api/keys.";
 "Billing" = "Thanh toán";
+"Invoice billing" = "Thanh toán theo hóa đơn";
+"Prepaid" = "Trả trước";
 "Rate limit" = "Giới hạn tỷ lệ";
 "Billing and rate-limit data from the v0 Platform API" = "Dữ liệu thanh toán và giới hạn tỷ lệ từ Nền tảng v0 API";
 "v0 cost history is not available via the Platform API." = "Lịch sử chi phí v0 không có sẵn thông qua Nền tảng API.";
@@ -2173,6 +2207,10 @@
 "Stored in ~/.codexbar/config.json. Create one at console.x.ai under Settings > Management Keys; inference API keys are not accepted." = "Được lưu trữ trong ~/.codexbar/config.json. Tạo một cái tại console.x.ai trong Cài đặt > Khóa quản lý; suy luận khóa API không được chấp nhận.";
 "xai-..." = "xai-...";
 "Team ID" = "Đội ID";
+"Vercel access token" = "Mã truy cập Vercel";
+"Optional. Shows your personal budget instead of team credits. Saved in CodexBar's local config file. Or set VERCEL_ACCESS_TOKEN." = "Tùy chọn. Hiển thị ngân sách cá nhân của bạn thay vì tín dụng của nhóm. Được lưu trong tệp cấu hình cục bộ của CodexBar. Hoặc đặt VERCEL_ACCESS_TOKEN.";
+"Open Vercel tokens" = "Mở mã Vercel";
+"Required with a Vercel access token. Or set VERCEL_TEAM_ID." = "Bắt buộc khi dùng mã truy cập Vercel. Hoặc đặt VERCEL_TEAM_ID.";
 "Required. Shown in the xAI Console URL and team settings." = "Bắt buộc. Hiển thị trong Bảng điều khiển xAI URL và cài đặt nhóm.";
 "Sakana AI cost summary is not supported." = "Tóm tắt chi phí Sakana AI không được hỗ trợ.";
 "Stored in ~/.codexbar/config.json. Copy the Sakana AI console Cookie request header." = "Được lưu trữ trong ~/.codexbar/config.json. Sao chép tiêu đề yêu cầu Cookie của bảng điều khiển Sakana AI.";
@@ -2326,6 +2364,7 @@
 "Core Monthly" = "Cốt lõi hàng tháng";
 "Bobcoin usage" = "Sử dụng Bobcoin";
 "Code 7-day" = "Mã 7 ngày Hạn mức";
+"Other features" = "Tính năng khác";
 "Quota services" = "Dịch vụ Hạn mức";
 "Billing history" = "Lịch sử thanh toán";
 "Renews" = "Gia hạn";
@@ -2406,6 +2445,7 @@
 
 "X API cost history is not available." = "Không có lịch sử chi phí X API.";
 "Paste a console.x.com Cookie header containing auth_token and ct0." = "Dán tiêu đề Cookie từ console.x.com có chứa auth_token và ct0.";
+"Paste a platform.claude.com Cookie header containing sessionKey." = "Dán tiêu đề Cookie từ platform.claude.com có chứa sessionKey.";
 "Open X Developer Console" = "Mở bảng điều khiển nhà phát triển X";
 "update_available_notification_body" = "Nhấp để mở cài đặt cập nhật và cài đặt phiên bản mới.";
 // Structured session performance layout.
@@ -2430,7 +2470,7 @@
 "spend_performance_cache_help" = "Lượng đầu vào được lưu trong bộ nhớ đệm chia cho tổng đầu vào của các lượt đủ điều kiện. Được tính trọng số theo số token đầu vào, kèm phạm vi bao phủ của mẫu.";
 "spend_performance_metric_help" = "Về các số liệu quan sát này";
 "merged_icon_source_title" = "Nguồn biểu tượng kết hợp";
-"merged_icon_source_subtitle" = "Chọn nhà cung cấp hiển thị trên biểu tượng kết hợp khi thu gọn.";
+"merged_icon_source_subtitle" = "“Mức sử dụng cao nhất” chỉ so sánh hạn mức. Với nhà cung cấp không có hạn mức, hãy dùng “Lựa chọn hiện tại”.";
 "merged_icon_source_current_selection" = "Lựa chọn hiện tại";
 "merged_icon_source_highest_usage" = "Mức sử dụng cao nhất";
 "merged_icon_source_frontmost_app" = "Ứng dụng nhà cung cấp ở phía trước";
@@ -2633,3 +2673,217 @@
 
 /* Combined account paging (English fallback). */
 "Account pages" = "Account pages";
+"Back" = "Quay lại";
+"Forward" = "Tiếp";
+
+"cost_reset_inferred_tooltip" = "Suy ra: %@ không báo cáo ngày này. Hạn mức chi tiêu hằng tháng được đặt lại vào 00:00 UTC ngày 1.";
+/* fal provider credentials */
+"Key with billing read access (BILLING or READONLY preset). Or set FAL_KEY." = "Khóa có quyền đọc thanh toán (cài đặt sẵn BILLING hoặc READONLY). Hoặc đặt FAL_KEY.";
+
+/* FLORA provider credentials */
+"Needs billing permission on the workspace. Or set FLORA_API_KEY." = "Cần quyền thanh toán trên không gian làm việc. Hoặc đặt FLORA_API_KEY.";
+"Required. The ws_… ID of the workspace the key can bill. Or set FLORA_WORKSPACE_ID." = "Bắt buộc. ID ws_… của không gian làm việc mà khóa có thể thanh toán. Hoặc đặt FLORA_WORKSPACE_ID.";
+"ak_…" = "ak_…";
+"ws_…" = "ws_…";
+
+"Plan renewal / expiry" = "Gia hạn / hết hạn gói";
+
+"Hidden by the global optional credits, spending & billing setting." = "Bị ẩn bởi cài đặt chung cho tín dụng tùy chọn, chi tiêu và thanh toán.";
+
+"Provider order updated" = "Đã cập nhật thứ tự nhà cung cấp";
+"Undo" = "Hoàn tác";
+"Clear filters" = "Xóa bộ lọc";
+"Change provider order" = "Đổi thứ tự nhà cung cấp";
+"Provider sorting" = "Sắp xếp nhà cung cấp";
+"Only show enabled providers" = "Chỉ hiển thị nhà cung cấp đã bật";
+"Restore default order" = "Khôi phục thứ tự mặc định";
+"Also restores the provider order in the menu bar. Can be undone." = "Cũng khôi phục thứ tự nhà cung cấp trên thanh menu. Có thể hoàn tác.";
+"Local Codex details; excluded from combined totals." = "Chi tiết Codex cục bộ; không được tính vào tổng kết hợp.";
+
+"Stored in the CodexBar config file. You can also set COMMAND_CODE_API_KEY." = "Stored in the CodexBar config file. You can also set COMMAND_CODE_API_KEY.";
+/* OpenAI organization rate limits and live usage */
+"%@ tokens · %@ requests" = "%@ token · %@ yêu cầu";
+"15m" = "15 phút";
+"1h" = "1 giờ";
+"5-min avg" = "TB 5 phút";
+"6h" = "6 giờ";
+"All models" = "Tất cả mô hình";
+"Input %@ · cached %@ · output %@" = "Đầu vào %@ · bộ nhớ đệm %@ · đầu ra %@";
+"Live Usage" = "Mức sử dụng trực tiếp";
+"Loading live usage…" = "Đang tải mức sử dụng trực tiếp…";
+"Minute" = "Phút";
+"Model" = "Mô hình";
+"No API traffic in this window" = "Không có lưu lượng API trong khoảng này";
+"Open OpenAI Settings" = "Mở Cài đặt OpenAI";
+"OpenAI Admin Usage API · 1-minute buckets · the newest minute can arrive late" = "OpenAI Admin Usage API · các khoảng 1 phút · dữ liệu phút mới nhất có thể đến muộn";
+"OpenAI Live Usage" = "Mức sử dụng OpenAI trực tiếp";
+"Other" = "Khác";
+"Peak" = "Đỉnh";
+"Peak TPM" = "TPM đỉnh";
+"Project: %@" = "Dự án: %@";
+"Range" = "Khoảng thời gian";
+"Rate limited; retrying in %ds" = "Đã đạt giới hạn tốc độ; thử lại sau %ds";
+"Requests in window" = "Yêu cầu trong khoảng";
+"Tokens in window" = "Token trong khoảng";
+"Tokens per minute" = "Token mỗi phút";
+"Uncached input" = "Đầu vào không lưu đệm";
+"Uncached input %@ · cached input %@ · output %@" = "Đầu vào không lưu đệm %@ · đầu vào lưu đệm %@ · đầu ra %@";
+"Organization rate limits" = "Giới hạn tốc độ của tổ chức";
+"Open organization Limits" = "Mở giới hạn của tổ chức";
+"RPM (optional)" = "RPM (tùy chọn)";
+"Enter a model and positive limits, such as 40M TPM and 15k RPM." = "Nhập mô hình và giới hạn dương, như 40M TPM và 15k RPM.";
+"Add model" = "Thêm mô hình";
+"Org TPM limit" = "Giới hạn TPM tổ chức";
+"Org limit %@ TPM" = "Giới hạn tổ chức %@ TPM";
+"Org limit %@ TPM (off scale)" = "Giới hạn tổ chức %@ TPM (ngoài thang đo)";
+"Limits…" = "Giới hạn…";
+"Highest utilization" = "Mức sử dụng cao nhất";
+"%@ of limit" = "%@ giới hạn";
+"Limit" = "Giới hạn";
+"Peak RPM: %@ of limit" = "RPM đỉnh: %@ giới hạn";
+"Peak % of limit" = "Đỉnh theo % giới hạn";
+
+/* OpenAI live usage errors */
+"Configure an OpenAI organization Admin API key in Settings → Providers → OpenAI." = "Cấu hình khóa Admin API tổ chức OpenAI trong Cài đặt → Nhà cung cấp → OpenAI.";
+"An OpenAI organization Admin API key with usage and project read permissions is required." = "Cần khóa Admin API tổ chức OpenAI có quyền đọc mức sử dụng và dự án.";
+"OpenAI API is rate limited." = "API OpenAI đã đạt giới hạn tốc độ.";
+"OpenAI API failed (HTTP %d)." = "API OpenAI lỗi (HTTP %d).";
+"Could not parse the OpenAI API response." = "Không thể phân tích phản hồi API OpenAI.";
+"Live usage supports 15-minute, 1-hour, and 6-hour windows." = "Mức sử dụng trực tiếp hỗ trợ khoảng 15 phút, 1 giờ và 6 giờ.";
+
+/* Live usage reporting and project caps */
+
+/* Live usage reporting and project caps */
+"Latest · %@" = "Mới nhất · %@";
+"Latest TPM" = "TPM mới nhất";
+"reporting…" = "đang chờ báo cáo…";
+"Org limit not set" = "Chưa đặt giới hạn tổ chức";
+"project cap %@" = "giới hạn dự án %@";
+"Set org limit…" = "Đặt giới hạn tổ chức…";
+"Org limits come from Settings — OpenAI's API doesn't expose them." = "Giới hạn tổ chức được lấy từ Cài đặt — API của OpenAI không cung cấp chúng.";
+"Project caps are the highest per-project limit across %d active projects; org-wide traffic can exceed them." = "Giới hạn dự án là giới hạn cao nhất của từng dự án trong %d dự án đang hoạt động; lưu lượng toàn tổ chức có thể vượt quá mức này.";
+"Project sample capped at 25; higher project caps may exist." = "Mẫu được giới hạn ở 25 dự án; có thể tồn tại giới hạn dự án cao hơn.";
+"Project caps unavailable" = "Không có giới hạn dự án";
+"OpenAI's API doesn't expose organization rate limits. Copy them from your organization's Limits page. Model IDs match dated snapshots (gpt-5 covers gpt-5-2025-…)." = "API của OpenAI không cung cấp giới hạn tốc độ của tổ chức. Hãy sao chép từ trang Limits của tổ chức. ID mô hình khớp cả phiên bản có ngày (gpt-5 bao gồm gpt-5-2025-…).";
+"Tokens / min · last hour" = "Token / phút · giờ vừa qua";
+"Latest %@ · Peak %@ at %@" = "Mới nhất %@ · Đỉnh %@ lúc %@";
+"%@ · peak %@ · %@ of org limit" = "%@ · đỉnh %@ · %@ giới hạn tổ chức";
+"Tokens / min" = "Token / phút";
+"Latest tokens per minute (OpenAI Admin API)" = "Số token mỗi phút mới nhất (OpenAI Admin API)";
+"Fetches 1-minute usage each refresh for the menu card chart and the menu bar Tokens/min token." = "Lấy mức sử dụng từng phút mỗi lần làm mới cho biểu đồ thẻ menu và mục Token/phút trên thanh menu.";
+"Live Usage…" = "Mức sử dụng trực tiếp…";
+"Batch API %@ · not counted in %% of limit" = "Batch API %@ · không tính vào %% giới hạn";
+"% of limit counts all input, including cached input, plus output, as OpenAI's rate limiter does, and excludes Batch API traffic, which has separate limits. The limiter also reserves max_tokens up front, so short bursts can still hit limits." = "% giới hạn tính toàn bộ đầu vào, kể cả đầu vào được lưu trong bộ nhớ đệm, cộng với đầu ra, giống bộ giới hạn tốc độ của OpenAI, và loại trừ lưu lượng Batch API vì có giới hạn riêng. Bộ giới hạn cũng dành trước max_tokens, nên các đợt tăng ngắn vẫn có thể chạm giới hạn.";
+
+"Tokens / min graph" = "Biểu đồ token / phút";
+"Last hour of tokens per minute (OpenAI Admin API)" = "Token mỗi phút trong giờ qua (OpenAI Admin API)";
+"Tokens per minute, latest %@" = "Token mỗi phút, giá trị mới nhất %@";
+
+"Live" = "Trực tiếp";
+
+"Chart" = "Biểu đồ";
+
+"Daily spend · %@" = "Chi tiêu hằng ngày · %@";
+"Applies to the selected token account “%@”. Each account keeps its own limits." = "Áp dụng cho tài khoản token đã chọn “%@”. Mỗi tài khoản giữ giới hạn riêng.";
+"Applies to the OpenAI API key, not to token accounts." = "Áp dụng cho khóa API OpenAI, không áp dụng cho các tài khoản token.";
+"CodexBar will ask macOS Keychain for the Muse Code login token so it can fetch your Muse Code subscription usage. Click OK to continue." = "CodexBar sẽ yêu cầu macOS Keychain cung cấp token đăng nhập Muse Code để nó có thể tìm nạp mức sử dụng gói đăng ký Muse Code của bạn. Nhấn OK để tiếp tục.";
+/* Claude Platform provider */
+"API credit" = "Tín dụng API";
+"Purchased credit" = "Tín dụng đã mua";
+"Claude Platform exposes Console credit balance and monthly spend, not local token cost history." = "Claude Platform hiển thị số dư tín dụng và chi tiêu hàng tháng trên Console, không phải lịch sử chi phí token cục bộ.";
+
+"Claude config directory" = "Thư mục cấu hình Claude";
+/* App-managed HTTP server */
+"http_server_title" = "Máy chủ HTTP";
+"http_server_enable" = "Bật máy chủ HTTP";
+"http_server_bind" = "Địa chỉ IPv4 lắng nghe";
+"http_server_port" = "Cổng";
+"http_server_token" = "Mã truy cập máy chủ";
+"http_server_show" = "Hiện";
+"http_server_generate" = "Tạo";
+"http_server_cache" = "Khoảng thời gian bộ nhớ đệm (giây)";
+"http_server_timeout" = "Thời gian chờ yêu cầu (giây; 0 để tắt)";
+"http_server_all_accounts" = "Bao gồm mọi tài khoản trong ảnh chụp";
+"http_server_identity" = "Danh tính trên bảng điều khiển";
+"http_server_redacted" = "Đã che";
+"http_server_warning" = "Chia sẻ mức sử dụng, chi phí, thông tin tài khoản và dự án, không bao giờ chia sẻ thông tin đăng nhập nhà cung cấp. HTTP gửi mã truy cập máy chủ không mã hóa. Chỉ dùng kết nối VPN hoặc Tailscale đáng tin cậy.";
+"http_server_plain_http" = "Cho phép HTTP không mã hóa bên ngoài máy Mac này";
+"http_server_dashboard" = "Bảng điều khiển";
+"http_server_wildcard" = "Trên thiết bị khác, thay 0.0.0.0 bằng địa chỉ IPv4 VPN hoặc Tailscale của máy Mac này.";
+"http_server_footer" = "Mặc định tắt. Khởi động cùng CodexBar và dừng khi thoát. Cài đặt và mã truy cập chỉ ở trên máy Mac này, không được đồng bộ hoặc xuất. Giữ máy Mac thức để truy cập từ xa.";
+/* Claude desktop cookie source */
+"Claude desktop app" = "Ứng dụng Claude trên máy tính";
+"Use Claude desktop app cookies" = "Dùng cookie của ứng dụng Claude trên máy tính";
+"For Web usage, follow the account signed into Claude.app instead of a browser." = "Đối với mức sử dụng web, dùng tài khoản đã đăng nhập trong Claude.app thay vì tài khoản trình duyệt.";
+
+/* Munito provider credentials */
+"Key with Read account data (Admin API) permission. Or set MUNITO_API_KEY." = "Khoá có quyền đọc dữ liệu tài khoản (Admin API). Hoặc đặt MUNITO_API_KEY.";
+"Munito reports Admin API spend and limits, not local token cost history." = "Munito báo cáo chi tiêu và giới hạn của Admin API, không phải lịch sử chi phí token cục bộ.";
+
+"Show all accounts in Overview" = "Hiển thị tất cả tài khoản trong Tổng quan";
+
+"Expand cached account usage. The six-provider limit still applies." = "Mở rộng các nhà cung cấp đã chọn bằng dữ liệu sử dụng tài khoản trong bộ nhớ đệm. Giới hạn sáu nhà cung cấp vẫn áp dụng.";
+"Edit" = "Sửa";
+"Move up" = "Di chuyển lên";
+"Move down" = "Di chuyển xuống";
+"Leave blank to keep the saved credential." = "Để trống để giữ thông tin xác thực đã lưu.";
+
+"No personal budget configured" = "Chưa thiết lập ngân sách cá nhân";
+
+"monthly_daily_target_format" = "≈ %@ / ngày để đủ dùng đến khi đặt lại";
+
+"Trae CN" = "Trae CN";
+"Show Trae CN usage" = "Hiển thị mức sử dụng Trae CN";
+"Sign in to Trae CN at trae.cn, then refresh CodexBar." = "Đăng nhập vào Trae CN tại trae.cn, rồi làm mới CodexBar.";
+"Trae CN usage response format changed." = "Định dạng phản hồi mức sử dụng Trae CN đã thay đổi.";
+"Trae CN request failed. Try refreshing later." = "Yêu cầu Trae CN không thành công. Hãy thử làm mới sau.";
+"Use --provider copilot." = "Dùng --provider copilot.";
+"Config changed during login. Please try again." = "Cấu hình đã thay đổi trong khi đăng nhập. Vui lòng thử lại.";
+
+// Session usage browser
+"Search sessions" = "Tìm phiên";
+"No matching sessions" = "Không có phiên phù hợp";
+"Select a session" = "Chọn một phiên";
+"Cached input is included in input; reasoning is included in output." = "Đầu vào được lưu đệm đã nằm trong đầu vào; token suy luận đã nằm trong đầu ra.";
+"Recent activity" = "Hoạt động gần đây";
+"Sort by" = "Sắp xếp theo";
+"Ascending" = "Tăng dần";
+"Descending" = "Giảm dần";
+"Each turn includes its recorded model calls within this period. Messages sharing a turn cannot be priced separately." = "Mỗi lượt gồm các yêu cầu mô hình được ghi trong khoảng thời gian này. Không thể tính phí riêng từng tin nhắn trong cùng một lượt.";
+"No turn-level usage records are available." = "Không có bản ghi sử dụng theo lượt.";
+"Unattributed usage" = "Mức sử dụng chưa được quy thuộc";
+"Turn %d" = "Lượt %d";
+"Model requests" = "Yêu cầu mô hình";
+"Tool activity has no separate recorded token or monetary cost." = "Không ghi riêng chi phí token hoặc tiền cho các lệnh gọi công cụ.";
+"Request %d" = "Yêu cầu %d";
+
+"Request details exceed the limit." = "Chi tiết yêu cầu vượt quá giới hạn.";
+
+"Request details are unavailable. Refresh usage and try again." = "Không có chi tiết yêu cầu. Hãy làm mới mức sử dụng rồi thử lại.";
+"Primary" = "Chính";
+"Secondary" = "Phụ";
+"Tertiary" = "Thứ ba";
+
+/* Chatbox AI */
+"Chatbox AI" = "Chatbox AI";
+"Show Chatbox AI usage" = "Hiển thị mức sử dụng Chatbox AI";
+"Chatbox AI license key is invalid. Update it in Settings." = "Khóa giấy phép Chatbox AI không hợp lệ. Hãy cập nhật khóa trong Cài đặt.";
+"Chatbox AI denied access. Check your license." = "Chatbox AI đã từ chối truy cập. Hãy kiểm tra giấy phép của bạn.";
+"Chatbox AI is rate limiting requests. Try again later." = "Chatbox AI đang giới hạn tần suất yêu cầu. Hãy thử lại sau.";
+"Chatbox AI request failed. Try refreshing later." = "Yêu cầu Chatbox AI không thành công. Hãy thử làm mới sau.";
+"Chatbox AI returned an unrecognized response. Update CodexBar and try again." = "Chatbox AI trả về phản hồi không nhận dạng được. Hãy cập nhật CodexBar rồi thử lại.";
+
+/* abliteration.ai */
+"abliteration.ai" = "abliteration.ai";
+"Show abliteration.ai usage" = "Hiển thị mức sử dụng abliteration.ai";
+"abliteration.ai is rate limiting requests. Try again later." = "abliteration.ai đang giới hạn tần suất yêu cầu. Hãy thử lại sau.";
+"abliteration.ai request failed. Try refreshing later." = "Yêu cầu abliteration.ai không thành công. Hãy thử làm mới sau.";
+"abliteration.ai returned an unrecognized response. Update CodexBar and try again." = "abliteration.ai trả về phản hồi không nhận dạng được. Hãy cập nhật CodexBar rồi thử lại.";
+"Check your API key in Settings." = "Kiểm tra khóa API trong Cài đặt.";
+"Kimi Code" = "Kimi Code";
+
+"OpenCode local history" = "Lịch sử OpenCode cục bộ";
+
+"Show this Mac's recorded OpenCode usage in Codex history. Off by default; scoped or alternate CODEX_HOME locations always stay excluded." = "Hiển thị mức sử dụng OpenCode được ghi lại trên máy Mac này trong lịch sử Codex. Mặc định tắt; luôn loại trừ các vị trí CODEX_HOME có phạm vi giới hạn hoặc vị trí thay thế.";
+"Auto uses the active saved session, otherwise an API key or browser cookies." = "Tự động sử dụng phiên đã lưu đang hoạt động, nếu không thì sử dụng khóa API hoặc cookie trình duyệt.";
+"Store multiple Command Code subscription sessions." = "Lưu trữ nhiều phiên đăng ký Command Code.";

@@ -1,5 +1,3 @@
-import Foundation
-
 public enum RaycastProviderDescriptor {
     public static let descriptor: ProviderDescriptor = Self.spec.makeDescriptor()
     public static let spec = PluginProviderSpec(
@@ -22,8 +20,7 @@ public enum RaycastProviderDescriptor {
             planRow: ProviderPlanRowPresentation(label: "Plan")),
         webSource: .init(
             settingsSection: .init(RaycastProviderSettingsKey.self, cookieSettings: CookieProviderSettings.self),
-            browserCookieOrder: BrowserCookieImportSupport.chromeOnly(
-                reason: "Raycast imports only Chrome to avoid unrelated browser prompts."),
+            browserCookieOrder: ProviderBrowserCookieDefaults.defaultImportOrder,
             timeout: .web(minimum: 30, maximum: .infinity, padding: 0, nonFinite: 30),
             browserSupportExemption: { _, _, settings in
                 settings?.raycast?.cookieSource == .manual
@@ -44,9 +41,10 @@ public enum RaycastProviderDescriptor {
             picker: .init(
                 id: "raycast-cookie-source",
                 allowsOff: true,
-                auto: .localized("Automatic imports Chrome cookies from www.raycast.com."),
+                auto: .localized("Automatic imports browser cookies from www.raycast.com."),
                 manual: .localized("Paste a Cookie header captured from %@.", argument: "the account settings page"),
                 off: .localized("%@ cookies are disabled.", argument: "Raycast"),
                 showsRefreshAction: true),
-            detailLine: "web"))
+            detailLine: "web",
+            showsVersionInSettings: false))
 }

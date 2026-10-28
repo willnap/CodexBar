@@ -148,6 +148,9 @@ check_llms_index() {
 }
 
 run_portable_checks() {
+  bash "${ROOT_DIR}/Scripts/test_make_lint.sh"
+  python3 "${ROOT_DIR}/Scripts/acknowledgements.py"
+  python3 "${ROOT_DIR}/Scripts/test_acknowledgements.py"
   check_package_resolved
   check_codex_parser_hash
   check_provider_manifests
@@ -168,6 +171,8 @@ run_portable_checks() {
   python3 "${ROOT_DIR}/Scripts/generate_settings_search_index.py" --check
   check_swift_test_sharding
   check_ci_path_gate
+  python3 "${ROOT_DIR}/Scripts/test_linux_cli_linkage.py"
+  python3 "${ROOT_DIR}/Scripts/test_linux_cli_codex_cost_smoke.py"
   check_ci_build_cache
   check_homebrew_tap_wait
   check_repository_size

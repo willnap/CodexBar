@@ -15,24 +15,24 @@ struct PlatformGatingTests {
     }
 
     @Test
-    func ampAutoSource_doesNotRequireWebSupport() {
-        #expect(!CodexBarCLI.sourceModeRequiresWebSupport(.auto, provider: .amp))
+    func ampAutoSource_doesNotRequireWebSupport() async {
+        #expect(await !CodexBarCLI.sourceModeRequiresWebSupport(.auto, provider: .amp))
     }
 
     @Test
-    func `ollama manual cookie allows auto and web sources`() {
+    func `ollama manual cookie allows auto and web sources`() async {
         let manualCookieSettings = ProviderSettingsSnapshot.make(
             ollama: .init(cookieSource: .manual, manualCookieHeader: "__Secure-session=manual"))
 
-        #expect(!CodexBarCLI.sourceModeRequiresWebSupport(
+        #expect(await !CodexBarCLI.sourceModeRequiresWebSupport(
             .auto,
             provider: .ollama,
             settings: manualCookieSettings))
-        #expect(!CodexBarCLI.sourceModeRequiresWebSupport(
+        #expect(await !CodexBarCLI.sourceModeRequiresWebSupport(
             .web,
             provider: .ollama,
             settings: manualCookieSettings))
-        #expect(CodexBarCLI.sourceModeRequiresWebSupport(
+        #expect(await CodexBarCLI.sourceModeRequiresWebSupport(
             .web,
             provider: .ollama,
             settings: ProviderSettingsSnapshot.make(
@@ -40,9 +40,9 @@ struct PlatformGatingTests {
     }
 
     @Test
-    func claudeAutoSource_allowsPlannerToFallBackToCLI() {
-        #expect(!CodexBarCLI.sourceModeRequiresWebSupport(.auto, provider: .claude))
-        #expect(CodexBarCLI.sourceModeRequiresWebSupport(.web, provider: .claude))
+    func claudeAutoSource_allowsPlannerToFallBackToCLI() async {
+        #expect(await !CodexBarCLI.sourceModeRequiresWebSupport(.auto, provider: .claude))
+        #expect(await CodexBarCLI.sourceModeRequiresWebSupport(.web, provider: .claude))
     }
 
     @Test
@@ -66,8 +66,8 @@ struct PlatformGatingTests {
         let result = try outcome.result.get()
 
         #expect(result.strategyID == "claude.cli")
-        #expect(outcome.attempts.map(\.strategyID) == ["claude.web", "claude.cli"])
-        #expect(outcome.attempts.map(\.wasAvailable) == [false, true])
+        #expect(outcome.attempts.map(\.strategyID) == ["claude.web", "claude.oauth", "claude.cli"])
+        #expect(outcome.attempts.map(\.wasAvailable) == [false, false, true])
         #else
         #expect(Bool(true))
         #endif
@@ -98,8 +98,8 @@ struct PlatformGatingTests {
                 #expect(provider == .claude)
             }
         }
-        #expect(outcome.attempts.map(\.strategyID) == ["claude.web", "claude.cli"])
-        #expect(outcome.attempts.map(\.wasAvailable) == [false, false])
+        #expect(outcome.attempts.map(\.strategyID) == ["claude.web", "claude.oauth", "claude.cli"])
+        #expect(outcome.attempts.map(\.wasAvailable) == [false, false, false])
         #else
         #expect(Bool(true))
         #endif
@@ -144,7 +144,7 @@ struct PlatformGatingTests {
                 #expect(provider == .claude)
             }
         }
-        let expectedStrategyIDs = sourceMode == .auto ? ["claude.web", "claude.cli"] : ["claude.cli"]
+        let expectedStrategyIDs = sourceMode == .auto ? ["claude.web", "claude.oauth", "claude.cli"] : ["claude.cli"]
         #expect(outcome.attempts.map(\.strategyID) == expectedStrategyIDs)
         #expect(outcome.attempts.allSatisfy { !$0.wasAvailable })
         let invocations = try String(contentsOf: invocationLog, encoding: .utf8)
@@ -250,7 +250,8 @@ struct PlatformGatingTests {
     @Test
     func `OpenCodex usage log URL resolution is safe on Linux without test markers`() {
         #if os(Linux)
-        // Under test runner, ProcessInfo has test markers, so isRunningTests returns true safely and returns nil without crashing
+        // Under test runner, ProcessInfo has test markers, so isRunningTests returns true safely and returns nil
+        // without crashing
         let logURL = OpenCodexUsageLog.usageLogURL(environment: [:])
         #expect(logURL == nil)
         let overriddenURL = OpenCodexUsageLog.usageLogURL(environment: ["OPENCODEX_HOME": "/tmp/test"])
@@ -259,6 +260,7 @@ struct PlatformGatingTests {
         #expect(Bool(true))
         #endif
     }
+
     private func makeClaudeAutoContext(env: [String: String] = [:]) -> ProviderFetchContext {
         self.makeClaudeContext(sourceMode: .auto, env: env)
     }

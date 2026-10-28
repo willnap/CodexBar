@@ -9,6 +9,10 @@ read_when:
 
 Copilot uses GitHub OAuth device flow and the Copilot internal usage API for primary usage. Optional budget extras use GitHub web cookies only when enabled.
 
+CLI-only setups can run `codexbar config login --provider copilot` (or add `--json` for a stream of login
+events). It uses the same device flow, issuer-aware account matching, and config-backed token accounts as
+the app, without opening a browser or prompting for Keychain access. See [CLI configuration](cli-configuration.md#copilot-device-login).
+
 ## Data sources + fallback order
 
 1) **GitHub OAuth device flow** (user initiated)
@@ -45,6 +49,7 @@ Copilot uses GitHub OAuth device flow and the Copilot internal usage API for pri
    - Available only for the public GitHub host. Enterprise quota fetches skip public identity and browser-cookie budget enrichment.
    - Disabled by default. The Copilot provider's "Budget extras" setting must be enabled before CodexBar imports
      github.com cookies or renders budget bars.
+   - Automatic cookie imports follow the shared supported-browser order and access gate; background imports never request Keychain permission.
    - CodexBar asks the logged-in GitHub web endpoint for customer-scope budgets:
      - `GET https://github.com/settings/billing/budgets?page=<page>&page_size=10&scope=customer`
    - Headers:
@@ -107,4 +112,4 @@ late successful response cannot restore a cleared default.
 - `Sources/CodexBarCore/Providers/Copilot/CopilotDeviceFlow.swift`
 - `Sources/CodexBarCore/Providers/Copilot/CopilotCreditEntitlementParser.swift`
 - `Sources/CodexBar/Providers/Copilot/CopilotLoginFlow.swift`
-- `Sources/CodexBar/CopilotTokenStore.swift` (legacy migration helper)
+- `Sources/CodexBar/Providers/Copilot/CopilotTokenStore.swift` (legacy migration helper)

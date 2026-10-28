@@ -160,6 +160,7 @@ enum ProviderPluginSnapshotMapper {
                     value: self.requiredDetailString(row, property: "value", path: rowPath),
                     secondaryValue: self.optionalDetailString(row, property: "secondaryValue", path: rowPath),
                     progress: self.detailProgress(row, path: rowPath),
+                    severity: self.detailSeverity(row, path: rowPath),
                     usageValue: self.optionalFiniteNumber(row, property: "usageValue", path: rowPath))
             }
             let chart = try self.detailChart(section, path: path)
@@ -167,15 +168,32 @@ enum ProviderPluginSnapshotMapper {
         }
     }
 
+    private static func detailSeverity(
+        _ row: any ProviderPluginValue,
+        path: String) throws -> ProviderDetailSection.Row.Severity?
+    {
+        guard let value = row.property("severity"), !value.isUndefined, !value.isNull else { return nil }
+        guard value.isString, let severity = ProviderDetailSection.Row.Severity(rawValue: value.stringValue()) else {
+            throw ProviderPluginError.invalidSnapshot("\(path).severity must be normal, warning, or critical")
+        }
+        return severity
+    }
+
     private static func detailProgress(
         _ row: any ProviderPluginValue,
         path: String) throws -> ProviderDetailSection.Row.Progress?
     {
+        // Pace is validated even without progress so a malformed field never passes silently;
+        // without progress there is no bar to mark, so it is then dropped.
+        let pace = try self.optionalFiniteNumber(row, property: "pace", path: path)
+        if let pace, !(0...1).contains(pace) {
+            throw ProviderPluginError.invalidSnapshot("\(path).pace must be between 0 and 1")
+        }
         guard let fraction = try self.optionalFiniteNumber(row, property: "progress", path: path) else { return nil }
         guard (0...1).contains(fraction) else {
             throw ProviderPluginError.invalidSnapshot("\(path).progress must be between 0 and 1")
         }
-        return try ProviderDetailSection.Row.Progress(used: fraction, total: 1)
+        return try ProviderDetailSection.Row.Progress(used: fraction, total: 1, expectedUsed: pace)
     }
 
     private static func detailChart(
@@ -266,12 +284,19 @@ enum ProviderPluginSnapshotMapper {
         let resetsAt = try self.optionalDate(value, property: "resetsAt", path: path)
         let resetDescription = try self.optionalString(value, property: "resetDescription", path: path)
         let nextRegenPercent = try self.optionalFiniteNumber(value, property: "nextRegenPercent", path: path)
-        return RateWindow(
+        let quotaLimit = try self.optionalFiniteNumber(value, property: "quotaLimit", path: path)
+        if let quotaLimit, quotaLimit <= 0 {
+            throw ProviderPluginError.invalidSnapshot("\(path).quotaLimit must be positive")
+        }
+        return try RateWindow(
             usedPercent: usedPercent,
             windowMinutes: windowMinutes,
             resetsAt: resetsAt,
             resetDescription: resetDescription,
-            nextRegenPercent: nextRegenPercent.map { min(100, max(0, $0)) })
+            quotaLimit: quotaLimit,
+            quotaUnit: self.optionalString(value, property: "quotaUnit", path: path),
+            nextRegenPercent: nextRegenPercent.map { min(100, max(0, $0)) },
+            title: self.optionalString(value, property: "title", path: path))
     }
 
     private static func extraWindows(

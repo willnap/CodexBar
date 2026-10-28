@@ -363,9 +363,9 @@ struct KimiAPIFetchStrategyTests {
         }
         let strategy = KimiAPIFetchStrategy(
             transport: transport,
-            resolveWebAuthToken: { _ in
+            resolveWebCredential: { _ in
                 Issue.record("Cookie source Off must not resolve desktop or browser sessions")
-                return "unexpected-web-token"
+                return KimiWebCredential(token: "unexpected-web-token")
             })
         let context = makeKimiFetchContext(
             sourceMode: .api,
@@ -411,7 +411,7 @@ struct KimiAPIFetchStrategyTests {
         }
         let strategy = KimiAPIFetchStrategy(
             transport: transport,
-            resolveWebAuthToken: { _ in "desktop-token" })
+            resolveWebCredential: { _ in KimiWebCredential(token: "desktop-token") })
         let context = makeKimiFetchContext(
             sourceMode: .api,
             environment: ["KIMI_CODE_API_KEY": "api-token"],
@@ -598,8 +598,8 @@ struct KimiUsageResponseParsingTests {
 
         let response = try JSONDecoder().decode(KimiUsageResponse.self, from: Data(json.utf8))
 
-        #expect(response.usages.count == 1)
-        let usage = response.usages[0]
+        #expect(response.usages?.count == 1)
+        let usage = try #require(response.usages?.first)
         #expect(usage.scope == "FEATURE_CODING")
         #expect(usage.detail.limit == "2048")
         #expect(usage.detail.used == "375")
@@ -634,7 +634,7 @@ struct KimiUsageResponseParsingTests {
         """
 
         let response = try JSONDecoder().decode(KimiUsageResponse.self, from: Data(json.utf8))
-        #expect(response.usages.first?.limits?.isEmpty == true)
+        #expect(response.usages?.first?.limits?.isEmpty == true)
     }
 
     @Test
@@ -657,7 +657,7 @@ struct KimiUsageResponseParsingTests {
         """
 
         let response = try JSONDecoder().decode(KimiUsageResponse.self, from: Data(json.utf8))
-        #expect(response.usages.first?.limits == nil)
+        #expect(response.usages?.first?.limits == nil)
     }
 
     @Test
@@ -1117,7 +1117,7 @@ struct KimiUsageResponseParsingTests {
         """
 
         let response = try JSONDecoder().decode(KimiUsageResponse.self, from: Data(json.utf8))
-        let codingUsage = response.usages.first { $0.scope == "FEATURE_CODING" }
+        let codingUsage = response.usages?.first { $0.scope == "FEATURE_CODING" }
         #expect(codingUsage == nil)
     }
 }
@@ -1170,7 +1170,7 @@ struct KimiUsageSnapshotConversionTests {
             used: "375",
             remaining: "1673",
             resetTime: "2026-01-09T15:23:13.373329235Z")
-        let subscriptionBalance = KimiSubscriptionBalance(
+        let subscriptionBalance = KimiCreditBalance(
             feature: "FEATURE_OMNI",
             type: "SUBSCRIPTION",
             amountUsedRatio: 1,
@@ -1214,7 +1214,7 @@ struct KimiUsageSnapshotConversionTests {
             resetTime: "2026-01-09T15:23:13.373329235Z")
         // A live, partially-used balance (not the fully-exhausted 1.0 fixture): amountUsedRatio is a
         // real consumption ratio, so the Monthly window must track it rather than pin to 100%.
-        let subscriptionBalance = KimiSubscriptionBalance(
+        let subscriptionBalance = KimiCreditBalance(
             feature: "FEATURE_OMNI",
             type: "SUBSCRIPTION",
             amountUsedRatio: 0.7716,
@@ -1358,7 +1358,7 @@ struct KimiUsageSnapshotConversionTests {
             let snapshot = KimiUsageSnapshot(
                 weekly: weeklyDetail,
                 rateLimit: nil,
-                subscriptionBalance: KimiSubscriptionBalance(
+                subscriptionBalance: KimiCreditBalance(
                     feature: "FEATURE_OMNI",
                     type: "SUBSCRIPTION",
                     amountUsedRatio: .nan,

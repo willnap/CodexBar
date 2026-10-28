@@ -109,26 +109,6 @@ extension CostUsageScanner {
             workingDirectory: workingDirectory)
     }
 
-    static func parseClaudeFile(
-        fileURL: URL,
-        range: CostUsageDayRange,
-        providerFilter: ClaudeLogProviderFilter,
-        startOffset: Int64 = 0,
-        modelsDevCatalog: ModelsDevCatalog? = nil,
-        modelsDevCacheRoot: URL? = nil) -> ClaudeParseResult
-    {
-        let pricingResolver = modelsDevCatalog.map { CostUsagePricing.ClaudeResolver(catalog: $0) }
-            ?? CostUsagePricing.ClaudeResolver(now: Date(), cacheRoot: modelsDevCacheRoot)
-        return (
-            try? self.parseClaudeFileCancellable(
-                fileURL: fileURL,
-                range: range,
-                providerFilter: providerFilter,
-                startOffset: startOffset,
-                pricingResolver: pricingResolver,
-                checkCancellation: nil)) ?? ClaudeParseResult(rows: [], parsedBytes: startOffset)
-    }
-
     static func parseClaudeFileCancellable(
         fileURL: URL,
         range: CostUsageDayRange,
@@ -253,7 +233,7 @@ extension CostUsageScanner {
                         let costNanos = cost.flatMap { Int(exactly: ($0 * costScale).rounded()) }
 
                         let messageId = message["id"] as? String
-                        let requestId = obj["requestId"] as? String
+                        let requestId = obj["requestId"] as? String ?? obj["request_id"] as? String
                         let normalizedModel = pricingResolver.normalize(model)
                         let timestampUnixMs = Int64((timestamp.timeIntervalSince1970 * 1000).rounded())
                         let organization = attribution.organization(session: sessionId, at: timestampUnixMs)
@@ -675,6 +655,16 @@ extension CostUsageScanner {
         return lower.contains("vertex") || (includeGCP && lower.contains("gcp"))
     }
 
+    private static func claudeRootExists(atPath path: String) throws -> Bool {
+        var info = stat()
+        guard path.withCString({ fstatat(AT_FDCWD, $0, &info, 0) }) == 0 else {
+            let code = errno
+            if code == ENOENT || code == ENOTDIR { return false }
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(code), userInfo: [NSFilePathErrorKey: path])
+        }
+        return true
+    }
+
     private static func claudeRootCandidates(for rootPath: String) -> [String] {
         if rootPath.hasPrefix("/var/") {
             return ["/private" + rootPath, rootPath]
@@ -684,19 +674,6 @@ extension CostUsageScanner {
             return [rootPath, trimmed]
         }
         return [rootPath]
-    }
-
-    private struct ClaudeSourceFile {
-        let url: URL
-        let stamp: CostUsageClaudeFileStamp
-    }
-
-    private struct ClaudeSourceInventory {
-        var files: [String: ClaudeSourceFile] = [:]
-
-        var stamps: [String: CostUsageClaudeFileStamp] {
-            self.files.mapValues(\.stamp)
-        }
     }
 
     private struct ClaudeScanState {
@@ -713,12 +690,11 @@ extension CostUsageScanner {
     }
 
     private static func processClaudeFile(
-        source: ClaudeSourceFile,
+        path: String,
+        stamp: CostUsageClaudeFileStamp,
         state: inout ClaudeScanState) throws
     {
         try state.checkCancellation?()
-        let path = source.url.path
-        let stamp = source.stamp
         let cached = state.cache.files[path]
         let sameFile = state.sourceFileIDs[path] == stamp.fileID
         let skippedLaterRows = state.reparseRowsAfterPreviousWindow && cached?.claudeExcludedRowsAfterScanWindow == true
@@ -749,7 +725,7 @@ extension CostUsageScanner {
         #endif
         let resumed = startOffset > 0 ? cached : nil
         let parsed = try Self.parseClaudeFileCancellable(
-            fileURL: source.url,
+            fileURL: URL(fileURLWithPath: path),
             range: state.range,
             providerFilter: state.providerFilter,
             startOffset: startOffset,
@@ -776,29 +752,50 @@ extension CostUsageScanner {
 
     private static func inventoryClaudeRoots(
         _ roots: [URL],
-        checkCancellation: CancellationCheck?) throws -> ClaudeSourceInventory
+        checkCancellation: CancellationCheck?) throws -> [String: CostUsageClaudeFileStamp]
     {
-        var inventory = ClaudeSourceInventory()
+        var inventory: [String: CostUsageClaudeFileStamp] = [:]
 
         for root in roots {
             try checkCancellation?()
             let rootPath = root.path
             let rootCandidates = Self.claudeRootCandidates(for: rootPath)
-            guard let existingRootPath = rootCandidates.first(where: { FileManager.default.fileExists(atPath: $0) })
+            // A root that exists but cannot be inspected must fail the scan, not silently drop its sources.
+            guard let existingRootPath = try rootCandidates.first(where: { try Self.claudeRootExists(atPath: $0) })
             else { continue }
             let existingRoot = existingRootPath == rootPath ? root : URL(fileURLWithPath: existingRootPath)
+            if existingRoot.pathExtension == "jsonl",
+               let stamp = try CostUsageClaudeFileStamp.readIfPresent(at: existingRoot)
+            {
+                inventory[existingRoot.path] = stamp
+                continue
+            }
+            var enumerationError: Error?
             guard let enumerator = FileManager.default.enumerator(
                 at: existingRoot,
                 includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles, .skipsPackageDescendants])
-            else { continue }
+                options: [.skipsHiddenFiles, .skipsPackageDescendants],
+                errorHandler: { _, error in
+                    // Files removed mid-walk are ordinary churn; unreadable directories would undercount.
+                    if CostUsageClaudeFileStamp.isMissingFileError(error) { return true }
+                    enumerationError = error
+                    return false
+                })
+            else {
+                guard try Self.claudeRootExists(atPath: existingRootPath) else { continue }
+                throw NSError(
+                    domain: NSCocoaErrorDomain,
+                    code: NSFileReadUnknownError,
+                    userInfo: [NSFilePathErrorKey: existingRootPath])
+            }
 
             for case let url as URL in enumerator {
                 try checkCancellation?()
                 guard url.pathExtension.lowercased() == "jsonl" else { continue }
-                guard let stamp = CostUsageClaudeFileStamp.read(at: url), stamp.size > 0 else { continue }
-                inventory.files[url.path] = ClaudeSourceFile(url: url, stamp: stamp)
+                guard let stamp = try CostUsageClaudeFileStamp.readIfPresent(at: url), stamp.size > 0 else { continue }
+                inventory[url.path] = stamp
             }
+            if let enumerationError { throw enumerationError }
         }
         return inventory
     }
@@ -813,7 +810,7 @@ extension CostUsageScanner {
         checkCancellation: CancellationCheck?) throws -> CostUsageDailyReport
     {
         let roots = self.defaultClaudeProjectsRoots(options: options)
-        let inventory = try Self.inventoryClaudeRoots(roots, checkCancellation: checkCancellation)
+        let sourceInventory = try Self.inventoryClaudeRoots(roots, checkCancellation: checkCancellation)
         try checkCancellation?()
 
         let cacheContext = reportContext ?? .regular
@@ -833,7 +830,6 @@ extension CostUsageScanner {
             artifactStamps: (cache: cacheArtifactStamp, pricing: pricingArtifactStamp))
         let memo = CostUsageClaudeReportMemo.shared
         let priorMemo = memo.entry(provider: provider, canonicalCachePath: canonicalCachePath)
-        let sourceInventory = inventory.stamps
 
         if !options.forceRescan,
            let priorMemo,
@@ -895,7 +891,7 @@ extension CostUsageScanner {
                 artifact.sourceFileIDs = [:]
             }
             let changedPaths: Set<String> = if let priorMemo {
-                Set(inventory.files.keys.filter { path in
+                Set(sourceInventory.keys.filter { path in
                     priorMemo.sourceInventory[path] != sourceInventory[path]
                 })
             } else {
@@ -912,9 +908,9 @@ extension CostUsageScanner {
                 checkCancellation: checkCancellation,
                 reparseRowsAfterPreviousWindow: windowRolledForward)
 
-            for path in inventory.files.keys.sorted() {
-                guard let source = inventory.files[path] else { continue }
-                try Self.processClaudeFile(source: source, state: &scanState)
+            for path in sourceInventory.keys.sorted() {
+                guard let stamp = sourceInventory[path] else { continue }
+                try Self.processClaudeFile(path: path, stamp: stamp, state: &scanState)
             }
             try checkCancellation?()
 
@@ -956,27 +952,7 @@ extension CostUsageScanner {
         try checkCancellation?()
 
         artifact.usage = cache
-        // An ordinary refresh appends a few rows; the app writes such changes at most every few minutes and keeps them
-        // in memory, where the next scan reads them, in between (`WriteSchedule`).
-        let retainedStamp: CostUsageClaudeFileStamp? = if shouldMutateCache, !options.forceRescan, !forceFullScan,
-                                                          !windowRolledForward, !needsWindowScopedRebuild,
-                                                          !cacheArtifactChanged,
-                                                          CostUsageClaudeCacheIO.WriteSchedule.shared.shouldDefer(
-                                                              canonicalCachePath,
-                                                              now: Date())
-        {
-            CostUsageClaudeCacheIO.retainUnsaved(
-                provider: provider,
-                cache: artifact,
-                cacheRoot: options.cacheRoot,
-                reportContext: cacheContext,
-                calendar: range.calendar)
-        } else {
-            nil
-        }
-        let committedCacheStamp: CostUsageClaudeFileStamp? = if let retainedStamp {
-            retainedStamp
-        } else if shouldMutateCache {
+        let committedCacheStamp: CostUsageClaudeFileStamp? = if shouldMutateCache {
             try CostUsageClaudeCacheIO.save(
                 provider: provider,
                 cache: artifact,
@@ -1004,8 +980,7 @@ extension CostUsageScanner {
                 sourceInventory: sourceInventory,
                 reportKey: reportKey,
                 report: report,
-                hasWindowScopedRows: hasWindowScopedBaseline || (shouldMutateCache && forceFullScan),
-                persisting: retainedStamp == nil)
+                hasWindowScopedRows: hasWindowScopedBaseline || (shouldMutateCache && forceFullScan))
         }
         return report
     }
@@ -1152,17 +1127,16 @@ extension CostUsageScanner {
 
                 let incompleteCount = repricedCost?.incompleteRequestCount ?? 0
                 dayIncompleteCount += incompleteCount
-                let currentPricingCost: Double? = if let repricedCost,
-                                                     sampleCount > 0,
-                                                     repricedCost.sampleCount == sampleCount,
-                                                     !repricedCost.unresolved,
-                                                     repricedCost.total.isFinite
+                let cost: Double? = if let repricedCost,
+                                       sampleCount > 0,
+                                       repricedCost.sampleCount == sampleCount,
+                                       !repricedCost.unresolved,
+                                       repricedCost.total.isFinite
                 {
                     repricedCost.total
                 } else {
                     nil
                 }
-                let cost = currentPricingCost
                 breakdown.append(
                     CostUsageDailyReport.ModelBreakdown(
                         modelName: model,
@@ -1176,33 +1150,33 @@ extension CostUsageScanner {
                 }
             }
 
-            let sortedBreakdown = Self.sortedModelBreakdowns(breakdown)
-
             var dayTokens = dayInput
             dayTokens.merge(dayCacheRead)
             dayTokens.merge(dayCacheCreate)
             dayTokens.merge(dayOutput)
-            let dayTotal = dayTokens.value
             let entryCost = dayCostSeen && dayCost.isFinite ? dayCost : nil
             let unpricedCount = daySampleCount.value.flatMap { samples in
                 dayPricedCount.value.map { samples - $0 }
             }
+            // With request rows, completed requests for models without a price are known unpriced coverage,
+            // not missing history. Row-less legacy caches cannot prove that, so they keep the old shape.
+            let hasCoverageGap = dayIncompleteCount > 0 || (hasCompleteRows && (unpricedCount ?? 0) > 0)
             entries.append(CostUsageDailyReport.Entry(
                 date: day,
                 inputTokens: dayHasTokens ? dayInput.value : nil,
                 outputTokens: dayHasTokens ? dayOutput.value : nil,
                 cacheReadTokens: dayHasTokens ? dayCacheRead.value : nil,
                 cacheCreationTokens: dayHasTokens ? dayCacheCreate.value : nil,
-                totalTokens: dayHasTokens ? dayTotal : nil,
+                totalTokens: dayHasTokens ? dayTokens.value : nil,
                 requestCount: includeRequestCounts
                     ? daySampleCount.value.flatMap { CheckedSum.integers([$0, dayIncompleteCount]) }
                     : nil,
                 costUSD: entryCost,
                 modelsUsed: modelNames,
-                modelBreakdowns: sortedBreakdown,
-                unpricedRequestCount: dayIncompleteCount > 0 ? unpricedCount : nil,
+                modelBreakdowns: Self.sortedModelBreakdowns(breakdown),
+                unpricedRequestCount: hasCoverageGap ? unpricedCount : nil,
                 unmeteredRequestCount: dayIncompleteCount > 0 ? dayIncompleteCount : nil,
-                estimatedRequestCount: dayIncompleteCount > 0 ? dayPricedCount.value : nil))
+                estimatedRequestCount: hasCoverageGap ? dayPricedCount.value : nil))
 
             hasTokens = hasTokens || dayHasTokens
             totalInput.merge(dayInput)

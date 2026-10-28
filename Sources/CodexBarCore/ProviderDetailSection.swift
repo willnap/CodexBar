@@ -7,6 +7,10 @@ public struct ProviderDetailSection: Codable, Equatable, Sendable {
     public static let maximumStringLength = 120
 
     public struct Row: Codable, Equatable, Sendable {
+        public enum Severity: String, Codable, Equatable, Sendable {
+            case normal, warning, critical
+        }
+
         /// Numeric progress behind a row, when the provider knows both sides of a ratio.
         ///
         /// Rows are display strings by design; the bar needs real numbers, so a row that should
@@ -14,6 +18,9 @@ public struct ProviderDetailSection: Codable, Equatable, Sendable {
         public struct Progress: Codable, Equatable, Sendable {
             public let used: Double
             public let total: Double
+            /// Usage expected at this point under even consumption, in the same units as `used`.
+            /// Drives the native pace marker on the row's bar; nil when the provider has no pace.
+            public let expectedUsed: Double?
 
             /// Percent of the total consumed.
             ///
@@ -24,27 +31,41 @@ public struct ProviderDetailSection: Codable, Equatable, Sendable {
                 (self.used / self.total) * 100
             }
 
-            public init(used: Double, total: Double) throws {
+            /// Percent of the total expected to be consumed under even consumption, when known.
+            public var expectedUsedPercent: Double? {
+                self.expectedUsed.map { ($0 / self.total) * 100 }
+            }
+
+            public init(used: Double, total: Double, expectedUsed: Double? = nil) throws {
                 guard used.isFinite, total.isFinite else {
                     throw ValidationError("row.progress values must be finite")
                 }
                 guard total > 0 else {
                     throw ValidationError("row.progress.total must be positive")
                 }
+                if let expectedUsed {
+                    // Even consumption never runs past the allowance, unlike `used` on overage plans.
+                    guard expectedUsed.isFinite, (0...total).contains(expectedUsed) else {
+                        throw ValidationError("row.progress.expectedUsed must be between 0 and total")
+                    }
+                }
                 self.used = used
                 self.total = total
+                self.expectedUsed = expectedUsed
             }
 
             private enum CodingKeys: String, CodingKey {
                 case used
                 case total
+                case expectedUsed
             }
 
             public init(from decoder: Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
                 try self.init(
                     used: container.decode(Double.self, forKey: .used),
-                    total: container.decode(Double.self, forKey: .total))
+                    total: container.decode(Double.self, forKey: .total),
+                    expectedUsed: container.decodeIfPresent(Double.self, forKey: .expectedUsed))
             }
         }
 
@@ -55,6 +76,7 @@ public struct ProviderDetailSection: Codable, Equatable, Sendable {
         public let value: String
         public let secondaryValue: String?
         public let progress: Progress?
+        public let severity: Severity?
         /// Numeric usage behind the row when known, so a cached row can be rebuilt into a ratio
         /// (or stripped back to plain text) without parsing the display string. Independent of
         /// `progress`, which only exists when both sides of a ratio are known.
@@ -66,6 +88,7 @@ public struct ProviderDetailSection: Codable, Equatable, Sendable {
             value: String,
             secondaryValue: String? = nil,
             progress: Progress? = nil,
+            severity: Severity? = nil,
             usageValue: Double? = nil) throws
         {
             self.id = try ProviderDetailSection.optionalString(id, path: "row.id")
@@ -73,6 +96,7 @@ public struct ProviderDetailSection: Codable, Equatable, Sendable {
             self.value = try ProviderDetailSection.requiredString(value, path: "row.value")
             self.secondaryValue = try ProviderDetailSection.optionalString(secondaryValue, path: "row.secondaryValue")
             self.progress = progress
+            self.severity = severity
             if let usageValue {
                 guard usageValue.isFinite else {
                     throw ValidationError("row.usageValue must be finite")
@@ -87,6 +111,7 @@ public struct ProviderDetailSection: Codable, Equatable, Sendable {
             case value
             case secondaryValue
             case progress
+            case severity
             case usageValue
         }
 
@@ -98,6 +123,7 @@ public struct ProviderDetailSection: Codable, Equatable, Sendable {
                 value: container.decode(String.self, forKey: .value),
                 secondaryValue: container.decodeIfPresent(String.self, forKey: .secondaryValue),
                 progress: container.decodeIfPresent(Progress.self, forKey: .progress),
+                severity: container.decodeIfPresent(Severity.self, forKey: .severity),
                 usageValue: container.decodeIfPresent(Double.self, forKey: .usageValue))
         }
     }

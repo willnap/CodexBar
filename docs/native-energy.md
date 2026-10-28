@@ -43,8 +43,9 @@ removed, reordered and partly incomplete transcripts and a range change). A new 
 rebuilds everything; legacy caches without rows keep the full rebuild.
 
 **Claude caches were rewritten on every scan.** The 80 MB transcript cache and its 33 MB memo were encoded and written
-after each refresh. The app keeps changed caches in memory and writes them at most every ten minutes; after a relaunch,
-transcripts that changed since the last write are parsed again. The CLI and tests still write every change.
+after each refresh. The redesign first deferred those writes to every ten minutes; upstream's sharded cache (project
+shards behind a manifest, see [Claude](claude.md)) now writes only the shards a refresh changed, so writes happen on
+every change again without rewriting the whole cache, and the deferral was dropped when the two were merged.
 
 **Kimi re-listed every session directory.** About 6,900 session and agent directories were enumerated on each pass
 (6.7 s of a refresh). Each directory's listing is kept until that directory's modification date changes.

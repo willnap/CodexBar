@@ -126,8 +126,8 @@ struct ClaudeOAuthResetCreditsTests {
         let payload = Self.payload(block: Self.eligibleBlock)
             .replacingOccurrences(of: #""five_hour":{"utilization":12},"#, with: "")
         let usage = try ClaudeUsageFetcher._mapOAuthUsageForTesting(Data(payload.utf8))
-        #expect(usage.primaryWindowKind == .spendLimit)
-        #expect(usage.primary.usedPercent == 30)
+        #expect(usage.primary == nil)
+        #expect(usage.providerCost?.spendLimitWindow?.usedPercent == 30)
         #expect(usage.secondary == nil)
         #expect(usage.opus == nil)
         #expect(usage.providerCost?.used == 3)
@@ -150,7 +150,7 @@ struct ClaudeOAuthResetCreditsTests {
     ])
     func `absent, ineligible or malformed inventory stays unknown beside quota and spend`(block: String) throws {
         let usage = try ClaudeUsageFetcher._mapOAuthUsageForTesting(Data(Self.payload(block: block).utf8))
-        #expect(usage.primary.usedPercent == 12)
+        #expect(usage.primary?.usedPercent == 12)
         #expect(usage.providerCost != nil)
         #expect(usage.resetCredits == nil)
     }
@@ -160,7 +160,7 @@ struct ClaudeOAuthResetCreditsTests {
     ])
     func `a received empty grant list is a measured zero beside quota and spend`(block: String) throws {
         let usage = try ClaudeUsageFetcher._mapOAuthUsageForTesting(Data(Self.payload(block: block).utf8))
-        #expect(usage.primary.usedPercent == 12)
+        #expect(usage.primary?.usedPercent == 12)
         #expect(usage.providerCost != nil)
         #expect(usage.resetCredits?.expirations.isEmpty == true)
         #expect(usage.resetCredits?.usedExpirations.isEmpty == true)
@@ -173,7 +173,7 @@ struct ClaudeOAuthResetCreditsTests {
         let credits = try #require(usage.resetCredits)
         #expect(credits.expirations.isEmpty)
         #expect(credits.usedExpirations == [ISO8601DateParser.parse("2099-01-01T00:00:00+00:00")])
-        #expect(usage.primary.usedPercent == 12)
+        #expect(usage.primary?.usedPercent == 12)
     }
 
     @Test
@@ -226,7 +226,7 @@ struct ClaudeOAuthResetCreditsTests {
             .joined(separator: ",")
         let usage = try ClaudeUsageFetcher._mapOAuthUsageForTesting(Data(Self.payload(
             block: "{\"eligible\":true,\"grants\":[\(grants)]}").utf8))
-        #expect(usage.primary.usedPercent == 12)
+        #expect(usage.primary?.usedPercent == 12)
         #expect(usage.resetCredits?.expirations.count == (count <= 200 ? 1 : nil))
     }
 

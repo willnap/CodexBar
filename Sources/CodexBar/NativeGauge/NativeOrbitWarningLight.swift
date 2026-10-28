@@ -464,7 +464,7 @@ enum NativeOrbitFetchFault {
             switch error {
             case .cloudflareChallenge:
                 return .init(.botCheck, .caution, Self.condition(.botCheck), action: .settings)
-            case .noSessionKeyFound, .invalidSessionKey:
+            case .noSessionKeyFound, .noDesktopSessionKeyFound, .invalidSessionKey:
                 return .init(.browserSession, .caution, Self.condition(.browserSession), action: .settings)
             case .unauthorized:
                 return Self.signInLight(name)

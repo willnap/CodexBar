@@ -63,6 +63,7 @@ enum BurnProviderChoice: String, AppEnum {
     case bifrost
     case aixy
     case deepgram
+    case soniox
     case poe
     case chutes
     case neuralwatt
@@ -94,6 +95,7 @@ enum BurnProviderChoice: String, AppEnum {
     case vercel
     case llmman
     case xkiro
+    case futureagi
     case museai
     case lithosai
     case workbuddy
@@ -105,6 +107,14 @@ enum BurnProviderChoice: String, AppEnum {
     case aerostack
     case sailresearch
     case sofya
+    case fal
+    case flora
+    case parallel
+    case claudeplatform
+    case munito
+    case traecn
+    case chatbox
+    case abliteration
 
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Provider")
 
@@ -169,6 +179,7 @@ enum BurnProviderChoice: String, AppEnum {
         .bifrost: DisplayRepresentation(title: "Bifrost"),
         .aixy: DisplayRepresentation(title: "Aixy"),
         .deepgram: DisplayRepresentation(title: "Deepgram"),
+        .soniox: DisplayRepresentation(title: "Soniox"),
         .poe: DisplayRepresentation(title: "Poe"),
         .chutes: DisplayRepresentation(title: "Chutes"),
         .neuralwatt: DisplayRepresentation(title: "Neuralwatt"),
@@ -190,8 +201,8 @@ enum BurnProviderChoice: String, AppEnum {
         .replicate: DisplayRepresentation(title: "Replicate"),
         .huggingface: DisplayRepresentation(title: "Hugging Face"),
         .raycast: DisplayRepresentation(title: "Raycast"),
-        .pi: DisplayRepresentation(title: "Pi"),
         // Provider-specific by design: AppIntents requires literal catalog titles; snapshot data gates eligibility.
+        .pi: DisplayRepresentation(title: "Pi"),
         .v0: DisplayRepresentation(title: "v0"),
         .typesafe: DisplayRepresentation(title: "TypeSafe"),
         .hyper: DisplayRepresentation(title: "Charm Hyper"),
@@ -201,6 +212,7 @@ enum BurnProviderChoice: String, AppEnum {
         .vercel: DisplayRepresentation(title: "Vercel AI Gateway"),
         .llmman: DisplayRepresentation(title: "llmman"),
         .xkiro: DisplayRepresentation(title: "xKiro"),
+        .futureagi: DisplayRepresentation(title: "Future AGI"),
         .museai: DisplayRepresentation(title: "Muse (muse.ai)"),
         .lithosai: DisplayRepresentation(title: "LithosAI"),
         .workbuddy: DisplayRepresentation(title: "WorkBuddy"),
@@ -212,6 +224,14 @@ enum BurnProviderChoice: String, AppEnum {
         .aerostack: DisplayRepresentation(title: "Aerostack"),
         .sailresearch: DisplayRepresentation(title: "Sail Research"),
         .sofya: DisplayRepresentation(title: "Sofya"),
+        .fal: DisplayRepresentation(title: "fal"),
+        .flora: DisplayRepresentation(title: "FLORA"),
+        .parallel: DisplayRepresentation(title: "Parallel"),
+        .claudeplatform: DisplayRepresentation(title: "Claude Platform"),
+        .munito: DisplayRepresentation(title: "Munito"),
+        .traecn: DisplayRepresentation(title: "Trae CN"),
+        .chatbox: DisplayRepresentation(title: "Chatbox AI"),
+        .abliteration: DisplayRepresentation(title: "abliteration.ai"),
     ]
 
     var provider: UsageProvider {

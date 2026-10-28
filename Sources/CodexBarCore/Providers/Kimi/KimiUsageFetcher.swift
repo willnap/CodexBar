@@ -23,6 +23,26 @@ public struct KimiUsageFetcher: Sendable {
         readsProfile: Bool = false,
         transport: any ProviderHTTPTransport = ProviderHTTPClient.shared) async throws -> KimiUsageSnapshot
     {
+        try await self.fetchCodeAPIUsage(
+            apiKey: apiKey,
+            region: region,
+            baseURL: baseURL,
+            identityHeaders: identityHeaders,
+            webCredential: webAuthToken.map { KimiWebCredential(token: $0) },
+            now: now,
+            transport: transport)
+    }
+
+    static func fetchCodeAPIUsage(
+        apiKey: String,
+        region: KimiRegion = .china,
+        baseURL: URL? = nil,
+        identityHeaders: [String: String] = [:],
+        webCredential: KimiWebCredential?,
+        readsProfile: Bool = false,
+        now: Date = Date(),
+        transport: any ProviderHTTPTransport = ProviderHTTPClient.shared) async throws -> KimiUsageSnapshot
+    {
         guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw KimiAPIError.missingAPIKey
         }
@@ -51,13 +71,12 @@ public struct KimiUsageFetcher: Sendable {
         }
 
         var snapshot = try self.parseCodeAPIUsage(from: data, now: now)
-        if let webAuthToken {
+        if let webCredential {
             snapshot = try await self.enrichCodeAPIUsage(
                 snapshot,
-                webAuthToken: webAuthToken,
+                webAuthToken: webCredential.token,
                 region: region,
-                now: now,
-                transport: transport)
+                transport: webCredential.transport(transport, region: region))
         }
         // Best effort: the profile names the login and its plan, and never holds up or fails the usage reading.
         if readsProfile, let profile = await self.fetchCodeProfile(
@@ -68,10 +87,23 @@ public struct KimiUsageFetcher: Sendable {
             if snapshot.planName == nil { snapshot.planName = profile.plan }
         }
         snapshot.historyOwnerID = self.historyOwnerID(
-            endpoint: endpoint, credential: apiKey, enrichmentCredential: webAuthToken)
+            endpoint: endpoint, credential: apiKey, enrichmentCredential: webCredential?.token)
         snapshot.historyOwnerAliases = self.legacyHistoryOwnerID(
-            endpoint: endpoint, credential: apiKey, enrichmentCredential: webAuthToken).map { [$0] }
+            endpoint: endpoint, credential: apiKey, enrichmentCredential: webCredential?.token).map { [$0] }
         return snapshot
+    }
+
+    static func fetchUsage(
+        credential: KimiWebCredential,
+        region: KimiRegion,
+        now: Date = Date(),
+        transport: any ProviderHTTPTransport = ProviderHTTPClient.shared) async throws -> KimiUsageSnapshot
+    {
+        try await self.fetchUsage(
+            authToken: credential.token,
+            region: region,
+            now: now,
+            transport: credential.transport(transport, region: region))
     }
 
     public static func fetchUsage(
@@ -90,10 +122,10 @@ public struct KimiUsageFetcher: Sendable {
             transport: transport,
             grace: subscriptionGrace ?? .seconds(self.subscriptionGraceSeconds))
 
-        let codingUsage: KimiUsage
+        let codingUsage: KimiUsage?
         do {
             codingUsage = try await withTaskCancellationHandler {
-                try await self.fetchRequiredUsage(
+                try await self.fetchCodingUsage(
                     authToken: authToken,
                     region: region,
                     sessionInfo: sessionInfo,
@@ -109,17 +141,22 @@ public struct KimiUsageFetcher: Sendable {
 
         let subscription = try await enrichment.value()
 
-        let rateLimit = codingUsage.limits?.first
+        let rateLimit = codingUsage?.limits?.first
         var snapshot = KimiUsageSnapshot(
-            weekly: codingUsage.detail,
+            weekly: codingUsage?.detail,
             rateLimit: rateLimit?.detail,
             rateLimitWindow: rateLimit?.window,
             subscriptionBalance: subscription.stats?.subscriptionBalance,
             subscriptionCodeWeeklyLimit: subscription.stats?.ratelimitCode7d,
+            giftBalances: subscription.stats?.giftBalances,
             planName: subscription.plan?.planName,
             subscriptionStatus: subscription.plan?.subscription?.status,
             subscriptionIsActive: subscription.plan?.subscription?.active,
             updatedAt: now)
+        // A lapsed Code plan can still have a usable membership quota.
+        if codingUsage == nil, snapshot.toUsageSnapshot().extraRateWindows?.isEmpty != false {
+            throw KimiAPIError.parseFailed("FEATURE_CODING scope not found in response")
+        }
         snapshot.historyOwnerID = self.historyOwnerID(endpoint: region.webBaseURL, credential: authToken)
         snapshot.historyOwnerAliases = self.legacyHistoryOwnerID(endpoint: region.webBaseURL, credential: authToken)
             .map { [$0] }
@@ -167,18 +204,17 @@ public struct KimiUsageFetcher: Sendable {
         return "kimi-credential-v1:" + SHA256.hash(data: material).map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func fetchRequiredUsage(
+    private static func fetchCodingUsage(
         authToken: String,
         region: KimiRegion = .china,
         sessionInfo: SessionInfo?,
-        transport: any ProviderHTTPTransport) async throws -> KimiUsage
+        transport: any ProviderHTTPTransport) async throws -> KimiUsage?
     {
         var request = self.webRequest(
             url: region.webBaseURL.appendingPathComponent("apiv2/kimi.gateway.billing.v1.BillingService/GetUsages"),
             authToken: authToken,
             sessionInfo: sessionInfo)
-        let requestBody = ["scope": ["FEATURE_CODING"]]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: requestBody)
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["scope": ["FEATURE_CODING"]])
 
         let response = try await transport.response(for: request)
         let data = response.data
@@ -196,18 +232,13 @@ public struct KimiUsageFetcher: Sendable {
         }
 
         let usageResponse = try JSONDecoder().decode(KimiUsageResponse.self, from: data)
-        guard let codingUsage = usageResponse.usages.first(where: { $0.scope == "FEATURE_CODING" }) else {
-            throw KimiAPIError.parseFailed("FEATURE_CODING scope not found in response")
-        }
-
-        return codingUsage
+        return usageResponse.usages?.first(where: { $0.scope == "FEATURE_CODING" })
     }
 
     private static func enrichCodeAPIUsage(
         _ snapshot: KimiUsageSnapshot,
         webAuthToken: String,
         region: KimiRegion,
-        now: Date,
         transport: any ProviderHTTPTransport) async throws -> KimiUsageSnapshot
     {
         let sessionInfo = self.decodeSessionInfo(from: webAuthToken)
@@ -219,18 +250,14 @@ public struct KimiUsageFetcher: Sendable {
             grace: .seconds(self.subscriptionGraceSeconds),
             includePlan: snapshot.planName == nil)
         let subscription = try await enrichment.value()
-        return KimiUsageSnapshot(
-            weekly: snapshot.weekly,
-            rateLimit: snapshot.rateLimit,
-            rateLimitWindow: snapshot.rateLimitWindow,
-            subscriptionBalance: subscription.stats?.subscriptionBalance,
-            subscriptionCodeWeeklyLimit: subscription.stats?.ratelimitCode7d,
-            codeUsagePools: snapshot.codeUsagePools,
-            boosterCost: snapshot.boosterCost,
-            planName: snapshot.planName ?? subscription.plan?.planName,
-            subscriptionStatus: subscription.plan?.subscription?.status ?? snapshot.subscriptionStatus,
-            subscriptionIsActive: subscription.plan?.subscription?.active ?? snapshot.subscriptionIsActive,
-            updatedAt: now)
+        var enriched = snapshot
+        enriched.subscriptionBalance = subscription.stats?.subscriptionBalance
+        enriched.subscriptionCodeWeeklyLimit = subscription.stats?.ratelimitCode7d
+        enriched.giftBalances = subscription.stats?.giftBalances
+        enriched.planName = snapshot.planName ?? subscription.plan?.planName
+        enriched.subscriptionStatus = subscription.plan?.subscription?.status ?? snapshot.subscriptionStatus
+        enriched.subscriptionIsActive = subscription.plan?.subscription?.active ?? snapshot.subscriptionIsActive
+        return enriched
     }
 
     static func parseCodeAPIUsage(from data: Data, now: Date = Date()) throws -> KimiUsageSnapshot {
@@ -418,6 +445,11 @@ public struct KimiUsageFetcher: Sendable {
         return try JSONDecoder().decode(KimiSubscriptionStatsResponse.self, from: response.data)
     }
 
+    /// Kimi serves gift names in Chinese for unsupported languages; keep other UI languages on English.
+    static func webLanguage(for locale: Locale) -> String {
+        locale.language.languageCode?.identifier == "zh" ? "zh-CN" : "en-US"
+    }
+
     private static func webRequest(url: URL, authToken: String, sessionInfo: SessionInfo?) -> URLRequest {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -433,19 +465,13 @@ public struct KimiUsageFetcher: Sendable {
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("1", forHTTPHeaderField: "connect-protocol-version")
-        request.setValue("en-US", forHTTPHeaderField: "x-language")
+        request.setValue(Self.webLanguage(for: UsageFormatter.currentLocale()), forHTTPHeaderField: "x-language")
         request.setValue("web", forHTTPHeaderField: "x-msh-platform")
         request.setValue(TimeZone.current.identifier, forHTTPHeaderField: "r-timezone")
 
-        if let deviceId = sessionInfo?.deviceId {
-            request.setValue(deviceId, forHTTPHeaderField: "x-msh-device-id")
-        }
-        if let sessionId = sessionInfo?.sessionId {
-            request.setValue(sessionId, forHTTPHeaderField: "x-msh-session-id")
-        }
-        if let trafficId = sessionInfo?.trafficId {
-            request.setValue(trafficId, forHTTPHeaderField: "x-traffic-id")
-        }
+        request.setValue(sessionInfo?.deviceId, forHTTPHeaderField: "x-msh-device-id")
+        request.setValue(sessionInfo?.sessionId, forHTTPHeaderField: "x-msh-session-id")
+        request.setValue(sessionInfo?.trafficId, forHTTPHeaderField: "x-traffic-id")
         return request
     }
 

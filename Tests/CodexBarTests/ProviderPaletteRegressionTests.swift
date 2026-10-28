@@ -48,12 +48,14 @@ struct ProviderPaletteRegressionTests {
         .init(.notion, 0x337EA9, 0x337EA9, 0x337EA9),
         .init(.opencode, 0x3B82F6, 0x3B82F6, 0x3B82F6),
         .init(.perplexity, 0x20B2AA, 0x20B2AA, 0x20B2AA),
+        .init(.pi, 0x7C3AED, 0x4D9ABF, 0x4D9ABF),
         .init(.qoder, 0x10B981, 0x10B981, 0x10B981),
         .init(.sakana, 0x2975DB, 0x2975DB, 0x2975DB),
         .init(.sub2api, 0x2DC6D8, 0x14B8A6, 0x14B8A6),
         .init(.t3chat, 0xF56647, 0xF56647, 0xF56647),
         .init(.venice, 0x3399FF, 0x3C8FDD, 0x3C8FDD),
         .init(.warp, 0x938BB4, 0x938BB4, 0x938BB4),
+        .init(.workbuddy, 0x0DC8A6, 0x0DC8A6, 0x0DC8A6),
     ]
 
     @Test(arguments: Self.palettes)
@@ -105,6 +107,14 @@ struct ProviderPaletteRegressionTests {
         }) {
             #expect(tile.contains("--brand:\(hex)"))
         }
+    }
+
+    @Test
+    func `pi uses its official website palette and current repository`() {
+        let descriptor = PiProviderDescriptor.descriptor
+        #expect(descriptor.branding.color == ProviderColor(hex: 0x4D9ABF))
+        #expect(descriptor.branding.confettiPalette == [0xF09082, 0x4D9ABF, 0xF1BE58].map(ProviderColor.init(hex:)))
+        #expect(descriptor.metadata.dashboardURL == "https://github.com/earendil-works/pi")
     }
 
     private static func contrast(_ color: ProviderColor, _ background: ProviderColor) -> Double {

@@ -124,8 +124,8 @@ extension UsageStore {
     /// The provider's quota warning thresholds, as its notifications use them, set where the fuel light comes on.
     func nativeFuelReserve(_ provider: UsageProvider) -> NativeOrbitWarningSignals.FuelReserve {
         .init(
-            thresholds: self.settings.resolvedQuotaWarningThresholds(provider: provider, window: .session),
-            weekly: self.settings.resolvedQuotaWarningThresholds(provider: provider, window: .weekly))
+            thresholds: self.settings.resolvedQuotaWarningThresholds(provider: provider.instanceID, window: .session),
+            weekly: self.settings.resolvedQuotaWarningThresholds(provider: provider.instanceID, window: .weekly))
     }
 
     /// Extra-usage spend this close to its cap lights the spend-cap light amber; at the cap, red.

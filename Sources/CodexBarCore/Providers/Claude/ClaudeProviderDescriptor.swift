@@ -5,7 +5,7 @@ public enum ClaudeProviderDescriptor {
     public static let descriptor: ProviderDescriptor = Self.makeDescriptor()
     private static var browserCookieOrder: BrowserCookieImportOrder? {
         #if os(macOS)
-        [.chrome] + Browser.defaultImportOrder.filter { $0 != .chrome }
+        [.chrome] + Browser.defaultImportOrder.filter { $0 != .chrome } + [.claudeDesktop]
         #else
         nil
         #endif
@@ -85,40 +85,46 @@ public enum ClaudeProviderDescriptor {
             }
         })
 
+    private static let settingsSection = ProviderSettingsSectionRegistration(
+        ClaudeProviderSettingsKey.self,
+        supportsConfigCookieHeader: true,
+        credentialSettings: { context in
+            let manualCookieHeader = context.account == nil ? context.config?.sanitizedCookieHeader : nil
+            let routing = ClaudeCredentialRouting.resolve(
+                tokenAccountToken: context.account?.token,
+                manualCookieHeader: manualCookieHeader)
+            let source: ClaudeUsageDataSource = if context.account != nil {
+                switch routing {
+                case .adminAPIKey: .api
+                case .oauth: .oauth
+                case .webCookie: .web
+                case .none: .auto
+                }
+            } else if routing.adminAPIKey != nil {
+                .api
+            } else if routing.isOAuth {
+                .oauth
+            } else {
+                .auto
+            }
+            let cookieSource: ProviderCookieSource = routing.isOAuth || routing.adminAPIKey != nil
+                ? .off
+                : context.cookieSettings(for: .claude).cookieSource
+            return ClaudeProviderSettings(
+                usageDataSource: source,
+                webExtrasEnabled: false,
+                cookieSource: cookieSource,
+                manualCookieHeader: routing.manualCookieHeader,
+                organizationID: context.account?.sanitizedOrganizationID,
+                desktopCookiesEnabled: context.config?.claudeDesktopCookiesEnabled ?? false)
+        })
+
     static func makeDescriptor() -> ProviderDescriptor {
         ProviderDescriptor(
             id: .claude,
             menuBarMetrics: ProviderMenuBarMetricCapabilities(
                 supported: [.automatic, .primary, .secondary, .primaryAndSecondary, .extraUsage]),
-            settingsSection: .init(ClaudeProviderSettingsKey.self, credentialSettings: { context in
-                let manualCookieHeader = context.account == nil ? context.config?.sanitizedCookieHeader : nil
-                let routing = ClaudeCredentialRouting.resolve(
-                    tokenAccountToken: context.account?.token,
-                    manualCookieHeader: manualCookieHeader)
-                let source: ClaudeUsageDataSource = if context.account != nil {
-                    switch routing {
-                    case .adminAPIKey: .api
-                    case .oauth: .oauth
-                    case .webCookie: .web
-                    case .none: .auto
-                    }
-                } else if routing.adminAPIKey != nil {
-                    .api
-                } else if routing.isOAuth {
-                    .oauth
-                } else {
-                    .auto
-                }
-                let cookieSource: ProviderCookieSource = routing.isOAuth || routing.adminAPIKey != nil
-                    ? .off
-                    : context.cookieSettings(for: .claude).cookieSource
-                return ClaudeProviderSettings(
-                    usageDataSource: source,
-                    webExtrasEnabled: false,
-                    cookieSource: cookieSource,
-                    manualCookieHeader: routing.manualCookieHeader,
-                    organizationID: context.account?.sanitizedOrganizationID)
-            }),
+            settingsSection: self.settingsSection,
             credentials: self.credentials,
             metadata: ProviderMetadata(
                 id: .claude,
@@ -147,7 +153,7 @@ public enum ClaudeProviderDescriptor {
                     notificationSimulationOrder: 1,
                     errorSimulationOrder: 1),
                 browserCookieOrder: self.browserCookieOrder,
-                dashboardURL: "https://console.anthropic.com/settings/billing",
+                dashboardURL: "https://platform.claude.com/usage",
                 subscriptionDashboardURL: "https://claude.ai/settings/usage",
                 changelogURL: "https://github.com/anthropics/claude-code/releases",
                 statusPageURL: "https://status.claude.com/"),
@@ -169,11 +175,7 @@ public enum ClaudeProviderDescriptor {
                 settingsStatusOrder: 0,
                 estimateDisclaimer: "Estimated from local Claude logs at API rates; token totals include cache " +
                     "read/write tokens and may differ from Claude Code /status."),
-            pace: ProviderPaceCapability(
-                primary: .session(maximumMinutes: 300),
-                secondary: .weekly,
-                tertiary: .weekly,
-                sessionPaceWindowRule: .custom { _, _ in true }),
+            pace: self.pace,
             history: .alwaysTracked,
             presentation: ProviderUsagePresentation(
                 identityPresenter: { provider, snapshot in
@@ -202,8 +204,10 @@ public enum ClaudeProviderDescriptor {
                         balances: balances,
                         menuCardStyle: .claude)
                 },
+                iconWindowResolver: self.iconWindows,
                 iconDecorations: [.notches],
                 reservesMissingSecondaryIconLane: true,
+                menuBarBalanceUsesPrepaidCost: true,
                 automaticSelectionPrioritizesExhaustedWindow: false,
                 menuBarWindowResolver: self.menuBarWindow,
                 planUtilizationSeriesResolver: { snapshot in
@@ -237,6 +241,25 @@ public enum ClaudeProviderDescriptor {
             nativeAppBundleIdentifiers: ["com.anthropic.claudefordesktop"])
     }
 
+    private static let pace = ProviderPaceCapability(
+        resetWindowPace: ProviderPaceCapability.calendarMonthResetWindow.resetWindowPace,
+        inferredMonthlyDuration: ProviderPaceCapability.calendarMonthResetWindow.inferredMonthlyDuration,
+        primary: .session(maximumMinutes: 300),
+        secondary: .weekly,
+        tertiary: .weekly,
+        sessionPaceWindowRule: .custom { _, _ in true })
+
+    private static func iconWindows(context: ProviderIconWindowContext) -> ProviderUsageWindowPair {
+        let resolution = self.menuBarWindow(context: .init(
+            metric: .automatic,
+            snapshot: context.snapshot,
+            supportsAverage: false,
+            prioritizesExhaustedQuotas: false,
+            now: context.now))
+        if case let .resolved(window) = resolution { return .init(primary: window, secondary: nil) }
+        return .init(primary: context.snapshot.primary?.measured, secondary: context.snapshot.secondary)
+    }
+
     private static let pipeline = ProviderFetchPipeline(
         resolveStrategies: ClaudeProviderDescriptor.resolveStrategies,
         resolveFallbackError: ClaudeProviderDescriptor.resolveFallbackError)
@@ -250,13 +273,19 @@ public enum ClaudeProviderDescriptor {
     private static func menuBarWindow(
         context: ProviderMenuBarWindowContext) -> ProviderMenuBarWindowResolution
     {
+        if context.metric == .extraUsage { return .resolved(context.snapshot.claudeMonthlySpendWindow?.window) }
+        if context.metric == .automatic {
+            let quotas = [context.snapshot.primary, context.snapshot.secondary].compactMap(\.self)
+                .filter { !$0.isSyntheticPlaceholder }
+            if !quotas.isEmpty { return .automaticCandidates(quotas) }
+        }
         guard context.metric == .automatic || context.metric == .primaryAndSecondary,
               context.snapshot.secondary == nil,
               context.snapshot.tertiary == nil,
               context.snapshot.primary == nil || context.snapshot.primary?.isSyntheticPlaceholder == true
         else { return .unhandled }
         let window = context.snapshot.claudeScopedWeeklyWindow?.window
-            ?? context.snapshot.providerCost.flatMap { $0.limit > 0 ? $0.spendLimitWindow : nil }
+            ?? context.snapshot.claudeMonthlySpendWindow?.window
         return .resolved(window)
     }
 
@@ -285,7 +314,9 @@ public enum ClaudeProviderDescriptor {
                 browserDetection: context.browserDetection,
                 hasWebFallback: false)]
         }
-        if context.sourceMode == .api || self.hasAutoAdminAPIKey(context: context) {
+        if context.sourceMode == .api ||
+            (context.sourceMode == .auto && ClaudeAdminAPISettingsReader.apiKey(environment: context.env) != nil)
+        {
             return [ClaudeAdminAPIFetchStrategy()]
         }
 
@@ -319,10 +350,6 @@ public enum ClaudeProviderDescriptor {
         }
     }
 
-    private static func hasAutoAdminAPIKey(context: ProviderFetchContext) -> Bool {
-        context.sourceMode == .auto && ClaudeAdminAPISettingsReader.apiKey(environment: context.env) != nil
-    }
-
     private static func isSelectedOAuthTokenAccount(context: ProviderFetchContext) -> Bool {
         guard context.selectedTokenAccountID != nil,
               context.settings?.claude?.usageDataSource == .oauth
@@ -345,18 +372,21 @@ public enum ClaudeProviderDescriptor {
     }
 
     private static func makePlanningInput(context: ProviderFetchContext) -> ClaudeSourcePlanningInput {
-        let webExtrasEnabled = context.settings?.claude?.webExtrasEnabled ?? false
-        let hasWebSession = Self.hasPlausibleWebSession(context: context)
+        #if os(Linux)
+        let shouldAttemptOAuth = context.sourceMode == .auto ||
+            (context.runtime == .app && context.sourceMode == .oauth)
+        #else
         let shouldAttemptOAuth = context.runtime == .app &&
             (context.sourceMode == .auto || context.sourceMode == .oauth)
+        #endif
 
         return ClaudeSourcePlanningInput(
             runtime: context.runtime,
             selectedDataSource: Self.sourceDataSource(from: context.sourceMode),
-            webExtrasEnabled: webExtrasEnabled,
-            hasWebSession: hasWebSession,
+            webExtrasEnabled: context.settings?.claude?.webExtrasEnabled ?? false,
+            hasWebSession: Self.hasPlausibleWebSession(context: context),
             hasCLI: ClaudeCLIResolver.isAvailable(environment: context.env),
-            // App Auto and explicit OAuth perform one real, noninteractive OAuth attempt. Do not preflight here:
+            // App Auto, Linux CLI Auto, and explicit OAuth plan a noninteractive attempt. Do not preflight here:
             // a preflight can mutate cache state and make the real fetch misclassify a typed error.
             hasOAuthCredentials: shouldAttemptOAuth)
     }
@@ -409,6 +439,9 @@ public enum ClaudeProviderDescriptor {
                 isAvailable: ClaudeWebAPIFetcher.hasSessionKey(cookieHeader: header),
                 manualCookieHeader: header)
         case .auto?, nil:
+            guard context.settings?.claude?.desktopCookiesEnabled != true else {
+                return WebEnrichmentAccess(isAvailable: false, manualCookieHeader: nil)
+            }
             let header = CookieHeaderCache.load(provider: .claude)?.cookieHeader
             return WebEnrichmentAccess(
                 isAvailable: ClaudeWebAPIFetcher.hasSessionKey(cookieHeader: header),
@@ -498,8 +531,11 @@ private struct ClaudePlannedFetchStrategy: ProviderFetchStrategy {
             return await self.base.isAvailable(context)
         }
         guard self.plannedStep.isPlausiblyAvailable else { return false }
+        // CLI Auto OAuth uses the same noninteractive credential check as explicit sources, so a
+        // logged-out user still gets `noAvailableStrategy` rather than an OAuth credential error.
         if self.plannedStep.dataSource == .cli ||
-            (context.runtime == .app && self.plannedStep.dataSource == .web)
+            (context.runtime == .app && self.plannedStep.dataSource == .web) ||
+            (context.runtime == .cli && self.plannedStep.dataSource == .oauth)
         {
             return await self.base.isAvailable(context)
         }
@@ -602,7 +638,7 @@ struct ClaudeOAuthFetchStrategy: ProviderFetchStrategy {
                 allowClaudeKeychainRepairWithoutPrompt: false,
                 clearInvalidCache: false)
             return false
-        } catch ClaudeOAuthCredentialsError.notFound {
+        } catch ClaudeOAuthCredentialsError.notFound, ClaudeOAuthCredentialsError.mcpOAuthOnlyKeychain {
             return true
         } catch ClaudeOAuthCredentialsError.credentialsChanged {
             return true
@@ -715,6 +751,7 @@ struct ClaudeOAuthFetchStrategy: ProviderFetchStrategy {
             oauthSafeCredentialSourcesOnly: context.sourceMode == .auto,
             preserveInvalidOAuthCache: context.sourceMode == .oauth,
             allowBackgroundDelegatedRefresh: false,
+            useDesktopCookies: context.settings?.claude?.desktopCookiesEnabled ?? false,
             useWebExtras: useWebExtras,
             manualCookieHeader: webEnrichmentAccess.manualCookieHeader,
             webOrganizationID: context.settings?.claude?.organizationID,
@@ -752,7 +789,7 @@ struct ClaudeOAuthFetchStrategy: ProviderFetchStrategy {
            let credentialsError = error as? ClaudeOAuthCredentialsError
         {
             switch credentialsError {
-            case .notFound, .credentialsChanged, .refreshDelegatedToClaudeCLI:
+            case .notFound, .credentialsChanged, .mcpOAuthOnlyKeychain, .refreshDelegatedToClaudeCLI:
                 return true
             default:
                 break
@@ -760,7 +797,11 @@ struct ClaudeOAuthFetchStrategy: ProviderFetchStrategy {
         }
         // In Auto mode, fall back to the next strategy (cli/web) when safe credentials are absent or OAuth fails.
         // Cancellation itself is always terminal.
+        #if os(Linux)
+        return context.sourceMode == .auto
+        #else
         return context.runtime == .app && context.sourceMode == .auto
+        #endif
     }
 
     fileprivate static func snapshot(
@@ -774,13 +815,12 @@ struct ClaudeOAuthFetchStrategy: ProviderFetchStrategy {
             accountOrganization: usage.accountOrganization,
             loginMethod: usage.loginMethod,
             widgetAccountOwnerID: usage.accountID)
-        let primary = usage.primaryWindowKind == .spendLimit ? nil : usage.primary
         var details = usage.resetCredits?.detailSections(now: usage.updatedAt) ?? []
         if includeOptionalUsage {
             details += usage.cloudCredits?.detailSections(now: usage.updatedAt) ?? []
         }
         let snapshot = UsageSnapshot(
-            primary: primary,
+            primary: usage.primary,
             secondary: usage.secondary,
             tertiary: usage.opus,
             extraRateWindows: usage.extraRateWindows.isEmpty ? nil : usage.extraRateWindows,
@@ -928,7 +968,11 @@ struct ClaudeWebFetchStrategy: ProviderFetchStrategy {
                 return override(context, browserDetection)
             }
             #endif
-            return ClaudeWebAPIFetcher.hasSessionKey(browserDetection: browserDetection)
+            return ClaudeWebSessionKeyImport.$desktopApp.withValue(
+                context.settings?.claude?.desktopCookiesEnabled ?? false)
+            {
+                ClaudeWebAPIFetcher.hasSessionKey(browserDetection: browserDetection)
+            }
         }
         let race = BoundedTaskJoin(sourceTask: sourceTask)
         switch await race.value(joinGrace: timeout) {
@@ -970,6 +1014,7 @@ struct ClaudeWebFetchStrategy: ProviderFetchStrategy {
             let fetcher = ClaudeUsageFetcher(
                 browserDetection: self.browserDetection,
                 dataSource: .web,
+                useDesktopCookies: context.settings?.claude?.desktopCookiesEnabled ?? false,
                 useWebExtras: false,
                 manualCookieHeader: Self.manualCookieHeader(from: context),
                 webOrganizationID: context.settings?.claude?.organizationID,
@@ -1094,6 +1139,7 @@ struct ClaudeCLIFetchStrategy: ProviderFetchStrategy {
             browserDetection: browserDetection,
             environment: context.env,
             dataSource: .cli,
+            useDesktopCookies: context.settings?.claude?.desktopCookiesEnabled ?? false,
             useWebExtras: self.useWebExtras,
             manualCookieHeader: self.manualCookieHeader,
             webOrganizationID: context.settings?.claude?.organizationID,

@@ -9,6 +9,10 @@ read_when:
 
 # Codex provider
 
+Enable **Settings → Menu Bar → Show all accounts in Overview** to include this provider’s cached account
+cards in Overview. The existing account source and provider selection remain unchanged; see
+[Overview account rows](configuration.md#menu-bar-controls).
+
 The **Plan Usage** submenu includes recorded remaining-quota burndown above utilization history,
 including saved Monthly windows. See [recorded quota burndown](widgets/burndown-proof.md)
 for capture-age semantics and the existing history retention/privacy behavior.
@@ -50,6 +54,9 @@ Usage source picker:
 - The menu and provider settings list every still-available expiry, while the optional credits setting controls
   nearing-expiry notifications. CodexBar does not redeem or modify reset credits.
 - `rate_limit.primary_window` / `secondary_window` map to the session/weekly lanes.
+- When a response explicitly reports a fixed 30-day window (`limit_window_seconds: 2592000`),
+  pace uses those 43,200 minutes rather than inferring a calendar month from the reset date.
+  This also covers observed Free-plan responses; it does not assume every Free account has that window.
 - Suspicious weekly resets keep the last trusted usage while confirmation is pending. A successful refresh for the
   same account and workspace clears stale connectivity errors even when the reading is withheld; failed, cancelled,
   or superseded refreshes do not clear them. Cached usage, credits, and other accounts remain unchanged.
@@ -109,6 +116,10 @@ Usage source picker:
   **Hide personal information** uses the same numbered account and workspace labels as the account switcher.
   Authorized OpenAI Code review usage remains on the followed account's row; sibling rows never inherit it,
   and same-email ambiguity keeps the existing display-only dashboard policy.
+- The provider settings catalogue lists optional credit-limit lanes for managed accounts even when optional usage
+  is off. Account previews still follow that switch. Real 30-day quota windows remain independently configurable;
+  they are not treated as optional credit balances. A shared control keeps that meaning when another account has an optional
+  monthly credit lane, regardless of account order.
 - Refresh an individual row or choose **Refresh all accounts** to visit every account in batches of up to six,
   without changing the followed account or promoting credentials to System. The provider header keeps its existing
   account-scoped refresh, including credits and OpenAI web extras. Zero or one account, and ambient PAT mode, keep
@@ -145,6 +156,13 @@ again immediately before the live replacement. External writers can still race a
 
 Saved-account removal and import repair retain an old managed home while another saved record references
 the same path. Cleanup still requires the managed-home safety checks and releases the home after its last reference.
+
+Registry write attempts under the account lock emit one bounded `codex-accounts` log entry with the operation,
+before/requested/written row counts, and success or failure. Successful managed-home deletions emit the operation
+only. These diagnostics contain no account identifiers, fingerprints, email addresses, home paths, tokens, or
+error descriptions. Enable file logging in Settings → Debug to include app mutations in the existing debug log.
+The logs can help investigate a future disappearance; they do not repair account loss, and missing log lines
+alone do not prove that an external process changed the registry.
 
 CLI promotion reads local files only and never requests Keychain access or starts login. It leaves
 the app's display selection and running Codex processes alone; `CODEX_HOME` selects the live destination.
@@ -232,6 +250,8 @@ and stable account numbers distinguish rows while usable workspace labels remain
 - Uses an off-screen `WKWebView` with a per-account `WKWebsiteDataStore`.
   - Store key: deterministic UUID from the normalized email.
 - WebKit store can hold multiple accounts concurrently.
+- Active page preparation and JavaScript evaluations share the refresh deadline. Expired pages are terminated and discarded; verified API usage remains available. Timeout diagnostics do not start new JavaScript after the deadline.
+- A browser session rejected for an account mismatch or a login requirement is removed only from the affected store. Imports into the same store finish validation and cleanup before the next import writes cookies; other accounts remain independent.
 - WebView acquisitions retain ownership during page preparation. Store eviction invalidates its pending preparations; evict-all invalidates all. Stale success/failure/timeout retries cannot displace replacements. Ordinary lease release leaves concurrent temporary views valid. Leases retain their cleanup owner independently of the cache and release once: validated pages allow brief reuse; other releases schedule deferred cleanup, including temporary views.
 - Cookie import (Automatic mode, when WebKit store has no matching session or login required):
   1) Safari: `~/Library/Cookies/Cookies.binarycookies`
@@ -320,6 +340,7 @@ and stable account numbers distinguish rows while usable workspace labels remain
 4) Last imported browser cookie email (cached).
 
 ## Credits
+- Monthly caps with a reported reset show a daily target using the remaining allowance and local calendar days. The target follows pace visibility; prepaid balances without a monthly cap do not get a target.
 - Background credits refreshes coalesce for the same account. Cancelling and replacing a refresh keeps the replacement tracked until it finishes; retired credits and history-backfill tasks cannot clear newer work.
 - Web dashboard fills credits only when OAuth/CLI do not provide them. Account-matched extra usage reconciles monthly caps and purchased balances separately; the optional credits setting controls visibility.
 - When usage reports limited workspace credits without an amount, an optional read of the account's `remaining_balance` endpoint uses the same OAuth or browser session. Access depends on workspace permissions. Failure preserves ordinary usage and monthly-limit data.
@@ -354,10 +375,19 @@ there is no `auth.json`. Local cost estimates do not require account identity or
 Managed and profile homes retain their separate history scopes; a home already represented by a visible account
 is not added again as a local source. This does not read the CLI's keyring credentials.
 
+The static musl Linux CLI reserves an 8 MiB thread stack so scanning non-empty Codex session logs
+does not exhaust musl's smaller default stack. The scanner and cache format stay shared with glibc and macOS.
+
 For a manual comparison with another development machine, run `codexbar cost --provider codex --remote <ssh-host>`.
 Both hosts scan their own native Codex logs once and return separate summaries, retaining their own day boundaries,
 pricing provenance, missing values, and incomplete-request counts. Only bounded totals cross SSH. A remote error keeps
 the local result and returns a nonzero exit code. See [CLI host reporting](cli.md) for the versioned summary contract.
+
+For copied or resumed histories, `cost --provider codex --identified-only --format json --remote <ssh-host>`
+reports an **identified-request subtotal** over one UTC window. Strong native session/response identities are
+deduplicated; conflicting identities and legacy/unidentified usage are excluded and reported. Combined prices are
+unavailable (`costUSD: null`). This opt-in CLI mode does not change ordinary cost reports or account quota.
+
 - Menu source selection:
   - By default, a selected managed account keeps its own `CODEX_HOME` session history.
   - **Local session cost estimates** is a Codex-only opt-in that instead scans this Mac's ambient `$CODEX_HOME`
@@ -453,6 +483,8 @@ the local result and returns a nonzero exit code. See [CLI host reporting](cli.m
     External writes invalidate cached data; database replacement or incompatible metadata reopens the reader through
     existing validation on its next access. Every read still reconciles file identities, and detailed report history
     remains transient. Scanner and writer connections keep separate ownership.
+    Status and activity views omit per-file request ledgers to reduce retained memory. Detailed reports, scanner
+    reconciliation, and persisted caches keep the ledger, including native turn-performance data.
   - Cached Codex rows share byte-identical turn-ID strings within each read, reducing retained memory for repeated turns.
     The temporary string index ends with that read; persisted row values, Unicode spellings, and pricing stay unchanged.
   - Report, scan-baseline, and workspace reads decode stored usage rows as SQLite yields them, avoiding a second copy of the
@@ -482,6 +514,19 @@ the local result and returns a nonzero exit code. See [CLI host reporting](cli.m
     requests are never estimated from current list prices or folded into an aggregate estimate, and the partial group
     has no Standard/Priority split. A day with any unpriced model or request reports `unpricedRequestCount`, so Usage &
     Spend and the CLI show its cost as a partial estimate. Fully priced days keep the day-level coverage count.
+  - [OpenAI's Help Center](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan)
+    says Auto-review safety checks are free and do not count toward plan limits when signed in with ChatGPT.
+    CodexBar assumes an effective cutoff of `2026-10-06T07:00:00Z` (midnight US Pacific), based on the
+    [reported October 6 announcement](https://nerdschalk.com/codex-auto-review-is-now-free-for-chatgpt-sign-ins/);
+    OpenAI's policy page does not specify the date, and earlier requests keep their previous pricing.
+    A `codex-auto-review` request at or after the cutoff is priced at $0 when its rollout's leaf `session_meta`
+    has a non-blank `creator_account_id`. [Upstream documents this field](https://github.com/openai/codex/blob/27065a91ccbf5ba8532844be3777fcf83b77820d/codex-rs/protocol/src/protocol.rs#L3249)
+    as the account selected at thread creation, unchanged on resume, so a ChatGPT-created session later resumed
+    with an API key still counts Auto-review at $0. Tokens remain in all totals; missing eligibility or unreliable
+    request evidence keeps previous pricing. The free price overrides catalog estimates; explicit
+    custom-pricing rates and saved monetary amounts still win. Classification affects report copies only. Parser revision 13 reparses files
+    through the normal scan budget to capture the flag; stores from `f406dae284de4a55` retain saved history and
+    checkpoints without a rebuild. Workspaces/Models analytics use a sidecar without this flag and remain unpriced.
   - Fully read empty session fragments retain completion records even when another file contributes the same session.
     They contribute no usage and reparse from the start if they grow. Usage-bearing duplicates and incomplete fragments
     keep their existing accounting and retry rules. Existing 0.56.4 cost caches are adopted without rebuilding
@@ -490,6 +535,8 @@ the local result and returns a nonzero exit code. See [CLI host reporting](cli.m
     Priority trace scans resume after ordinary log pruning when enough distributed content anchors still match;
     changed source rows, replaced databases, or insufficient matching anchors require a fresh scan. Temporary
     trace-database failures retain the last validated report pricing and leave scan freshness unchanged for retry.
+    Idle WAL trace databases without sidecars use a read-only immutable fallback when ordinary reads fail.
+    The fallback leaves the database and sidecars untouched; a file change during the read keeps validation pending for retry.
     Successful historical queries update their own pricing window independently of the live scan cursor, including
     results with no priority turns; validated pricing outside that window remains intact.
 - Window: configurable 1-365 day rolling history.
@@ -600,9 +647,16 @@ existing display identity projection.
 Codex session rows show the local thread title when available, with the project, model, and last-activity date
 beneath it. Untitled sessions use a shortened session ID. Titles come from `session_index.jsonl`, with the local
 thread database as a fallback; relative `CODEX_SQLITE_HOME` paths resolve against each rollout's original working
-directory, even when its project is grouped under a different canonical repository path.
+directory, even when its project is grouped under a different canonical repository path. The database fallback can
+contain the full first prompt, so only its first 256 Unicode code points are read, before whitespace trimming. This
+also limits the dashboard row tooltip. Names from `session_index.jsonl` keep their precedence and are not shortened by
+this limit.
 
-Rows rank by cost descending, with unpriced sessions last. Ties use tokens descending, activity time descending,
+The menu's **Cost → Conversations** rows also use these saved titles, with the shortened session ID available
+in the row tooltip. Missing or blank titles keep the existing `Session <id>` label. **Hide personal information**
+uses that same ID label; no new scans or metadata stores are needed for menu titles.
+
+Usage & Spend rows rank by cost descending, with unpriced sessions last. Ties use tokens descending, activity time descending,
 and source-qualified session ID ascending. The panel initially shows eight rows and can expand to the top 50.
 Dates use the dashboard's cost-bucketing time zone. Naming and ranking leave daily totals, the ledger, and existing
 per-session costs unchanged; an unpriced session remains unpriced, and a partially priced session shows the subtotal
@@ -614,9 +668,18 @@ this is display masking and does not remove metadata from local history or sanit
 
 ### Usage & Spend account rows
 
+Projects, Chats, and Sessions stay available for configured, visible native Codex accounts, including while a scan
+has no rows. When OpenCodex replaces combined totals, these tabs still show local Codex details without adding them
+to the combined totals. Bounded refreshes retain the last complete detail snapshot in memory for the same account,
+cache identity, history window, and bucket time zone; a completed empty scan clears the old rows. This retention
+does not add another persisted history format.
+
 Settings → Usage & Spend performs a separate fixed 30-day scan for every visible Codex account. Each request freezes
 the account source, exact Codex home, authentication fingerprint, and cache identity before scanning. A missing or
 invalid home is omitted; it never falls back to ambient `~/.codex` or to the global Codex token snapshot.
+
+Refreshing many accounts retains each account's successful history and reports failed scans instead of silently
+omitting them.
 
 These account rows intentionally exclude pi and OMP sessions because their history is machine-local rather than owned
 by one Codex account. The normal Codex cost menu and CLI scan continue to include supported pi-compatible history. The

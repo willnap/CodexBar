@@ -36,7 +36,7 @@ struct NativeClaudeComplicationSourceTests {
                 ],
             ])
             let oauth = try ClaudeUsageFetcher._mapOAuthUsageForTesting(data)
-            #expect(oauth.primary.usedPercent == 12)
+            #expect(oauth.primary?.usedPercent == 12)
             #expect(oauth.providerCost?.limit == (minor >= 0 ? 200 : nil))
         }
     }

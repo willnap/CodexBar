@@ -1,0 +1,301 @@
+import CodexBarCore
+import Foundation
+
+extension StatusItemController {
+    private nonisolated static let menuBarCountdownRefreshEpsilon: TimeInterval = 0.05
+
+    func scheduleMenuBarCountdownRefreshIfNeeded(now: Date = .init()) {
+        self.menuBarCountdownRefreshTask?.cancel()
+        self.menuBarCountdownRefreshTask = nil
+
+        var delays: [TimeInterval] = []
+        let providers = self.menuBarRefreshProviders()
+        let displayMode = self.settings.menuBarDisplayMode
+        let smartExhaustedActive = self.settings.menuBarShowsBrandIconWithPercent
+            && self.settings.menuBarShowsResetTimeWhenExhausted
+            && displayMode != .resetTime
+
+        var countdownResetDates: [Date] = []
+        var absoluteResetDates: [Date] = []
+        for provider in providers {
+            if self.settings.usesNativeGauges {
+                let gauge = self.store.nativeServicePresentation(for: provider).gauge
+                if self.settings.paceVisible, gauge.health == .live,
+                   gauge.resolvedWindows.contains(where: {
+                       $0.period >= 6 * 86400 && $0.period <= 8 * 86400 && $0.usedFraction != nil
+                           && $0.countdown?.isReliable == true && ($0.countdown?.nextReset ?? .distantPast) > now
+                   })
+                {
+                    // Pace changes with elapsed time even when an adaptive network refresh is idle.
+                    let secondsIntoMinute = now.timeIntervalSince1970.truncatingRemainder(dividingBy: 60)
+                    delays.append(60 - secondsIntoMinute + Self.menuBarCountdownRefreshEpsilon)
+                }
+                continue
+            }
+            let resolution = self.renderedMenuBarLayoutResolution(for: provider)
+            if !resolution.usesLegacyRendering,
+               self.settings.menuBarIconStyle == .iconAndPercent
+            {
+                countdownResetDates += self.menuBarLayoutResetDates(for: provider, now: now, absolute: false)
+                absoluteResetDates += self.menuBarLayoutResetDates(for: provider, now: now, absolute: true)
+                delays += self.menuBarConditionalResetDelays(
+                    provider: provider,
+                    resolution: resolution,
+                    now: now)
+                delays += self.menuBarConditionalElapsedDelays(
+                    provider: provider,
+                    resolution: resolution,
+                    now: now)
+                continue
+            }
+
+            guard self.settings.menuBarShowsBrandIconWithPercent,
+                  displayMode == .resetTime || smartExhaustedActive
+            else { continue }
+            let resetDates = self.menuBarDisplayedResetDates(for: provider, now: now)
+            switch self.settings.resetTimeDisplayStyle {
+            case .countdown:
+                countdownResetDates.append(contentsOf: resetDates)
+            case .absolute:
+                absoluteResetDates.append(contentsOf: resetDates)
+            }
+        }
+
+        if let delay = Self.menuBarCountdownRefreshDelay(resetDates: countdownResetDates, now: now) {
+            // Match the formatter's visible precision, then observe expiration for exhausted-lane transitions.
+            delays.append(delay)
+        }
+        if let delay = Self.menuBarAbsoluteRefreshDelay(resetDates: absoluteResetDates, now: now) {
+            // Absolute clocks don't tick each minute, but their human-friendly date label can change at
+            // local midnight (for example, "tomorrow" becomes a same-day time). Wake at that boundary or
+            // the reset itself, whichever comes first; the next icon update schedules any later boundary.
+            delays.append(delay)
+        }
+        if !self.settings.usesNativeGauges {
+            delays += self.menuBarPaceRefreshDelays(providers: providers, now: now)
+        }
+
+        if self.menuBarObservesCodexReset(providers: providers) {
+            let projection = self.store.codexConsumerProjection(surface: .menuBar, now: now)
+            if let resetAt = projection.nextMenuBarStateChangeAt {
+                delays.append(max(
+                    Self.menuBarCountdownRefreshEpsilon,
+                    resetAt.timeIntervalSince(now) + Self.menuBarCountdownRefreshEpsilon))
+            }
+        }
+        guard let delay = delays.min() else { return }
+
+        self.menuBarCountdownRefreshTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.menuBarCountdownRefreshTask = nil
+            self.updateIcons()
+        }
+    }
+
+    nonisolated static func menuBarCountdownRefreshDelay(
+        resetDates: [Date],
+        now: Date)
+        -> TimeInterval?
+    {
+        resetDates.compactMap { resetDate -> TimeInterval? in
+            let remaining = resetDate.timeIntervalSince(now)
+            guard remaining > 0 else { return nil }
+            let displayedMinutes = ceil(remaining / 60)
+            let displayedHours = floor(displayedMinutes / 60)
+            let nextMinutes = displayedMinutes >= 1440 && displayedHours.truncatingRemainder(dividingBy: 24) > 0
+                ? displayedHours * 60 - 1 : displayedMinutes - 1
+            let nextBoundaryRemaining = remaining >= 1 ? max(1, nextMinutes * 60) : 0
+            return max(
+                self.menuBarCountdownRefreshEpsilon,
+                remaining - nextBoundaryRemaining + self.menuBarCountdownRefreshEpsilon)
+        }.min()
+    }
+
+    nonisolated static func menuBarAbsoluteRefreshDelay(
+        resetDates: [Date],
+        now: Date,
+        calendar: Calendar = .current)
+        -> TimeInterval?
+    {
+        guard let nextDayStart = calendar.dateInterval(of: .day, for: now)?.end else { return nil }
+
+        return resetDates.compactMap { resetDate -> TimeInterval? in
+            guard resetDate > now else { return nil }
+            let nextTextChange = min(resetDate, nextDayStart)
+            return max(
+                self.menuBarCountdownRefreshEpsilon,
+                nextTextChange.timeIntervalSince(now) + self.menuBarCountdownRefreshEpsilon)
+        }.min()
+    }
+
+    /// Wake at `resetsAt - threshold` for every placed reset-countdown predicate. Nothing else in the
+    /// layout changes at that instant, so without this the branch would only flip on the next unrelated
+    /// refresh. Run-out predicates are deliberately excluded: their estimate drifts with usage rather
+    /// than crossing a fixed instant, and `menuBarPaceRefreshDelays` already covers that lane.
+    private func menuBarConditionalResetDelays(
+        provider: UsageProvider,
+        resolution: MenuBarLayoutResolution,
+        now: Date)
+        -> [TimeInterval]
+    {
+        let predicates = resolution.layout
+            .referencedConditionalPredicates(conditionals: self.settings.menuBarLayoutConditionals)
+            .filter { $0.metric.kind == .hours && $0.metric != .runsOutIn }
+        guard !predicates.isEmpty else { return [] }
+
+        let snapshot = self.menuBarUsageSource(for: provider).snapshot
+        let windows = self.menuBarLayoutWindows(provider: provider, snapshot: snapshot, now: now)
+        let scopedWeekly = MenuBarLayoutSemanticWindowResolver
+            .scopedWeeklyNamedWindow(snapshot: snapshot)?.window
+        return predicates.compactMap { predicate -> TimeInterval? in
+            let window: RateWindow? = switch predicate.metric {
+            case .sessionResetsIn: windows.session
+            case .weeklyResetsIn: windows.weekly
+            case .scopedWeeklyResetsIn: scopedWeekly
+            case .automaticResetsIn: windows.automatic
+            case .spendResetsIn: windows.spend
+            default: nil
+            }
+            guard let resetsAt = window?.resetsAt else { return nil }
+            let flipAt = resetsAt.addingTimeInterval(-predicate.threshold * 3600)
+            let delay = flipAt.timeIntervalSince(now)
+            guard delay > 0 else { return nil }
+            return delay + Self.menuBarCountdownRefreshEpsilon
+        }
+    }
+
+    private func menuBarRefreshProviders() -> [UsageProvider] {
+        if let stackedProviders = self.stackedMergeIconProvidersIfActive() {
+            return [stackedProviders.top, stackedProviders.bottom]
+        }
+        if self.shouldMergeIcons {
+            return [self.primaryProviderForUnifiedIcon()].compactMap(\.firstPartyProvider)
+        }
+        return UsageProvider.allCases.filter(self.isVisible)
+    }
+
+    private func menuBarObservesCodexReset(providers: [UsageProvider]) -> Bool {
+        guard !self.menuBarUsageSource(for: .codex).isFleet else { return false }
+        if providers.contains(.codex) {
+            return true
+        }
+        guard self.stackedMergeIconProvidersIfActive() == nil,
+              self.shouldMergeIcons, self.settings.unifiedIconSource == .highestUsage
+        else {
+            return false
+        }
+        let activeProviders = self.store.enabledFirstPartyProvidersForDisplay()
+        return self.settings.resolvedMergedOverviewProviders(
+            activeProviders: self.overviewProviderIDs(enabledProviders: activeProviders),
+            maxVisibleProviders: SettingsStore.mergedOverviewProviderLimit).contains(.codex)
+    }
+
+    nonisolated static func menuBarPaceRefreshDelay(window: RateWindow, now: Date) -> TimeInterval? {
+        guard let boundary = UsageStore.paceElapsedBoundary(
+            window: window,
+            minimumElapsedPercent: 1),
+            boundary > now
+        else { return nil }
+        return max(
+            self.menuBarCountdownRefreshEpsilon,
+            boundary.timeIntervalSince(now) + self.menuBarCountdownRefreshEpsilon)
+    }
+
+    private func menuBarPaceRefreshDelays(
+        providers: [UsageProvider],
+        now: Date)
+        -> [TimeInterval]
+    {
+        providers.flatMap { provider -> [TimeInterval] in
+            guard !self.menuBarUsageSource(for: provider).isFleet else { return [] }
+            let resolution = self.renderedMenuBarLayoutResolution(for: provider)
+            guard !resolution.usesLegacyRendering,
+                  self.settings.menuBarIconStyle == .iconAndPercent
+            else { return [] }
+            let tokens = resolution.layout.flattenedTokens(conditionals: self.settings.menuBarLayoutConditionals)
+            // A predicate reads the same pace value with no token to detect, so it needs the same
+            // eligibility wake-up.
+            let metrics = self.referencedConditionalMetrics(resolution: resolution)
+            let paced: [(PercentWindow, MenuBarConditionalMetric)] = [(.weekly, .weeklyPace), (.spend, .spendPace)]
+                .filter { tokens.contains(.pace(window: $0)) || metrics.contains($1) }
+            guard !paced.isEmpty else { return [] }
+            let snapshot = self.menuBarUsageSource(for: provider).snapshot
+            let windows = self.menuBarLayoutWindows(provider: provider, snapshot: snapshot, now: now)
+            return paced.compactMap { percentWindow, _ in
+                guard let window = percentWindow == .spend ? windows.spend : windows.weekly else { return nil }
+                let elapsedWindow = self.store.paceWindowForElapsedEligibility(provider: provider, window: window)
+                return Self.menuBarPaceRefreshDelay(window: elapsedWindow, now: now)
+            }
+        }
+    }
+
+    /// A pace or run-out predicate compares a clock-derived value, so it needs a tick even when no token
+    /// does. `menuBarPaceRefreshDelays` only wakes on the one-shot pace-eligibility boundary, so a
+    /// predicate-only layout would otherwise keep the branch that was true when the value last moved.
+    ///
+    /// Both numbers are pre-rounded to the granularity the menu bar shows — whole percentage points and
+    /// whole minutes — so a minute tick is exactly enough, and it is the cadence a `.resetCountdown`
+    /// token already costs.
+    private func menuBarConditionalElapsedDelays(
+        provider: UsageProvider,
+        resolution: MenuBarLayoutResolution,
+        now: Date)
+        -> [TimeInterval]
+    {
+        guard !self.menuBarUsageSource(for: provider).isFleet else { return [] }
+        let metrics = self.referencedConditionalMetrics(resolution: resolution)
+        let tokens = resolution.layout.flattenedTokens(conditionals: self.settings.menuBarLayoutConditionals)
+        guard metrics.contains(where: \.isClockDerivedRate)
+            || tokens.contains(.runsOut) || tokens.contains(.runsOutCompact) else { return [] }
+        let secondsIntoMinute = now.timeIntervalSince1970.truncatingRemainder(dividingBy: 60)
+        return [max(
+            Self.menuBarCountdownRefreshEpsilon,
+            60 - secondsIntoMinute + Self.menuBarCountdownRefreshEpsilon)]
+    }
+
+    /// Metrics every conditional the layout places reads.
+    func referencedConditionalMetrics(
+        resolution: MenuBarLayoutResolution)
+        -> Set<MenuBarConditionalMetric>
+    {
+        Set(resolution.layout
+            .referencedConditionalPredicates(conditionals: self.settings.menuBarLayoutConditionals)
+            .map(\.metric))
+    }
+
+    func observeMenuBarTimeEnvironmentChanges() {
+        for name in [
+            Notification.Name.NSSystemClockDidChange,
+            .NSSystemTimeZoneDidChange,
+            .NSCalendarDayChanged,
+        ] {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(self.handleMenuBarTimeEnvironmentDidChange),
+                name: name,
+                object: nil)
+        }
+    }
+
+    @objc nonisolated func handleMenuBarTimeEnvironmentDidChange() {
+        Task { @MainActor [weak self] in
+            guard let self, !self.hasPreparedForAppShutdown else { return }
+            self.handleMenuBarTimeEnvironmentChange()
+        }
+    }
+
+    func handleMenuBarTimeEnvironmentChange() {
+        self.updateIcons()
+    }
+
+    #if DEBUG
+    func _test_isMenuBarCountdownRefreshScheduled() -> Bool {
+        self.menuBarCountdownRefreshTask != nil
+    }
+    #endif
+}

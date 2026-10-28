@@ -25,9 +25,11 @@ public struct ProviderPluginApprovalBinding: Codable, Equatable, Sendable {
                 origins.insert(origin)
             case let .setting(key, policy):
                 guard let rawValue = settings[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
-                      !rawValue.isEmpty,
-                      let url = URL(string: rawValue)
+                      !rawValue.isEmpty
                 else {
+                    throw ProviderPluginError.endpointNotConfigured(plugin: manifest.id.rawValue, setting: key)
+                }
+                guard let url = URL(string: rawValue) else {
                     throw ProviderPluginError.invalidManifest(
                         "endpoint setting '\(key)' must contain a valid URL before approval")
                 }
@@ -61,13 +63,8 @@ public struct ProviderPluginApprovalBinding: Codable, Equatable, Sendable {
     private static func requiresTypedConfirmation(_ origin: String) -> Bool {
         guard let host = URL(string: origin)?.host?.lowercased() else { return true }
         let normalizedHost = host.hasSuffix(".") ? String(host.dropLast()) : host
-        if normalizedHost == "localhost" || normalizedHost.hasSuffix(".local") {
-            return true
-        }
-        if self.isIPv4Literal(normalizedHost) || normalizedHost.contains(":") {
-            return true
-        }
-        return false
+        return normalizedHost == "localhost" || normalizedHost.hasSuffix(".local")
+            || self.isIPv4Literal(normalizedHost) || normalizedHost.contains(":")
     }
 
     private static func isIPv4Literal(_ host: String) -> Bool {
@@ -267,7 +264,8 @@ public final class UserProviderPluginLoader: @unchecked Sendable {
     {
         self.providersDirectory = providersDirectory
         self.cacheDirectory = cacheDirectory
-        self.transport = transport ?? UserProviderPluginHTTPTransport.make()
+        self.transport = transport ?? UserProviderPluginHTTPClient(
+            maximumResponseBytes: UserProviderPlugin.maximumSourceBytes)
         self.resourceBundle = resourceBundle
         self.storageDirectory = storageDirectory
     }
@@ -497,13 +495,7 @@ public enum UserProviderPluginManager {
     }
 }
 
-private enum UserProviderPluginHTTPTransport {
-    static func make() -> any ProviderHTTPTransport {
-        UserProviderPluginHTTPClient(maximumResponseBytes: UserProviderPlugin.maximumSourceBytes)
-    }
-}
-
-private final class UserProviderPluginHTTPClient: NSObject, ProviderHTTPTransport, URLSessionDataDelegate,
+final class UserProviderPluginHTTPClient: NSObject, ProviderHTTPTransport, URLSessionDataDelegate,
     @unchecked Sendable
 {
     private struct RequestState {
@@ -514,8 +506,27 @@ private final class UserProviderPluginHTTPClient: NSObject, ProviderHTTPTranspor
 
     private let maximumResponseBytes: Int
     private let lock = NSLock()
-    private var states: [Int: RequestState] = [:]
-    private lazy var session: URLSession = {
+    private var states: [ObjectIdentifier: RequestState] = [:]
+
+    init(maximumResponseBytes: Int) {
+        self.maximumResponseBytes = maximumResponseBytes
+    }
+
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        let session = self.makeSession()
+        defer { session.finishTasksAndInvalidate() }
+        return try await withCheckedThrowingContinuation { continuation in
+            let task = session.dataTask(with: request)
+            self.lock.withLock {
+                self.states[ObjectIdentifier(task)] = RequestState(continuation: continuation)
+            }
+            task.resume()
+        }
+    }
+
+    /// URLSession retains its delegate until finishTasksAndInvalidate(). A stored
+    /// session would pin this client after the plugin runtime released it.
+    private func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
@@ -525,20 +536,6 @@ private final class UserProviderPluginHTTPClient: NSObject, ProviderHTTPTranspor
         configuration.timeoutIntervalForRequest = 15
         configuration.timeoutIntervalForResource = 15
         return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
-    }()
-
-    init(maximumResponseBytes: Int) {
-        self.maximumResponseBytes = maximumResponseBytes
-    }
-
-    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-        try await withCheckedThrowingContinuation { continuation in
-            let task = self.session.dataTask(with: request)
-            self.lock.withLock {
-                self.states[task.taskIdentifier] = RequestState(continuation: continuation)
-            }
-            task.resume()
-        }
     }
 
     func urlSession(
@@ -557,37 +554,37 @@ private final class UserProviderPluginHTTPClient: NSObject, ProviderHTTPTranspor
         didReceive response: URLResponse,
         completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void)
     {
-        self.lock.withLock { self.states[dataTask.taskIdentifier]?.response = response }
+        self.lock.withLock { self.states[ObjectIdentifier(dataTask)]?.response = response }
         completionHandler(.allow)
     }
 
     func urlSession(_: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
         let exceeded = self.lock.withLock {
-            guard var state = self.states[dataTask.taskIdentifier] else { return false }
+            guard var state = self.states[ObjectIdentifier(dataTask)] else { return false }
             guard state.data.count + data.count <= self.maximumResponseBytes else { return true }
             state.data.append(data)
-            self.states[dataTask.taskIdentifier] = state
+            self.states[ObjectIdentifier(dataTask)] = state
             return false
         }
         guard exceeded else { return }
         dataTask.cancel()
         self.finish(
-            taskIdentifier: dataTask.taskIdentifier,
+            task: dataTask,
             result: .failure(ProviderPluginError.http("response exceeded the 1048576-byte limit")))
     }
 
     func urlSession(_: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error {
-            self.finish(taskIdentifier: task.taskIdentifier, result: .failure(error))
+            self.finish(task: task, result: .failure(error))
             return
         }
         let result: Result<(Data, URLResponse), Error> = self.lock.withLock {
-            guard let state = self.states[task.taskIdentifier], let response = state.response else {
+            guard let state = self.states[ObjectIdentifier(task)], let response = state.response else {
                 return .failure(URLError(.badServerResponse))
             }
             return .success((state.data, response))
         }
-        self.finish(taskIdentifier: task.taskIdentifier, result: result)
+        self.finish(task: task, result: result)
     }
 
     func urlSession(
@@ -608,8 +605,8 @@ private final class UserProviderPluginHTTPClient: NSObject, ProviderHTTPTranspor
         #endif
     }
 
-    private func finish(taskIdentifier: Int, result: Result<(Data, URLResponse), Error>) {
-        let continuation = self.lock.withLock { self.states.removeValue(forKey: taskIdentifier)?.continuation }
+    private func finish(task: URLSessionTask, result: Result<(Data, URLResponse), Error>) {
+        let continuation = self.lock.withLock { self.states.removeValue(forKey: ObjectIdentifier(task))?.continuation }
         continuation?.resume(with: result)
     }
 }

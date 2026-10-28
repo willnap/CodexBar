@@ -1,0 +1,1207 @@
+import AppKit
+import CodexBarCore
+import Observation
+import ServiceManagement
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
+
+enum RefreshFrequency: String, CaseIterable, Identifiable {
+    case manual
+    case oneMinute
+    case twoMinutes
+    case fiveMinutes
+    case fifteenMinutes
+    case thirtyMinutes
+    case adaptive
+    /// Adaptive plus consent-gated local agent activity. Kept after plain Adaptive so the
+    /// privacy-preserving mode remains the first adaptive choice.
+    case adaptiveAgentAware
+
+    var id: String {
+        self.rawValue
+    }
+
+    /// nil for `.manual` (no timer) and adaptive modes (delay is computed per tick by
+    /// `AdaptiveRefreshPolicy`, not a fixed interval).
+    var seconds: TimeInterval? {
+        switch self {
+        case .manual: nil
+        case .oneMinute: 60
+        case .twoMinutes: 120
+        case .fiveMinutes: 300
+        case .fifteenMinutes: 900
+        case .thirtyMinutes: 1800
+        case .adaptive, .adaptiveAgentAware: nil
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .manual: L("refresh_manual")
+        case .oneMinute: L("refresh_1min")
+        case .twoMinutes: L("refresh_2min")
+        case .fiveMinutes: L("refresh_5min")
+        case .fifteenMinutes: L("refresh_15min")
+        case .thirtyMinutes: L("refresh_30min")
+        case .adaptive: L("refresh_adaptive")
+        case .adaptiveAgentAware: L("refresh_adaptive_agent_aware")
+        }
+    }
+
+    var usesAdaptivePolicy: Bool {
+        self == .adaptive || self == .adaptiveAgentAware
+    }
+}
+
+enum AdaptiveActivityScanConsent: String, Sendable {
+    case undecided
+    case allowed
+    case declined
+}
+
+enum MenuBarMetricPreference: String, CaseIterable, Identifiable {
+    case automatic
+    case primary
+    case secondary
+    case primaryAndSecondary
+    case tertiary
+    case extraUsage
+    case average
+    case monthlyPlan
+
+    var id: String {
+        self.rawValue
+    }
+
+    var label: String {
+        switch self {
+        case .automatic: L("metric_pref_automatic")
+        case .primary: L("metric_pref_primary")
+        case .secondary: L("metric_pref_secondary")
+        case .primaryAndSecondary: "\(L("metric_pref_primary")) + \(L("metric_pref_secondary"))"
+        case .tertiary: L("metric_pref_tertiary")
+        case .extraUsage: L("metric_pref_extra_usage")
+        case .average: L("metric_pref_average")
+        case .monthlyPlan: L("metric_mistral_monthly_plan")
+        }
+    }
+}
+
+enum KiroMenuBarDisplayMode: String, CaseIterable, Identifiable {
+    case automatic
+    case hidden
+    case creditsLeft
+    case percentLeft
+    case creditsAndPercent
+    case usedAndTotal
+    case overageCreditsWhenExhausted
+    case overageCostWhenExhausted
+    case overageCreditsAndCostWhenExhausted
+
+    var id: String {
+        self.rawValue
+    }
+
+    var label: String {
+        switch self {
+        case .automatic: L("Automatic")
+        case .hidden: L("Hidden")
+        case .creditsLeft: L("Credits left")
+        case .percentLeft: L("Percent left")
+        case .creditsAndPercent: L("Credits + percent")
+        case .usedAndTotal: L("Used / total")
+        case .overageCreditsWhenExhausted: L("Overage credits at zero")
+        case .overageCostWhenExhausted: L("Overage cost at zero")
+        case .overageCreditsAndCostWhenExhausted: L("Overage credits + cost at zero")
+        }
+    }
+}
+
+enum LowPowerModePreference: String, CaseIterable, Identifiable {
+    case off
+    case on
+    case automatic
+
+    var id: String {
+        self.rawValue
+    }
+
+    var label: String {
+        switch self {
+        case .off: L("Off")
+        case .on: L("On")
+        case .automatic: L("Automatic")
+        }
+    }
+}
+
+enum MultiAccountMenuLayout: String, CaseIterable, Identifiable {
+    case segmented
+    case stacked
+
+    var id: String {
+        self.rawValue
+    }
+
+    var label: String {
+        switch self {
+        case .segmented: L("multi_account_layout_segmented")
+        case .stacked: L("multi_account_layout_stacked")
+        }
+    }
+}
+
+enum WorkdayTickAppearance: String, CaseIterable, Identifiable {
+    case hidden
+    case subtle
+    case highContrast
+
+    var id: String {
+        self.rawValue
+    }
+
+    var label: String {
+        switch self {
+        case .hidden: L("workday_tick_appearance_hidden")
+        case .subtle: L("workday_tick_appearance_subtle")
+        case .highContrast: L("workday_tick_appearance_high_contrast")
+        }
+    }
+}
+
+enum CostSummaryDisplayStyle: String, CaseIterable, Identifiable {
+    case inlineSummary
+    case costSubmenu
+    case both
+
+    var id: String {
+        self.rawValue
+    }
+
+    var label: String {
+        switch self {
+        case .inlineSummary: L("cost_summary_style_inline")
+        case .costSubmenu: L("cost_summary_style_submenu")
+        case .both: L("cost_summary_style_both")
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .inlineSummary: L("cost_summary_style_inline_help")
+        case .costSubmenu: L("cost_summary_style_submenu_help")
+        case .both: L("cost_summary_style_both_help")
+        }
+    }
+
+    var showsInlineSummary: Bool {
+        self != .costSubmenu
+    }
+
+    var showsCostSubmenu: Bool {
+        self != .inlineSummary
+    }
+}
+
+struct CachedCodexAccountReconciliationSnapshot {
+    let activeSource: CodexActiveSource
+    let loadedAt: Date
+    let snapshot: CodexAccountReconciliationSnapshot
+}
+
+struct CachedCodexAccountMenuProjection: Equatable {
+    let activeSource: CodexActiveSource
+    let loadedAt: Date
+    let projection: CodexVisibleAccountProjection
+}
+
+enum CodexAccountMenuProjectionRevalidationResult: Equatable {
+    case skipped
+    case discarded
+    case unchanged
+    case updated
+}
+
+@MainActor
+struct SettingsStoreKeychainAccessPolicy {
+    let setDisabled: (Bool) -> Void
+    let isExplicitlyDisabled: () -> Bool
+
+    static var defaultPolicy: Self {
+        guard SettingsStore.isRunningTests else { return .live }
+        var disabled = false
+        return Self(setDisabled: { disabled = $0 }, isExplicitlyDisabled: { disabled })
+    }
+
+    static var live: Self {
+        Self(
+            setDisabled: { KeychainAccessGate.isDisabled = $0 },
+            isExplicitlyDisabled: { KeychainAccessGate.isExplicitlyDisabled })
+    }
+}
+
+@MainActor
+@Observable
+final class SettingsStore {
+    static let sharedDefaults = SettingsStore.resolveSharedDefaults()
+    static let mergedOverviewProviderLimit = 6
+    static let productionCodexAccountReconciliationSnapshotCacheInterval: TimeInterval = 2
+    static let isRunningTests = TestProcessSafety.isRunning
+
+    #if DEBUG
+    static var codexAccountReconciliationSnapshotCacheIntervalOverrideForTesting: TimeInterval?
+    #endif
+
+    @ObservationIgnored let userDefaults: UserDefaults
+    @ObservationIgnored let nativeDesignEnabled: Bool
+    @ObservationIgnored lazy var httpServer = HTTPServerController(
+        configURL: self.configStore.fileURL.deletingLastPathComponent().appendingPathComponent("http-server.json"))
+    @ObservationIgnored let configStore: CodexBarConfigStore
+    @ObservationIgnored let antigravityOAuthCredentialsStore: AntigravityOAuthCredentialsStore
+    @ObservationIgnored let keychainAccessPolicy: SettingsStoreKeychainAccessPolicy
+    @ObservationIgnored var config: CodexBarConfig
+    @ObservationIgnored var configPersistTask: Task<Void, Never>?
+    @ObservationIgnored var configPersistWriteTask: Task<Void, Never>?
+    @ObservationIgnored var configFileWatcher: ConfigFileWatcher?
+    @ObservationIgnored var configLoading = false
+    @ObservationIgnored let configPersistenceCoordinator = SettingsConfigPersistenceCoordinator()
+    @ObservationIgnored var configNeedsReload = false
+
+    @ObservationIgnored var cachedCodexAccountReconciliationSnapshot:
+        CachedCodexAccountReconciliationSnapshot?
+    var cachedCodexAccountMenuProjection: CachedCodexAccountMenuProjection?
+    @ObservationIgnored var codexAccountReconciliationGeneration: UInt = 0
+    #if DEBUG
+    @ObservationIgnored var _test_configPersistenceUsesDebounce = false
+    @ObservationIgnored var _test_codexAccountSnapshotLoader:
+        (@Sendable (CodexActiveSource) -> CodexAccountReconciliationSnapshot)?
+    #endif
+    @ObservationIgnored var mergedMenuLastSelectedWasOverviewStorage = false
+    @ObservationIgnored var selectedMenuProviderRawStorage: String?
+    @ObservationIgnored private nonisolated(unsafe) var lowPowerModeObserver: NSObjectProtocol?
+    var defaultsState: SettingsDefaultsState
+    var providerSwitcherShortcuts = ProviderSwitcherShortcuts.defaults
+    var configRevision: Int = 0
+    var providerDetailSettingsRevision: Int = 0
+    var backgroundWorkSettingsRevision: Int = 0
+    var costUsageSettingsRevision: UInt64 = 0
+    var providerOrder: [ProviderInstanceID] = []
+    var providerOrderUndo: ProviderOrderUndo?
+    @ObservationIgnored weak var providerOrderUndoManager: UndoManager?
+    var providerEnablement: [ProviderInstanceID: Bool] = [:]
+    @ObservationIgnored var providerEnablementRevisions: [ProviderInstanceID: UInt64] = [:]
+    @ObservationIgnored var providerConfigRevisions: [ProviderInstanceID: UInt64] = [:]
+    @ObservationIgnored var onProviderFetchIdentityChange: ((ProviderInstanceID) -> Void)?
+    @ObservationIgnored var providerConfigFingerprints: [ProviderInstanceID: Data] = [:]
+
+    static func resolveSharedDefaults(
+        _ resolve: () -> UserDefaults? = { AppGroupSupport.sharedDefaults() }) -> UserDefaults?
+    {
+        guard !self.isRunningTests, !NativeGaugeConfiguration.isEnabled else { return nil }
+        return resolve()
+    }
+
+    static func shouldBridgeSharedDefaults(for _: UserDefaults) -> Bool {
+        !self.isRunningTests && !NativeGaugeConfiguration.isEnabled
+    }
+
+    init(
+        userDefaults: UserDefaults = .standard,
+        configStore: CodexBarConfigStore = CodexBarConfigStore(),
+        zaiTokenStore: any ZaiTokenStoring = KeychainZaiTokenStore(),
+        syntheticTokenStore: any SyntheticTokenStoring = KeychainSyntheticTokenStore(),
+        codexCookieStore: any CookieHeaderStoring = KeychainCookieHeaderStore(
+            account: "codex-cookie",
+            promptKind: .codexCookie),
+        claudeCookieStore: any CookieHeaderStoring = KeychainCookieHeaderStore(
+            account: "claude-cookie",
+            promptKind: .claudeCookie),
+        cursorCookieStore: any CookieHeaderStoring = KeychainCookieHeaderStore(
+            account: "cursor-cookie",
+            promptKind: .cursorCookie),
+        opencodeCookieStore: any CookieHeaderStoring = KeychainCookieHeaderStore(
+            account: "opencode-cookie",
+            promptKind: .opencodeCookie),
+        factoryCookieStore: any CookieHeaderStoring = KeychainCookieHeaderStore(
+            account: "factory-cookie",
+            promptKind: .factoryCookie),
+        minimaxCookieStore: any MiniMaxCookieStoring = KeychainMiniMaxCookieStore(),
+        minimaxAPITokenStore: any MiniMaxAPITokenStoring = KeychainMiniMaxAPITokenStore(),
+        kimiTokenStore: any KimiTokenStoring = KeychainKimiTokenStore(),
+        augmentCookieStore: any CookieHeaderStoring = KeychainCookieHeaderStore(
+            account: "augment-cookie",
+            promptKind: .augmentCookie),
+        ampCookieStore: any CookieHeaderStoring = KeychainCookieHeaderStore(
+            account: "amp-cookie",
+            promptKind: .ampCookie),
+        copilotTokenStore: any CopilotTokenStoring = KeychainCopilotTokenStore(),
+        tokenAccountStore: any ProviderTokenAccountStoring = FileTokenAccountStore(),
+        antigravityOAuthCredentialsStore: AntigravityOAuthCredentialsStore = AntigravityOAuthCredentialsStore(),
+        keychainAccessPolicy: SettingsStoreKeychainAccessPolicy = .defaultPolicy,
+        performInitialProviderDetection: Bool = !SettingsStore.isRunningTests,
+        nativeDesignEnabled: Bool = NativeGaugeConfiguration.isEnabled)
+    {
+        // Legacy credential migration must see the saved policy, including shared-defaults fallback.
+        self.nativeDesignEnabled = nativeDesignEnabled
+        NativeGaugePreferences.prepare(defaults: userDefaults, isNative: nativeDesignEnabled)
+        keychainAccessPolicy.setDisabled(Self.loadDebugDisableKeychainAccess(userDefaults: userDefaults))
+        if !Self.isRunningTests {
+            _ = UserProviderPluginRegistry.refresh()
+        }
+        // Capture this before app-group/config migrations can create prior-installation state.
+        let hadExistingConfig = (try? configStore.load()) != nil
+        let hadPreviousInstallationState = hadExistingConfig || Self.hadPreviousAppLaunch(userDefaults: userDefaults)
+        // Migration tests inject every dependency directly; ordinary settings tests must not discover user state.
+        if !Self.isRunningTests {
+            let appGroupID = AppGroupSupport.currentGroupID()
+            Self.scheduleAppGroupMigration()
+            let appGroupMigration = AppGroupSupport.MigrationResult(status: .targetUnavailable)
+            let sharedDefaultsAvailable = Self.sharedDefaults != nil
+            CodexBarLog.logger(LogCategories.settings).info(
+                "App group resolved",
+                metadata: [
+                    "groupID": appGroupID,
+                    "sharedDefaultsAvailable": sharedDefaultsAvailable ? "1" : "0",
+                    "migrationStatus": appGroupMigration.status.rawValue,
+                    "migratedSnapshot": appGroupMigration.copiedSnapshot ? "1" : "0",
+                    "migratedDefaults": "\(appGroupMigration.copiedDefaults)",
+                ])
+        }
+
+        if userDefaults.object(forKey: "openAIWebAccessEnabled") == nil,
+           let legacyOpenAIWebAccess = userDefaults.object(forKey: "openAIWebAccess") as? Bool
+        {
+            userDefaults.set(legacyOpenAIWebAccess, forKey: "openAIWebAccessEnabled")
+        }
+        let legacyStores = CodexBarConfigMigrator.LegacyStores(
+            zaiTokenStore: zaiTokenStore,
+            syntheticTokenStore: syntheticTokenStore,
+            codexCookieStore: codexCookieStore,
+            claudeCookieStore: claudeCookieStore,
+            cursorCookieStore: cursorCookieStore,
+            opencodeCookieStore: opencodeCookieStore,
+            factoryCookieStore: factoryCookieStore,
+            minimaxCookieStore: minimaxCookieStore,
+            minimaxAPITokenStore: minimaxAPITokenStore,
+            kimiTokenStore: kimiTokenStore,
+            augmentCookieStore: augmentCookieStore,
+            ampCookieStore: ampCookieStore,
+            copilotTokenStore: copilotTokenStore,
+            tokenAccountStore: tokenAccountStore)
+        let config: CodexBarConfig
+        do {
+            config = try CodexBarConfigMigrator.loadOrMigrate(
+                configStore: configStore,
+                userDefaults: userDefaults,
+                keychainAccessDisabled: keychainAccessPolicy.isExplicitlyDisabled(),
+                stores: legacyStores)
+        } catch {
+            config = CodexBarConfig.makeDefault().normalized()
+            self.configNeedsReload = true
+            CodexBarLog.logger(LogCategories.configMigration).error(
+                "Config load failed; preserving the file until it can be reloaded",
+                metadata: ["error": "\(error)"])
+        }
+        _ = Self.initializeOpenAIWebAccessPreference(
+            userDefaults: userDefaults, config: config, hadExistingConfig: hadExistingConfig)
+        self.userDefaults = userDefaults
+        self.configStore = configStore
+        self.antigravityOAuthCredentialsStore = antigravityOAuthCredentialsStore
+        self.keychainAccessPolicy = keychainAccessPolicy
+        self.config = config
+        self.configLoading = true
+        let defaultsState = Self.loadDefaultsState(
+            userDefaults: userDefaults,
+            hadPreviousInstallationState: hadPreviousInstallationState)
+        self.defaultsState = defaultsState
+        self.providerSwitcherShortcuts = (try? ProviderSwitcherShortcuts.validated(
+            userDefaults.dictionary(forKey: "switcherShortcuts") as? [String: String] ?? [:]))
+            ?? ProviderSwitcherShortcuts.defaults
+        self.mergedMenuLastSelectedWasOverviewStorage = defaultsState.mergedMenuLastSelectedWasOverview
+        self.selectedMenuProviderRawStorage = defaultsState.selectedMenuProviderRaw
+        self.updateProviderState(config: config)
+        self.configLoading = false
+        CodexBarLog.setFileLoggingEnabled(self.debugFileLoggingEnabled)
+        userDefaults.removeObject(forKey: "showCodexUsage")
+        userDefaults.removeObject(forKey: "showClaudeUsage")
+        LaunchAtLoginManager.setEnabled(self.launchAtLogin)
+        if self.nativeDesignEnabled, !Self.isRunningTests { self.restoreNativeFolderAccess() }
+        if performInitialProviderDetection {
+            self.runInitialProviderDetectionIfNeeded()
+        }
+        self.ensureAlibabaProviderAutoEnabledIfNeeded()
+        self.applyTokenCostDefaultIfNeeded()
+        if self.claudeUsageDataSource != .cli {
+            if Self.isRunningTests {
+                self.claudeWebExtrasEnabled = false
+            } else {
+                self.defaultsState.claudeWebExtrasEnabledRaw = false
+            }
+        }
+        // Provider-specific by design: the legacy OpenAI web denial also governs Codex's CLI cookie source.
+        if !self.openAIWebAccessEnabled, self.providerConfig(for: .codex)?.cookieSource == nil {
+            self.codexCookieSource = .off
+        }
+        self.keychainAccessPolicy.setDisabled(self.debugDisableKeychainAccess)
+        self.startConfigFileWatcher()
+        self.observeSystemPowerStateChanges()
+    }
+
+    deinit {
+        self.configFileWatcher?.stop()
+        if let lowPowerModeObserver {
+            NotificationCenter.default.removeObserver(lowPowerModeObserver)
+        }
+    }
+
+    /// Automatic Low Power Mode reads `ProcessInfo.isLowPowerModeEnabled` live, but background
+    /// timers only restart when `backgroundWorkSettingsRevision` changes. Without this, toggling
+    /// the system's Low Power Mode mid-session would leave a running fixed-frequency timer stuck
+    /// at its previously computed interval until an unrelated settings change restarted it.
+    private func observeSystemPowerStateChanges() {
+        self.lowPowerModeObserver = NotificationCenter.default.addObserver(
+            forName: .NSProcessInfoPowerStateDidChange,
+            object: nil,
+            queue: .main)
+        { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.backgroundWorkLowPowerModePreference == .automatic else { return }
+                self.noteBackgroundWorkSettingsChanged()
+            }
+        }
+    }
+}
+
+extension SettingsStore {
+    private struct NotificationDefaults {
+        let statusChecksEnabled: Bool
+        let sessionQuotaNotificationsEnabled: Bool
+        let predictivePaceWarningNotificationsEnabled: Bool
+        let limitResetNotificationsEnabled: Bool
+    }
+
+    private static func scheduleAppGroupMigration() {
+        Task.detached(priority: .utility) {
+            let result = AppGroupSupport.migrateLegacyDataIfNeeded()
+            CodexBarLog.logger(LogCategories.settings).info(
+                "App group migration completed",
+                metadata: [
+                    "migrationStatus": result.status.rawValue,
+                    "migratedSnapshot": result.copiedSnapshot ? "1" : "0",
+                    "migratedDefaults": "\(result.copiedDefaults)",
+                ])
+        }
+    }
+
+    static func initializeOpenAIWebAccessPreference(
+        userDefaults: UserDefaults,
+        config: CodexBarConfig,
+        hadExistingConfig: Bool) -> Bool
+    {
+        if let stored = userDefaults.object(forKey: "openAIWebAccessEnabled") { return stored as? Bool ?? false }
+        let enabled = self.inferredInitialOpenAIWebAccessEnabled(config: config, hadExistingConfig: hadExistingConfig)
+        // Freeze the startup decision before a later launch can infer consent from a generated config.
+        userDefaults.set(enabled, forKey: "openAIWebAccessEnabled")
+        return enabled
+    }
+
+    private static func inferredInitialOpenAIWebAccessEnabled(
+        config: CodexBarConfig,
+        hadExistingConfig: Bool) -> Bool
+    {
+        // Provider-specific by design: the legacy OpenAI web-access flag was inferred from Codex's cookie config.
+        guard let codex = config.providerConfig(for: .codex) else { return false }
+        if let cookieSource = codex.cookieSource {
+            return cookieSource.isEnabled
+        }
+        if codex.sanitizedCookieHeader != nil {
+            return true
+        }
+        return hadExistingConfig
+    }
+
+    // swiftlint:disable:next function_body_length
+    private static func loadDefaultsState(
+        userDefaults: UserDefaults,
+        hadPreviousInstallationState: Bool) -> SettingsDefaultsState
+    {
+        let refreshFrequency = Self.loadRefreshFrequency(
+            userDefaults: userDefaults,
+            hadPreviousInstallationState: hadPreviousInstallationState)
+        let adaptiveActivityScanConsent = Self.loadAdaptiveActivityScanConsent(userDefaults: userDefaults)
+        let debugDisableKeychainAccess = Self.loadDebugDisableKeychainAccess(userDefaults: userDefaults)
+        let debugLogLevelRaw = userDefaults.string(forKey: "debugLogLevel") ?? CodexBarLog.Level.verbose.rawValue
+        if Self.isRunningTests, userDefaults.string(forKey: "debugLogLevel") == nil {
+            userDefaults.set(debugLogLevelRaw, forKey: "debugLogLevel")
+        }
+        let notificationDefaults = Self.loadNotificationDefaults(userDefaults: userDefaults)
+        let quotaWarnings = Self.loadQuotaWarningDefaults(userDefaults: userDefaults)
+        let multiAccountMenuLayoutRaw = Self.loadMultiAccountMenuLayoutRaw(userDefaults: userDefaults)
+        let resolvedPreferences = Self.loadMenuBarMetricPreferences(userDefaults: userDefaults)
+        let storedMenuBarLayout = Self.loadMenuBarLayout(userDefaults: userDefaults)
+        let menuBarLayoutConditionals = Self.loadMenuBarLayoutConditionals(userDefaults: userDefaults)
+        let menuBarLayoutOverridesRaw = Self.loadMenuBarLayoutOverrides(userDefaults: userDefaults)
+        let rawVerticalAdjustment = userDefaults.object(forKey: "menuBarLayoutVerticalAdjustment") as? Int
+        let menuBarLayoutVerticalAdjustment = max(-20, min(20, rawVerticalAdjustment ?? 0))
+        let copilotIconSecondaryWindowIDRaw = Self.loadCopilotIconSecondaryWindowIDRaw(userDefaults: userDefaults)
+        let costUsageEnabled = userDefaults.object(forKey: "tokenCostUsageEnabled") as? Bool ?? false
+        let costReportingPeriod = CostReportingPeriod.migrated(
+            rawValue: userDefaults.string(forKey: CostReportingPeriod.defaultsKey),
+            legacyDays: userDefaults.object(forKey: CostReportingPeriod.legacyDaysKey) as? Int)
+        let storedBucketTimeZone = userDefaults.string(forKey: "tokenCostUsageBucketTimeZone") ?? ""
+        let costUsageBucketTimeZoneIdentifier = CostUsageBucketTimeZone.isValidIdentifier(storedBucketTimeZone)
+            ? storedBucketTimeZone
+            : (costUsageEnabled ? CostUsageBucketTimeZone.pinIdentifier() : "")
+        if costUsageEnabled, storedBucketTimeZone.isEmpty, !costUsageBucketTimeZoneIdentifier.isEmpty {
+            userDefaults.set(costUsageBucketTimeZoneIdentifier, forKey: "tokenCostUsageBucketTimeZone")
+        }
+        let costSummaryDisplayStyleRaw = Self.loadCostSummaryDisplayStyleRaw(
+            userDefaults: userDefaults,
+            costUsageEnabled: costUsageEnabled)
+        let confettiOnReset = Self.loadConfettiOnResetDefaults(userDefaults: userDefaults)
+        let claudeOAuthKeychainReadStrategyRaw = Self.loadClaudeOAuthKeychainReadStrategyRaw(userDefaults: userDefaults)
+        if Self.isRunningTests, userDefaults.object(forKey: "codexExternalOAuthSourcesAllowed") == nil {
+            userDefaults.set(false, forKey: "codexExternalOAuthSourcesAllowed")
+        }
+        let backgroundWorkLowPowerModePreference = Self.loadLowPowerModePreference(userDefaults: userDefaults)
+        let iCloudSyncDeviceID = userDefaults.string(forKey: "iCloudSyncDeviceID") ?? UUID().uuidString.lowercased()
+        if userDefaults.string(forKey: "iCloudSyncDeviceID") == nil {
+            userDefaults.set(iCloudSyncDeviceID, forKey: "iCloudSyncDeviceID")
+        }
+        if userDefaults.object(forKey: "agentSessionsRemoteEnabled") == nil {
+            // Preserve existing remote monitoring, but keep first-time Agent Sessions local-only.
+            userDefaults.set(userDefaults.bool(forKey: "agentSessionsEnabled"), forKey: "agentSessionsRemoteEnabled")
+        }
+        return SettingsDefaultsState(
+            nativeGaugeStyleRaw: userDefaults.string(forKey: "nativeGaugeStyle") ?? NativeGaugeStyle.laurel.rawValue,
+            nativeCombinesAllServices: userDefaults.object(forKey: "nativeCombinesAllServices") as? Bool ?? false,
+            refreshFrequency: refreshFrequency,
+            adaptiveActivityScanConsent: adaptiveActivityScanConsent,
+            refreshAllProvidersOnMenuOpen: userDefaults.object(
+                forKey: "refreshAllProvidersOnMenuOpen") as? Bool ?? false,
+            launchAtLogin: userDefaults.object(forKey: "launchAtLogin") as? Bool ?? false,
+            debugMenuEnabled: userDefaults.object(forKey: "debugMenuEnabled") as? Bool ?? false,
+            debugDisableKeychainAccess: debugDisableKeychainAccess,
+            debugFileLoggingEnabled: userDefaults.object(forKey: "debugFileLoggingEnabled") as? Bool ?? false,
+            debugLogLevelRaw: debugLogLevelRaw,
+            debugLoadingPatternRaw: userDefaults.string(forKey: "debugLoadingPattern"),
+            debugKeepCLISessionsAlive: userDefaults.object(forKey: "debugKeepCLISessionsAlive") as? Bool ?? false,
+            statusChecksEnabled: notificationDefaults.statusChecksEnabled,
+            stayAwakeEnabled: userDefaults.bool(forKey: "stayAwakeEnabled"),
+            credentialExpiryNotificationsEnabled: userDefaults.bool(forKey: "credentialExpiryNotificationsEnabled"),
+            sessionQuotaNotificationsEnabled: notificationDefaults.sessionQuotaNotificationsEnabled,
+            quotaWarningNotificationsEnabled: quotaWarnings.notificationsEnabled,
+            predictivePaceWarningNotificationsEnabled: notificationDefaults.predictivePaceWarningNotificationsEnabled,
+            limitResetNotificationsEnabled: notificationDefaults.limitResetNotificationsEnabled,
+            quotaWarningThresholdsRaw: quotaWarnings.thresholdsRaw,
+            quotaWarningSessionThresholdsRaw: quotaWarnings.sessionThresholdsRaw,
+            quotaWarningWeeklyThresholdsRaw: quotaWarnings.weeklyThresholdsRaw,
+            quotaWarningSessionEnabled: quotaWarnings.sessionEnabled,
+            quotaWarningWeeklyEnabled: quotaWarnings.weeklyEnabled,
+            quotaWarningSoundEnabled: quotaWarnings.soundEnabled,
+            quotaWarningOnScreenAlertEnabled: quotaWarnings.onScreenAlertEnabled,
+            quotaWarningMarkersVisible: Self.loadBoolDefault(
+                "quotaWarningMarkersVisible",
+                fallback: true,
+                from: userDefaults),
+            paceVisible: Self.loadBoolDefault("paceVisible", fallback: true, from: userDefaults),
+            weeklyProgressWorkDays: userDefaults.object(forKey: "weeklyProgressWorkDays") as? Int,
+            workdayTickAppearanceRaw: userDefaults.string(forKey: "workdayTickAppearance")
+                ?? WorkdayTickAppearance.subtle.rawValue,
+            usageBarsShowUsed: userDefaults.object(forKey: "usageBarsShowUsed") as? Bool ?? false,
+            resetTimesShowAbsolute: userDefaults.object(forKey: "resetTimesShowAbsolute") as? Bool ?? false,
+            providerChangelogLinksEnabled: userDefaults.object(
+                forKey: "providerChangelogLinksEnabled") as? Bool ?? false,
+            highlightMenuCardsOnHover: Self.loadBoolDefault(
+                "highlightMenuCardsOnHover",
+                fallback: true,
+                from: userDefaults),
+            menuBarShowsBrandIconWithPercent: userDefaults.object(
+                forKey: "menuBarShowsBrandIconWithPercent") as? Bool ?? false,
+            menuBarHidesCritters: userDefaults.object(forKey: "menuBarHidesCritters") as? Bool ?? false,
+            menuBarColorPace: userDefaults.bool(forKey: "menuBarColorPace"),
+            menuBarPaceReservePositive: userDefaults.bool(forKey: "menuBarPaceReservePositive"),
+            menuBarColorByProvider: userDefaults.bool(forKey: "menuBarColorByProvider"),
+            menuBarHighContrastOnInactiveDisplays: userDefaults.object(
+                forKey: "menuBarHighContrastOnInactiveDisplays") as? Bool ?? false,
+            menuBarDisplayModeRaw: userDefaults.string(forKey: "menuBarDisplayMode")
+                ?? MenuBarDisplayMode.percent.rawValue,
+            menuBarShowsResetTimeWhenExhausted: userDefaults.object(
+                forKey: "menuBarShowsResetTimeWhenExhausted") as? Bool ?? false,
+            kiroMenuBarDisplayModeRaw: userDefaults.string(forKey: "kiroMenuBarDisplayMode")
+                ?? KiroMenuBarDisplayMode.automatic.rawValue,
+            historicalTrackingEnabled: userDefaults.object(forKey: "historicalTrackingEnabled") as? Bool ?? false,
+            multiAccountMenuLayoutRaw: multiAccountMenuLayoutRaw,
+            accountWidgetsEnabled: userDefaults.bool(forKey: "accountWidgetsEnabled"),
+            menuBarMetricPreferencesRaw: resolvedPreferences,
+            storedMenuBarLayout: storedMenuBarLayout,
+            menuBarLayoutConditionals: menuBarLayoutConditionals,
+            menuBarLayoutOverridesRaw: menuBarLayoutOverridesRaw,
+            menuBarLayoutMonospacedDigits: userDefaults.bool(forKey: "menuBarLayoutMonospacedDigits"),
+            menuBarLayoutShowWindowLabels: userDefaults
+                .object(forKey: "menuBarLayoutShowWindowLabels") as? Bool ?? true,
+            menuBarLayoutSizeRaw: userDefaults.string(forKey: "menuBarLayoutSize")
+                ?? MenuBarLayoutSize.regular.rawValue,
+            menuBarLayoutGapRaw: userDefaults.string(forKey: "menuBarLayoutGap")
+                ?? MenuBarLayoutGap.regular.rawValue,
+            menuBarLayoutVerticalAdjustment: menuBarLayoutVerticalAdjustment,
+            copilotBudgetExtrasEnabled: userDefaults.object(forKey: "copilotBudgetExtrasEnabled") as? Bool ?? false,
+            copilotIconSecondaryWindowIDRaw: copilotIconSecondaryWindowIDRaw,
+            copilotSeatCreditEntitlementRaw: userDefaults.object(
+                forKey: "copilotSeatCreditEntitlement") as? String ?? "",
+            costUsageEnabled: costUsageEnabled,
+            codexLocalSessionCostLedgerEnabled: userDefaults.object(
+                forKey: "codexLocalSessionCostLedgerEnabled") as? Bool ?? false,
+            openCodeLocalHistoryEnabled: userDefaults.object(
+                forKey: "openCodeLocalHistoryEnabled") as? Bool ?? false,
+            costReportingPeriod: costReportingPeriod,
+            costUsageBucketTimeZoneIdentifier: costUsageBucketTimeZoneIdentifier,
+            openCodexUsageLogsEnabled: userDefaults.object(forKey: "openCodexUsageLogsEnabled") as? Bool ?? false,
+            hideNativeCodexCostWhenOpenCodexPresent: userDefaults.object(
+                forKey: "hideNativeCodexCostWhenOpenCodexPresent") as? Bool ?? false,
+            spendDashboardHiddenSourceIDs: userDefaults.stringArray(forKey: "spendDashboardHiddenSourceIDs") ?? [],
+            costComparisonPeriodsEnabled: userDefaults.object(
+                forKey: "costComparisonPeriodsEnabled") as? Bool ?? false,
+            costSummaryDisplayStyleRaw: costSummaryDisplayStyleRaw,
+            hidePersonalInfo: userDefaults.object(forKey: "hidePersonalInfo") as? Bool ?? false,
+            randomBlinkEnabled: userDefaults.object(forKey: "randomBlinkEnabled") as? Bool ?? false,
+            confettiOnSessionLimitResetsEnabled: confettiOnReset.session,
+            confettiOnWeeklyLimitResetsEnabled: confettiOnReset.weekly,
+            menuBarShowsHighestUsage: userDefaults.object(forKey: "menuBarShowsHighestUsage") as? Bool ?? false,
+            unifiedIconSourceRaw: userDefaults.string(forKey: "unifiedIconSource"),
+            claudeOAuthKeychainPromptModeRaw: userDefaults.string(forKey: "claudeOAuthKeychainPromptMode"),
+            claudeOAuthKeychainReadStrategyRaw: claudeOAuthKeychainReadStrategyRaw,
+            // Explicit consent for reading Claude Code's Keychain item (#2634). Default OFF; never enabled silently.
+            claudeOAuthDirectKeychainReadAllowed: userDefaults.object(
+                forKey: ClaudeOAuthDirectKeychainReadConsent.userDefaultsKey) as? Bool ?? false,
+            claudeWebExtrasEnabledRaw: userDefaults.object(forKey: "claudeWebExtrasEnabled") as? Bool ?? false,
+            showOptionalCreditsAndExtraUsage: Self.loadBoolDefault(
+                "showOptionalCreditsAndExtraUsage",
+                fallback: true,
+                from: userDefaults),
+            claudeDailyRoutinesUsageVisible: Self.loadBoolDefault(
+                "claudeDailyRoutinesUsageVisible",
+                fallback: true,
+                from: userDefaults),
+            // Model-scoped weekly rows are opt-in: a fresh install keeps widgets on the standard quota lanes.
+            claudeModelScopedWeeklyUsageVisible: userDefaults.object(
+                forKey: "claudeModelScopedWeeklyUsageVisible") as? Bool ?? false,
+            codexSparkUsageVisible: Self.loadBoolDefault("codexSparkUsageVisible", fallback: true, from: userDefaults),
+            codexExternalOAuthSourcesAllowed: userDefaults.object(
+                forKey: "codexExternalOAuthSourcesAllowed") as? Bool ?? false,
+            openAIWebAccessEnabled: userDefaults.object(forKey: "openAIWebAccessEnabled") as? Bool ?? false,
+            openAIWebBatterySaverEnabled: Self.loadBoolDefault(
+                "openAIWebBatterySaverEnabled",
+                fallback: false,
+                from: userDefaults),
+            backgroundWorkLowPowerModePreference: backgroundWorkLowPowerModePreference,
+            providerStorageFootprintsEnabled: Self.loadBoolDefault(
+                "providerStorageFootprintsEnabled",
+                fallback: false,
+                from: userDefaults),
+            jetbrainsIDEBasePath: userDefaults.string(forKey: "jetbrainsIDEBasePath") ?? "",
+            mergeIcons: userDefaults.object(forKey: "mergeIcons") as? Bool ?? true,
+            mergedOverviewLayoutRaw: userDefaults.string(forKey: "mergedOverviewLayout")
+                ?? MergedOverviewLayout.detailed.rawValue,
+            mergedOverviewAllAccounts: userDefaults.bool(forKey: "mergedOverviewAllAccounts"),
+            switcherShowsIcons: userDefaults.object(forKey: "switcherShowsIcons") as? Bool ?? true,
+            mergeIconsStacked: userDefaults.object(forKey: "mergeIconsStacked") as? Bool ?? false,
+            mergeIconStackedTopProviderRaw: userDefaults.string(forKey: "mergeIconStackedTopProvider"),
+            mergeIconStackedBottomProviderRaw: userDefaults.string(forKey: "mergeIconStackedBottomProvider"),
+            mergedMenuLastSelectedWasOverview: userDefaults.object(
+                forKey: "mergedMenuLastSelectedWasOverview") as? Bool ?? false,
+            mergedOverviewSelectedProvidersRaw: userDefaults.array(
+                forKey: "mergedOverviewSelectedProviders") as? [String] ?? [],
+            selectedMenuProviderRaw: userDefaults.string(forKey: "selectedMenuProvider"),
+            providerDetectionCompleted: userDefaults.object(forKey: "providerDetectionCompleted") as? Bool ?? false,
+            providersSortedAlphabetically: userDefaults.object(
+                forKey: "providersSortedAlphabetically") as? Bool ?? false,
+            settingsProvidersUsedFirst: userDefaults.object(forKey: "settingsProvidersUsedFirst") as? Bool ?? true,
+            providersEnabledOnly: userDefaults.bool(forKey: "providersEnabledOnly"),
+            appLanguageRaw: userDefaults.string(forKey: "appLanguage"),
+            terminalAppRaw: userDefaults.string(forKey: "terminalApp"),
+            agentSessionsEnabled: userDefaults.object(forKey: "agentSessionsEnabled") as? Bool ?? false,
+            agentSessionsRemoteEnabled: userDefaults.bool(forKey: "agentSessionsRemoteEnabled"),
+            agentSessionLabelStyleRaw: userDefaults.string(forKey: "agentSessionLabelStyle")
+                ?? AgentSessionLabelStyle.project.rawValue,
+            agentSessionsManualHosts: userDefaults.string(forKey: "agentSessionsManualHosts") ?? "",
+            agentSessionsHideUnreachableHosts: userDefaults.object(
+                forKey: "agentSessionsHideUnreachableHosts") as? Bool ?? false,
+            preferredCurrencyCode: userDefaults.string(forKey: "preferredCurrencyCode") ?? "USD",
+            iCloudSyncEnabled: userDefaults.object(forKey: "iCloudSyncEnabled") as? Bool ?? false,
+            iCloudSyncIncludeSecrets: userDefaults.object(forKey: "iCloudSyncIncludeSecrets") as? Bool ?? true,
+            iCloudSyncSnapshotsEnabled: userDefaults.object(forKey: "iCloudSyncSnapshotsEnabled") as? Bool ?? true,
+            iCloudSyncShowFleetAccounts: userDefaults.object(forKey: "iCloudSyncShowFleetAccounts") as? Bool ?? true,
+            iCloudSyncDeviceID: iCloudSyncDeviceID)
+    }
+
+    private static func hadPreviousAppLaunch(userDefaults: UserDefaults) -> Bool {
+        userDefaults.object(forKey: "providerDetectionCompleted") != nil ||
+            userDefaults.object(forKey: AppGroupSupport.migrationVersionKey) != nil
+    }
+
+    private static func loadRefreshFrequency(
+        userDefaults: UserDefaults,
+        hadPreviousInstallationState: Bool) -> RefreshFrequency
+    {
+        let rawValue = userDefaults.object(forKey: "refreshFrequency")
+        if let stored = rawValue as? String,
+           let frequency = RefreshFrequency(rawValue: stored)
+        {
+            return frequency
+        }
+
+        // An invalid value is existing state. Missing state is Adaptive only when no prior-installation
+        // state existed before migrations began; legacy unset users keep the old five-minute fallback.
+        let frequency: RefreshFrequency = rawValue == nil && !hadPreviousInstallationState ? .adaptive : .fiveMinutes
+        userDefaults.set(frequency.rawValue, forKey: "refreshFrequency")
+        return frequency
+    }
+
+    private static func loadLowPowerModePreference(userDefaults: UserDefaults) -> LowPowerModePreference {
+        if let stored = userDefaults.string(forKey: "backgroundWorkLowPowerModePreference"),
+           let preference = LowPowerModePreference(rawValue: stored)
+        {
+            return preference
+        }
+
+        // Migrate the legacy on/off toggle, preserving prior behavior exactly (default off).
+        let legacyEnabled = userDefaults.object(forKey: "backgroundWorkLowPowerModeEnabled") as? Bool ?? false
+        let preference: LowPowerModePreference = legacyEnabled ? .on : .off
+        userDefaults.set(preference.rawValue, forKey: "backgroundWorkLowPowerModePreference")
+        return preference
+    }
+
+    private static func loadAdaptiveActivityScanConsent(
+        userDefaults: UserDefaults) -> AdaptiveActivityScanConsent
+    {
+        if let rawValue = userDefaults.string(forKey: "adaptiveActivityScanConsent"),
+           let consent = AdaptiveActivityScanConsent(rawValue: rawValue)
+        {
+            return consent
+        }
+
+        userDefaults.set(AdaptiveActivityScanConsent.undecided.rawValue, forKey: "adaptiveActivityScanConsent")
+        return .undecided
+    }
+
+    private static func loadNotificationDefaults(userDefaults: UserDefaults) -> NotificationDefaults {
+        NotificationDefaults(
+            statusChecksEnabled: userDefaults.object(forKey: "statusChecksEnabled") as? Bool ?? true,
+            sessionQuotaNotificationsEnabled: self.loadBoolDefault(
+                "sessionQuotaNotificationsEnabled",
+                fallback: true,
+                from: userDefaults),
+            predictivePaceWarningNotificationsEnabled: userDefaults.object(
+                forKey: "predictivePaceWarningNotificationsEnabled") as? Bool ?? false,
+            limitResetNotificationsEnabled: userDefaults.object(
+                forKey: "limitResetNotificationsEnabled") as? Bool ?? false)
+    }
+
+    private static func loadCostSummaryDisplayStyleRaw(
+        userDefaults: UserDefaults,
+        costUsageEnabled: Bool) -> String
+    {
+        if let storedCostSummaryDisplayStyle = userDefaults.string(forKey: "costSummaryDisplayStyle"),
+           CostSummaryDisplayStyle(rawValue: storedCostSummaryDisplayStyle) != nil
+        {
+            return storedCostSummaryDisplayStyle
+        }
+        let migratedStyle = CostSummaryDisplayStyle.both.rawValue
+        if costUsageEnabled || userDefaults.object(forKey: "costSummaryDisplayStyle") != nil {
+            userDefaults.set(migratedStyle, forKey: "costSummaryDisplayStyle")
+        }
+        return migratedStyle
+    }
+
+    private static func loadClaudeOAuthKeychainReadStrategyRaw(userDefaults: UserDefaults) -> String? {
+        let key = "claudeOAuthKeychainReadStrategy"
+        guard let raw = userDefaults.string(forKey: key) else { return nil }
+        guard let strategy = ClaudeOAuthKeychainReadStrategy(rawValue: raw) else { return raw }
+        guard strategy == .securityCLIExperimental else { return raw }
+
+        let migrated = ClaudeOAuthKeychainReadStrategy.securityFramework.rawValue
+        userDefaults.set(migrated, forKey: key)
+        let promptModeKey = "claudeOAuthKeychainPromptMode"
+        if userDefaults.string(forKey: promptModeKey) == nil {
+            userDefaults.set(ClaudeOAuthKeychainPromptMode.never.rawValue, forKey: promptModeKey)
+        }
+        return migrated
+    }
+
+    private static func loadConfettiOnResetDefaults(userDefaults: UserDefaults) -> (session: Bool, weekly: Bool) {
+        (
+            session: userDefaults.object(forKey: "confettiOnSessionLimitResetsEnabled") as? Bool ?? false,
+            weekly: userDefaults.object(forKey: "confettiOnWeeklyLimitResetsEnabled") as? Bool ?? false)
+    }
+
+    private static func loadMenuBarMetricPreferences(userDefaults: UserDefaults) -> [String: String] {
+        let storedPreferences = userDefaults.dictionary(forKey: "menuBarMetricPreferences") as? [String: String] ?? [:]
+        let preferences: [String: String] = if !storedPreferences.isEmpty {
+            storedPreferences
+        } else if let menuBarMetricRaw = userDefaults.string(forKey: "menuBarMetricPreference"),
+                  let legacyPreference = MenuBarMetricPreference(rawValue: menuBarMetricRaw)
+        {
+            Dictionary(
+                uniqueKeysWithValues: UsageProvider.allCases.map { ($0.rawValue, legacyPreference.rawValue) })
+        } else {
+            [:]
+        }
+
+        let migrationKey = "antigravityTwoPoolMetricPreferenceMigrated"
+        guard !userDefaults.bool(forKey: migrationKey) else { return preferences }
+
+        // Tagged builds through v0.35 used primary=Claude, secondary=Gemini Pro,
+        // and tertiary=Gemini Flash. Remap those meanings once to the two-pool schema.
+        // Provider-specific by design: this one-time migration rewrites Antigravity's historical persisted lanes.
+        var migrated = preferences
+        switch MenuBarMetricPreference(rawValue: migrated[UsageProvider.antigravity.rawValue] ?? "") {
+        case .primary:
+            migrated[UsageProvider.antigravity.rawValue] = MenuBarMetricPreference.secondary.rawValue
+        case .secondary:
+            migrated[UsageProvider.antigravity.rawValue] = MenuBarMetricPreference.primary.rawValue
+        case .tertiary:
+            migrated[UsageProvider.antigravity.rawValue] = MenuBarMetricPreference.primary.rawValue
+        case .automatic, .primaryAndSecondary, .extraUsage, .average, .monthlyPlan, .none:
+            break
+        }
+        userDefaults.set(migrated, forKey: "menuBarMetricPreferences")
+        userDefaults.set(true, forKey: migrationKey)
+        return migrated
+    }
+
+    private static func loadMenuBarLayout(userDefaults: UserDefaults) -> MenuBarLayout? {
+        MenuBarLayoutPersistence.loadLayout(
+            current: self.decodeMenuBarLayout(userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.layoutCurrent)),
+            v5: self.decodeMenuBarLayout(userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.layoutV5)),
+            v4: self.decodeMenuBarLayout(userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.layoutV4)),
+            v3: self.decodeMenuBarLayout(userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.layoutV3)),
+            released: self.decodeMenuBarLayout(
+                userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.layoutReleased)),
+            legacy: self.decodeMenuBarLayout(userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.layout)),
+            into: userDefaults)
+    }
+
+    private static func loadMenuBarLayoutConditionals(userDefaults: UserDefaults) -> [MenuBarLayoutConditional] {
+        // No persisted generation means a fresh install, so hand back the shipped library. Any edit, add,
+        // or removal writes every generation, so a library the user deliberately emptied is never reseeded.
+        MenuBarLayoutPersistence.loadLibrary(
+            current: self.decodeMenuBarLayoutConditionals(
+                userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.conditionalsCurrent)),
+            v5: self.decodeMenuBarLayoutConditionals(
+                userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.conditionalsV5)),
+            v4: self
+                .decodeMenuBarLayoutConditionals(userDefaults
+                    .data(forKey: MenuBarLayoutUserDefaultsKey.conditionalsV4)),
+            v3: self.decodeMenuBarLayoutConditionals(
+                userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.conditionalsV3)),
+            released: self.decodeMenuBarLayoutConditionals(
+                userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.conditionalsReleased)),
+            legacy: self.decodeMenuBarLayoutConditionals(
+                userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.conditionals)),
+            into: userDefaults)
+            ?? MenuBarLayoutConditional.shippedLibrary()
+    }
+
+    /// Element-wise so one entry this build cannot understand — a library written by a newer release —
+    /// is dropped on its own instead of emptying the whole array.
+    private static func decodeMenuBarLayoutConditionals(_ data: Data?) -> [MenuBarLayoutConditional]? {
+        guard let data else { return nil }
+        return (try? JSONDecoder().decode([LenientMenuBarLayoutConditional].self, from: data))?
+            .compactMap(\.value)
+    }
+
+    private static func loadMenuBarLayoutOverrides(userDefaults: UserDefaults) -> [String: MenuBarLayout] {
+        MenuBarLayoutPersistence.loadOverrides(
+            current: self.decodeMenuBarLayoutOverrides(
+                userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.overridesCurrent)),
+            v5: self.decodeMenuBarLayoutOverrides(
+                userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.overridesV5)),
+            v4: self.decodeMenuBarLayoutOverrides(userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.overridesV4)),
+            v3: self.decodeMenuBarLayoutOverrides(
+                userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.overridesV3)),
+            released: self.decodeMenuBarLayoutOverrides(
+                userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.overridesReleased)),
+            legacy: self.decodeMenuBarLayoutOverrides(
+                userDefaults.data(forKey: MenuBarLayoutUserDefaultsKey.overrides)),
+            into: userDefaults)
+    }
+
+    private static func decodeMenuBarLayout(_ data: Data?) -> MenuBarLayout? {
+        guard let data else { return nil }
+        return try? JSONDecoder().decode(MenuBarLayout.self, from: data)
+    }
+
+    private static func decodeMenuBarLayoutOverrides(_ data: Data?) -> [String: MenuBarLayout]? {
+        guard let data else { return nil }
+        return try? JSONDecoder().decode([String: MenuBarLayout].self, from: data)
+    }
+
+    private static func loadMultiAccountMenuLayoutRaw(userDefaults: UserDefaults) -> String {
+        if let layout = userDefaults.string(forKey: "multiAccountMenuLayout") {
+            return layout
+        }
+        let legacyShowAll = userDefaults.object(forKey: "showAllTokenAccountsInMenu") as? Bool ?? false
+        return legacyShowAll ? MultiAccountMenuLayout.stacked.rawValue : MultiAccountMenuLayout.segmented.rawValue
+    }
+
+    private static func loadCopilotIconSecondaryWindowIDRaw(userDefaults: UserDefaults) -> String {
+        userDefaults.string(forKey: "copilotIconSecondaryWindowID") ?? CopilotIconSecondaryWindowSelection.chat
+    }
+
+    static func loadDebugDisableKeychainAccess(userDefaults: UserDefaults) -> Bool {
+        self.loadDebugDisableKeychainAccess(
+            userDefaults: userDefaults,
+            sharedDefaults: self.shouldBridgeSharedDefaults(for: userDefaults) ? self.sharedDefaults : nil)
+    }
+
+    static func loadDebugDisableKeychainAccess(userDefaults: UserDefaults, sharedDefaults: UserDefaults?) -> Bool {
+        if let stored = userDefaults.object(forKey: "debugDisableKeychainAccess") as? Bool {
+            return stored
+        }
+        if let shared = sharedDefaults?.object(forKey: "debugDisableKeychainAccess") as? Bool {
+            if Self.isRunningTests {
+                userDefaults.set(shared, forKey: "debugDisableKeychainAccess")
+            }
+            return shared
+        }
+        return false
+    }
+
+    private struct LoadedQuotaWarningDefaults {
+        var notificationsEnabled: Bool
+        var thresholdsRaw: [Int]
+        var sessionThresholdsRaw: [Int]
+        var weeklyThresholdsRaw: [Int]
+        var sessionEnabled: Bool
+        var weeklyEnabled: Bool
+        var soundEnabled: Bool
+        var onScreenAlertEnabled: Bool
+    }
+
+    private static func loadBoolDefault(_ key: String, fallback: Bool, from defaults: UserDefaults) -> Bool {
+        let stored = defaults.object(forKey: key) as? Bool
+        if Self.isRunningTests, stored == nil {
+            defaults.set(fallback, forKey: key)
+        }
+        return stored ?? fallback
+    }
+
+    private static func loadQuotaWarningDefaults(userDefaults: UserDefaults) -> LoadedQuotaWarningDefaults {
+        let notificationsEnabled = userDefaults.object(forKey: "quotaWarningNotificationsEnabled") as? Bool ?? false
+        let rawThresholds = userDefaults.array(forKey: "quotaWarningThresholds") as? [Int]
+        let thresholdsRaw = QuotaWarningThresholds.sanitized(rawThresholds ?? QuotaWarningThresholds.defaults)
+        if Self.isRunningTests, rawThresholds != thresholdsRaw {
+            userDefaults.set(thresholdsRaw, forKey: "quotaWarningThresholds")
+        }
+        let rawSessionThresholds = userDefaults.array(forKey: "quotaWarningSessionThresholds") as? [Int]
+        let sessionThresholdsRaw = QuotaWarningThresholds.sanitized(rawSessionThresholds ?? thresholdsRaw)
+        if Self.isRunningTests, rawSessionThresholds != sessionThresholdsRaw {
+            userDefaults.set(sessionThresholdsRaw, forKey: "quotaWarningSessionThresholds")
+        }
+        let rawWeeklyThresholds = userDefaults.array(forKey: "quotaWarningWeeklyThresholds") as? [Int]
+        let weeklyThresholdsRaw = QuotaWarningThresholds.sanitized(rawWeeklyThresholds ?? thresholdsRaw)
+        if Self.isRunningTests, rawWeeklyThresholds != weeklyThresholdsRaw {
+            userDefaults.set(weeklyThresholdsRaw, forKey: "quotaWarningWeeklyThresholds")
+        }
+
+        return LoadedQuotaWarningDefaults(
+            notificationsEnabled: notificationsEnabled,
+            thresholdsRaw: thresholdsRaw,
+            sessionThresholdsRaw: sessionThresholdsRaw,
+            weeklyThresholdsRaw: weeklyThresholdsRaw,
+            sessionEnabled: Self.loadBoolDefault("quotaWarningSessionEnabled", fallback: true, from: userDefaults),
+            weeklyEnabled: Self.loadBoolDefault("quotaWarningWeeklyEnabled", fallback: true, from: userDefaults),
+            soundEnabled: Self.loadBoolDefault("quotaWarningSoundEnabled", fallback: true, from: userDefaults),
+            onScreenAlertEnabled: Self.loadBoolDefault(
+                "quotaWarningOnScreenAlertEnabled",
+                fallback: false,
+                from: userDefaults))
+    }
+}
+
+extension SettingsStore {
+    var configSnapshot: CodexBarConfig {
+        _ = self.configRevision
+        return self.config
+    }
+
+    func updateProviderState(config: CodexBarConfig) {
+        if let undo = self.providerOrderUndo, config.providers.map(\.id) != undo.after {
+            self.clearProviderOrderUndo()
+        }
+        let rawOrder = config.providers.map(\.id.rawValue)
+        self.providerOrder = Self.effectiveProviderOrder(raw: rawOrder)
+        let metadata = ProviderDescriptorRegistry.metadata
+        let defaults = UsageProvider.allCases.map { provider in
+            (id: provider.instanceID, enabled: metadata[provider]?.defaultEnabled ?? false)
+        } + UserProviderPluginRegistry.all.map { plugin in
+            (id: plugin.manifest.id, enabled: true)
+        }
+        var enablement: [ProviderInstanceID: Bool] = [:]
+        enablement.reserveCapacity(defaults.count)
+        for (instanceID, defaultEnabled) in defaults {
+            let providerConfig = config.providerConfig(for: instanceID) ?? ProviderConfig(id: instanceID)
+            let isEnabled = providerConfig.enabled ?? defaultEnabled
+            if let previous = self.providerEnablement[instanceID], previous != isEnabled {
+                self.providerEnablementRevisions[instanceID, default: 0] &+= 1
+            }
+            let fingerprint = Self.providerConfigFingerprint(providerConfig)
+            if let previous = self.providerConfigFingerprints[instanceID], previous != fingerprint {
+                self.providerConfigRevisions[instanceID, default: 0] &+= 1
+                self.onProviderFetchIdentityChange?(instanceID)
+            }
+            self.providerConfigFingerprints[instanceID] = fingerprint
+            enablement[instanceID] = isEnabled
+        }
+        self.providerEnablement = enablement
+        // Every config path crosses this method, so the accent palette refreshes from a settings edit,
+        // an external edit to the config file, and an inbound iCloud sync alike.
+        if ProviderAccentPalette.apply(config: config) {
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+            #endif
+        }
+    }
+
+    private static func providerConfigFingerprint(_ config: ProviderConfig) -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return (try? encoder.encode(config.fetchIdentityConfig)) ?? Data()
+    }
+
+    func providerEnablementRevision(for provider: UsageProvider) -> UInt64 {
+        self.providerEnablementRevision(forInstanceID: provider.instanceID)
+    }
+
+    func providerConfigRevision(for provider: UsageProvider) -> UInt64 {
+        self.providerConfigRevision(forInstanceID: provider.instanceID)
+    }
+
+    func providerEnablementRevision(forInstanceID instanceID: ProviderInstanceID) -> UInt64 {
+        self.providerEnablementRevisions[instanceID, default: 0]
+    }
+
+    func providerConfigRevision(forInstanceID instanceID: ProviderInstanceID) -> UInt64 {
+        self.providerConfigRevisions[instanceID, default: 0]
+    }
+
+    func orderedProviders() -> [ProviderInstanceID] {
+        if self.providerOrder.isEmpty {
+            self.updateProviderState(config: self.configSnapshot)
+        }
+        return self.providerOrder
+    }
+
+    func orderedFirstPartyProviders() -> [UsageProvider] {
+        self.orderedProviders().compactMap(\.firstPartyProvider)
+    }
+
+    func moveProvider(fromOffsets: IndexSet, toOffset: Int) {
+        var order = self.orderedProviders()
+        order.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        self.setProviderOrder(order)
+    }
+
+    func isProviderEnabled(provider: UsageProvider, metadata: ProviderMetadata) -> Bool {
+        self.providerEnablement[provider.instanceID] ?? metadata.defaultEnabled
+    }
+
+    func isProviderEnabledCached(
+        provider: UsageProvider,
+        metadataByProvider: [UsageProvider: ProviderMetadata]) -> Bool
+    {
+        let defaultEnabled = metadataByProvider[provider]?.defaultEnabled ?? false
+        return self.providerEnablement[provider.instanceID] ?? defaultEnabled
+    }
+
+    func enabledProvidersOrdered(metadataByProvider: [UsageProvider: ProviderMetadata]) -> [ProviderInstanceID] {
+        _ = metadataByProvider
+        return self.orderedProviders().filter { self.providerEnablement[$0] ?? false }
+    }
+
+    func setProviderEnabled(provider: UsageProvider, metadata _: ProviderMetadata, enabled: Bool) {
+        CodexBarLog.logger(LogCategories.settings).debug(
+            "Provider toggle updated",
+            metadata: ["provider": provider.rawValue, "enabled": "\(enabled)"])
+        self.updateProviderConfig(provider: provider) { entry in
+            entry.enabled = enabled
+        }
+        if !enabled, self.selectedMenuProvider == provider.instanceID {
+            self.selectedMenuProvider = nil
+        }
+    }
+
+    func isPluginEnabled(_ instanceID: ProviderInstanceID) -> Bool {
+        self.providerEnablement[instanceID] ?? false
+    }
+
+    func setPluginEnabled(_ instanceID: ProviderInstanceID, enabled: Bool) {
+        self.updatePluginConfig(instanceID: instanceID) { $0.enabled = enabled }
+        if !enabled, self.selectedMenuProvider == instanceID {
+            self.selectedMenuProvider = nil
+        }
+    }
+
+    func pluginConfig(_ instanceID: ProviderInstanceID) -> ProviderConfig? {
+        self.configSnapshot.providerConfig(for: instanceID)
+    }
+
+    func updatePluginConfig(instanceID: ProviderInstanceID, mutate: (inout ProviderConfig) -> Void) {
+        self.updateConfig(reason: "plugin-\(instanceID.rawValue)", affectsBackgroundWork: true) { config in
+            var entry = config.providerConfig(for: instanceID) ?? ProviderConfig(id: instanceID, enabled: true)
+            mutate(&entry)
+            config.setProviderConfig(entry)
+        }
+    }
+
+    func rerunProviderDetection() {
+        self.runInitialProviderDetectionIfNeeded(force: true)
+    }
+}
+
+extension SettingsStore {
+    private static func effectiveProviderOrder(raw: [String]) -> [ProviderInstanceID] {
+        var seen: Set<ProviderInstanceID> = []
+        var ordered: [ProviderInstanceID] = []
+
+        for rawValue in raw {
+            guard let instanceID = ProviderInstanceID(rawValue: rawValue),
+                  instanceID.firstPartyProvider != nil || UserProviderPluginRegistry.plugin(for: instanceID) != nil
+            else {
+                continue
+            }
+            guard !seen.contains(instanceID) else { continue }
+            seen.insert(instanceID)
+            ordered.append(instanceID)
+        }
+
+        if ordered.isEmpty {
+            ordered = UsageProvider.allCases.map(\.instanceID)
+            seen = Set(ordered)
+        }
+
+        if !seen.contains(.factory), let zaiIndex = ordered.firstIndex(of: .zai) {
+            ordered.insert(.factory, at: zaiIndex)
+            seen.insert(.factory)
+        }
+
+        if !seen.contains(.minimax), let zaiIndex = ordered.firstIndex(of: .zai) {
+            let insertIndex = ordered.index(after: zaiIndex)
+            ordered.insert(.minimax, at: insertIndex)
+            seen.insert(.minimax)
+        }
+
+        for provider in UsageProvider.allCases where !seen.contains(provider.instanceID) {
+            ordered.append(provider.instanceID)
+        }
+
+        for plugin in UserProviderPluginRegistry.all where !seen.contains(plugin.manifest.id) {
+            ordered.append(plugin.manifest.id)
+            seen.insert(plugin.manifest.id)
+        }
+
+        return ordered
+    }
+}

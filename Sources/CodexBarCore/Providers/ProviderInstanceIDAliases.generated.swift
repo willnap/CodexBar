@@ -61,6 +61,7 @@ extension ProviderInstanceID {
     public static let bifrost = UsageProvider.bifrost.instanceID
     public static let aixy = UsageProvider.aixy.instanceID
     public static let deepgram = UsageProvider.deepgram.instanceID
+    public static let soniox = UsageProvider.soniox.instanceID
     public static let poe = UsageProvider.poe.instanceID
     public static let chutes = UsageProvider.chutes.instanceID
     public static let neuralwatt = UsageProvider.neuralwatt.instanceID
@@ -87,6 +88,7 @@ extension ProviderInstanceID {
     public static let typesafe = UsageProvider.typesafe.instanceID
     public static let hyper = UsageProvider.hyper.instanceID
     public static let gitkraken = UsageProvider.gitkraken.instanceID
+    public static let futureagi = UsageProvider.futureagi.instanceID
     public static let devpass = UsageProvider.devpass.instanceID
     public static let atlascloud = UsageProvider.atlascloud.instanceID
     public static let vercel = UsageProvider.vercel.instanceID
@@ -103,6 +105,14 @@ extension ProviderInstanceID {
     public static let aerostack = UsageProvider.aerostack.instanceID
     public static let sailresearch = UsageProvider.sailresearch.instanceID
     public static let sofya = UsageProvider.sofya.instanceID
+    public static let fal = UsageProvider.fal.instanceID
+    public static let flora = UsageProvider.flora.instanceID
+    public static let parallel = UsageProvider.parallel.instanceID
+    public static let claudeplatform = UsageProvider.claudeplatform.instanceID
+    public static let munito = UsageProvider.munito.instanceID
+    public static let traecn = UsageProvider.traecn.instanceID
+    public static let chatbox = UsageProvider.chatbox.instanceID
+    public static let abliteration = UsageProvider.abliteration.instanceID
 }
 
 // swiftformat:enable sortDeclarations

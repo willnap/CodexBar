@@ -5,14 +5,14 @@
     "docs/logos/bifrost.svg": "9d0e0c88583a956024f01f106e19b343505837c40a463f1197673ab29ecde489",
     "docs/logos/gitkraken.svg": "20b52166e290620e572aca954b633ba5db8892f48fef65b01502fa4e6f47f9d7",
     "docs/logos/helmcode.svg": "815993dc14457df021454bb59972c0cb9ff8651271f74b0cb8a5bf0f9fa191c3",
-    "docs/logos/typesafe.svg": "b9106d3ab93bf4a81be2f9a395211bd4578a6b83c06fde2c7a8226fc3e1416c5",
+    "docs/logos/typesafe.svg": "1136ada22c6e1b0a7f3e3d54802afb2d9e9e2338f9ef8757590f98c3617c02e4",
     "docs/logos/v0.svg": "88555a2f0ea4f137efeccecf61233241a0ab42c1b05f4f37c8780bbe53c84631",
     "docs/logos/vercel.svg": "8055b9c3701a1b634558a0fc7ac13e265cb37b7b0d2471204e5a7324f8f8d82b",
-    "docs/social.html": "ab1a6add82dbc739c370275ec12908c60df3b8f3f788aa8a30ae984842e04272"
+    "docs/social.html": "51ee39d422923aeb918007c108dc432759caaf66ad743caf7133bee587a930db"
   },
   "image": {
     "path": "docs/social.png",
-    "sha256": "2da5e6df9ee2b2ef322ca8d9571c525833fd64450e060bf0d439a1267ac6ff4b",
+    "sha256": "1436859e75bb3a24c1c055714bebccdfa8b7f994636b6608bf638f995eacc77d",
     "width": 1200,
     "height": 630
   }

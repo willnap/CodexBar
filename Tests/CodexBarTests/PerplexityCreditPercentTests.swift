@@ -68,7 +68,7 @@ struct PerplexityCreditPercentTests {
         for (preference, expected): (MenuBarPercentWindowPreference, String) in [
             (.session, showUsed ? "C 100%" : "C 0%"),
             (.weekly, showUsed ? "B 25%" : "B 75%"),
-            (.automatic, showUsed ? "25%" : "75%"),
+            (.automatic, showUsed ? "B 25%" : "B 75%"),
         ] {
             let layout = preference.applied(to: MenuBarLayout(lines: [[.percent(window: .automatic)]]))
             let output = MenuBarLayoutRenderer().render(
@@ -93,10 +93,10 @@ struct PerplexityCreditPercentTests {
                 #expect(output.accessibilityLabel == (showUsed ? "Credits 100%" : "Credits 0%"))
             }
         }
-        for token: MenuBarLayoutToken in [
-            .resetCountdown, .resetAbsolute,
-            .windowResetCountdown(window: .automatic), .windowResetAbsolute(window: .automatic),
-            .windowResetCountdown(window: .weekly), .windowResetAbsolute(window: .weekly),
+        for (token, expected): (MenuBarLayoutToken, String) in [
+            (.resetCountdown, "B –"), (.resetAbsolute, "B –"),
+            (.windowResetCountdown(window: .automatic), "B –"), (.windowResetAbsolute(window: .automatic), "B –"),
+            (.windowResetCountdown(window: .weekly), "–"), (.windowResetAbsolute(window: .weekly), "–"),
         ] {
             let output = MenuBarLayoutRenderer().render(
                 layout: MenuBarLayout(lines: [[token]]),
@@ -110,7 +110,7 @@ struct PerplexityCreditPercentTests {
                     appearanceName: NSAppearance.Name.aqua.rawValue,
                     isDebugApp: false,
                     now: self.now))
-            #expect(output.attributedTitle.string == "–")
+            #expect(output.attributedTitle.string == expected)
             #expect(!output.accessibilityLabel.contains("1000/4000"))
         }
     }
@@ -181,11 +181,16 @@ struct PerplexityCreditPercentTests {
                     windowMinutes: nil,
                     resetsAt: hasDate ? date : nil,
                     resetDescription: description))
-                let text = MenuBarLayoutResetText(window: window, provider: provider, now: self.now)
+                let countdown = MenuBarLayoutResetText(
+                    window: window,
+                    provider: provider,
+                    now: self.now,
+                    absolute: false)
+                let absolute = MenuBarLayoutResetText(window: window, provider: provider, now: self.now, absolute: true)
                 let fallback: String? = [.codex, .deepseek].contains(provider) ? description : nil
-                #expect(text.countdown == (hasDate ? "in 2h" : fallback))
-                #expect(text
-                    .absolute == (hasDate ? UsageFormatter.resetDescription(from: date, now: self.now) : fallback))
+                #expect(countdown.value == (hasDate ? "in 2h" : fallback))
+                #expect(absolute
+                    .value == (hasDate ? UsageFormatter.resetDescription(from: date, now: self.now) : fallback))
             }
         }
     }

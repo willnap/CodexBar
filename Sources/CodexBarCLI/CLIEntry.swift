@@ -65,7 +65,7 @@ enum CodexBarCLI {
             case ["serve"]:
                 await self.runServe(invocation.parsedValues)
             case let path where path.first == "config":
-                self.runConfig(path: path, values: invocation.parsedValues)
+                await self.runConfig(path: path, values: invocation.parsedValues)
             case let path where path.first == "hooks":
                 await self.runHooks(path: path, values: invocation.parsedValues)
             case ["cache", "clear"]:
@@ -174,6 +174,8 @@ enum CodexBarCLI {
         let configProviderToggleSignature = CommandSignature.describe(ConfigProviderToggleOptions()).flattened()
         let configSetSourceSignature = CommandSignature.describe(ConfigSetSourceOptions()).flattened()
         let configSetAPIKeySignature = CommandSignature.describe(ConfigSetAPIKeyOptions()).flattened()
+        let configSetCookieSignature = CommandSignature.describe(ConfigSetCookieOptions()).flattened()
+        let configClearCredentialSignature = CommandSignature.describe(ConfigClearCredentialOptions()).flattened()
         let cacheSignature = CommandSignature.describe(CacheOptions()).flattened()
         let diagnoseSignature = CommandSignature.describe(DiagnoseOptions()).flattened()
         let guardSignature = CommandSignature.describe(GuardOptions()).flattened()
@@ -256,10 +258,25 @@ enum CodexBarCLI {
                         discussion: nil,
                         signature: configProviderToggleSignature),
                     CommandDescriptor(
+                        name: "login",
+                        abstract: "GitHub Copilot Login",
+                        discussion: nil,
+                        signature: configProviderToggleSignature),
+                    CommandDescriptor(
                         name: "set-api-key",
                         abstract: "Store a provider API key",
                         discussion: nil,
                         signature: configSetAPIKeySignature),
+                    CommandDescriptor(
+                        name: "set-cookie",
+                        abstract: "Store a provider manual cookie",
+                        discussion: nil,
+                        signature: configSetCookieSignature),
+                    CommandDescriptor(
+                        name: "clear-credential",
+                        abstract: "Clear a provider API key or manual cookie",
+                        discussion: nil,
+                        signature: configClearCredentialSignature),
                     CommandDescriptor(
                         name: "set-source",
                         abstract: "Store a provider data source",

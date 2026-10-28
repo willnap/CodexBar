@@ -101,7 +101,7 @@ struct CostUsageClaudeReportEngineTests {
         #expect(appended.snapshot().repricedRows < total / 4)
     }
 
-    @Test func `appends stay in memory between the app's cache writes and reach the file at the next one`() throws {
+    @Test func `incremental appends are counted and reach the cache file`() throws {
         let env = try CostUsageTestEnvironment()
         defer { env.cleanup() }
         let day = try env.makeLocalNoon(year: 2026, month: 7, day: 1)
@@ -131,18 +131,10 @@ struct CostUsageClaudeReportEngineTests {
                 .summary?.totalInputTokens
         }
         let cacheURL = CostUsageClaudeCacheIO.cacheFileURL(provider: .claude, cacheRoot: env.cacheRoot)
-        let memoURL = CostUsageClaudeReportMemo.reportMemoFileURL(cacheFileURL: cacheURL)
-        let schedule = CostUsageClaudeCacheIO.WriteSchedule()
-        schedule.setInterval(600)
-        try CostUsageClaudeCacheIO.WriteSchedule.$shared.withValue(schedule) {
-            #expect(try load() == 10)
-            let written = try [Data(contentsOf: cacheURL), Data(contentsOf: memoURL)]
-            try append("second", input: 5)
-            #expect(try load() == 15)
-            #expect(try load() == 15)
-            #expect(try [Data(contentsOf: cacheURL), Data(contentsOf: memoURL)] == written)
-        }
-        // The next write (here, with deferral off) records everything kept in memory.
+        #expect(try load() == 10)
+        try append("second", input: 5)
+        #expect(try load() == 15)
+        #expect(try load() == 15)
         try append("third", input: 1)
         #expect(try load() == 16)
         CostUsageClaudeCacheIO.evictArtifactMemoForTesting(at: cacheURL)

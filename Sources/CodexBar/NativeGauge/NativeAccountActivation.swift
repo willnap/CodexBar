@@ -355,7 +355,7 @@ extension StatusItemController {
         let beforePreflight = self.store.claudeSwapLastRefreshAt
         await self.store.refreshClaudeSwapAccounts()
         guard self.store.isCurrentClaudeSwapConfiguration(
-            executablePath: executable, configurationGeneration: generation),
+            executablePath: executable, source: .claudeSwap, configurationGeneration: generation),
             // Provider-specific by design: Recheck ClaudeSwap's credential transaction lock after its owner refresh.
             !self.isNativeAccountActivationBlocked(provider: .claude),
             let preflightTime = self.store.claudeSwapLastRefreshAt,
@@ -376,7 +376,7 @@ extension StatusItemController {
         }
         await task.value
         guard self.store.isCurrentClaudeSwapConfiguration(
-            executablePath: executable, configurationGeneration: generation),
+            executablePath: executable, source: .claudeSwap, configurationGeneration: generation),
             self.store.claudeSwapTransientState.task == nil
         else { return .failed("Claude account configuration changed during switching. Refresh the accounts.") }
         if let error = self.store.claudeSwapTransientState.lastError { return .failed(error) }

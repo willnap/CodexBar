@@ -954,74 +954,16 @@ extension CostUsageStoreTests {
 }
 
 extension CostUsageStoreTests {
-    static let expectedCompatiblePredecessorParserHashes: Set<String> = [
-        "3df7e5f82b88697b",
-        "f406dae284de4a55",
-        "379b799bb4b91683",
-        "7ce21041b7a36242",
-        "0d8f9504f8e63d0f",
-        "c0f8e9be04d824c2",
-        "89c0662767e633ea",
-        "e1088fb29c221187",
-        "7ff985e81e281a11",
-        "865cef15206ea5c0",
-        "d35c9fb00bee059b",
-        "99d920977063318a",
-        "ed735dc27ffa70d9",
-        "029fe80aa98f27e8",
-        "c61aebb9cf043a72",
-        "4a4c4ef34ce6f037",
-        "04a6361469a4ff77",
-        "98de5f52231e524e",
-        "9972dad7f7aeff21",
-        "4dd9e5769818370a",
-        "03e43d1217789d16",
-        "50813ce2a3edfdc7",
-        "865a444e01b818f1",
-        "6a4df886696f4ab5",
-        "6d48baf0ed980828",
-        "c2ac37e84074d2b2",
-        "710f475c3d1cfb61",
-        "aa57b010b3c0bee4",
-        "aef0df6c73f8052c",
-        "4969a789db679c93",
-        "c4fa7db2cf54bc41",
-        "ca4bc3875600536f",
-        "7f00691fa96c78d1",
-        "9ca89383b9957b07",
-        "ba2eca901de4c53d",
-        "9547dc9d7b7675f6",
-        "2590d36e1cc4a2ea",
-        "edd0a6ad56c0e4e7",
-        "f043ae98075c8e4d",
-        "e3fca1e6d81137d6",
-        "e0b0319de43e22d7",
-        "7e293e8fc9e25700",
-        "494eee446bb2e5f9",
-        "6366caa15c925349",
-        "4a593b5d59c7bcf3",
-        "b77d4ec72e14ea63",
-        "7b1b44d62a411215",
-        "d9a91f31d0addc15",
-        "f8577be489f4c13d",
-        "21f10143afe00c55",
-        "55f640e6bb0ccba4",
-        "c6c46a376ba16304",
-        "dd19ffa2dcfa8d47",
-        "8050a4faf4fddb96",
-        "cfd84d13ad7d4cfa",
-        "98da5914d2f6a9cd",
-        "43609cc56f76a003",
-        "b975eb705f905b9a",
-        "47144baa8daccf52",
-        "2d17f4981b78d07f",
-        "3c984b655688593f",
-        "5f8507161b23757c",
-    ]
-
-    @Test(arguments: [
-        "3df7e5f82b88697b", // Claude-only Hashable conformances; Codex rows unchanged.
-        "f406dae284de4a55", // Native-gauges base the user's live cache was built with.
+    private static let testedPredecessorParserHashes = [
+        "e5909f60274b2c47", // Upstream v0.82 before merging the native redesign.
+        "c61ad842834df4fa", // Native redesign before merging upstream v0.82.
+        "3df7e5f82b88697b", // Native-gauges build with Claude-only Hashable conformances; Codex rows unchanged.
+        "4e1358d00a4a47b5", // Current main before the optional local-history source.
+        "54a95e8fe7bd6ee9", // Selected-session inspection before checkpoint validation.
+        "455876ace937d42a", // Current main before selected-session detail reads.
+        "4feea9e203d85529", // Previous inspector build; request details were never persisted.
+        "fc698834d6329beb", // Before opt-in request observation; saved rows and cursors are unchanged.
+        "f406dae284de4a55", // Current main before the Auto-review creator-account reparse.
         "379b799bb4b91683", // Current main before on-demand tool inspection.
         "7ce21041b7a36242", // Prior tool inspection build before upstream process cleanup.
         "0d8f9504f8e63d0f", // Current main before on-demand tool inspection.
@@ -1065,6 +1007,9 @@ extension CostUsageStoreTests {
         "7e293e8fc9e25700",
         "494eee446bb2e5f9",
         "6366caa15c925349",
+        "3f88178bf03ad704",
+        "a47b70abaf8ad86c",
+        "d9542d1ef3ce1875",
         "4a593b5d59c7bcf3",
         "b77d4ec72e14ea63",
         "cfd84d13ad7d4cfa",
@@ -1074,11 +1019,23 @@ extension CostUsageStoreTests {
         "f8577be489f4c13d",
         "d9a91f31d0addc15",
         "7b1b44d62a411215",
-    ])
+    ]
+
+    @Test(arguments: Self.testedPredecessorParserHashes)
     func `compatible predecessor parser hash adopts without rebuilding`(predecessorHash: String) async throws {
         let fixture = try StoreFixture()
         defer { fixture.remove() }
-        #expect(CostUsageStore.compatiblePredecessorParserHashes == Self.expectedCompatiblePredecessorParserHashes)
+        #expect(CostUsageStore.compatiblePredecessorParserHashes == Set(Self.testedPredecessorParserHashes).union([
+            "dd19ffa2dcfa8d47",
+            "8050a4faf4fddb96",
+            "98da5914d2f6a9cd",
+            "43609cc56f76a003",
+            "b975eb705f905b9a",
+            "47144baa8daccf52",
+            "2d17f4981b78d07f",
+            "3c984b655688593f",
+            "5f8507161b23757c",
+        ]))
         let predecessorVersion = CostUsageStore.combinedSchemaVersion(
             base: CostUsageStore.baseSchemaVersion,
             parserHash: predecessorHash)

@@ -66,7 +66,11 @@ struct MergedIconSettingsLabelTests {
                             .disabled(!merged)
                         Divider()
                         MenuBarLayoutDisplayOptions(
-                            size: .constant(.small), gap: .constant(.tight), verticalAdjustment: .constant(0))
+                            size: .constant(.small),
+                            gap: .constant(.tight),
+                            verticalAdjustment: .constant(0),
+                            monospacedDigits: .constant(false),
+                            showWindowLabels: .constant(true))
                     }
                     .toggleStyle(.switch)
                     .padding(24)

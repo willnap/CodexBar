@@ -51,6 +51,8 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
     public let accountOrganizationName: String?
     /// Source-issued organization UUID used only to match local transcript evidence. Never persisted or logged.
     public let sourceOrganizationID: String?
+    /// Opaque, source-owned history scope; independent of the activation slot and sync identity.
+    public let historyAccountKey: String?
     public let isActive: Bool
     /// Whether the source can activate this slot or explicitly repair its selected credential state.
     /// Activation remains source-owned; CodexBar never handles credential material.
@@ -74,6 +76,7 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
         accountEmail: String? = nil,
         accountOrganizationName: String? = nil,
         sourceOrganizationID: String? = nil,
+        historyAccountKey: String? = nil,
         isActive: Bool,
         canActivate: Bool = false,
         autoSwitchEligible: Bool = false,
@@ -90,6 +93,7 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
         self.accountEmail = accountEmail
         self.accountOrganizationName = accountOrganizationName
         self.sourceOrganizationID = sourceOrganizationID
+        self.historyAccountKey = historyAccountKey
         self.isActive = isActive
         self.canActivate = canActivate
         self.autoSwitchEligible = autoSwitchEligible

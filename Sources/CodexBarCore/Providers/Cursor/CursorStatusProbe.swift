@@ -385,6 +385,9 @@ public struct CursorStatusSnapshot: Sendable {
     /// Grok Bot weekly included usage from `/api/dashboard/get-sand-usage-status`.
     public let sandUsage: CursorSandUsageStatus?
 
+    /// Authoritative monthly additional spend for unified Cursor/Grok accounts.
+    public let unifiedUsage: CursorUnifiedUsageStatus?
+
     // MARK: - Legacy Plan (Request-Based) Fields
 
     /// Requests used this billing cycle (legacy plans only)
@@ -415,6 +418,7 @@ public struct CursorStatusSnapshot: Sendable {
         accountName: String?,
         rawJSON: String?,
         sandUsage: CursorSandUsageStatus? = nil,
+        unifiedUsage: CursorUnifiedUsageStatus? = nil,
         requestsUsed: Int? = nil,
         requestsLimit: Int? = nil)
     {
@@ -435,12 +439,14 @@ public struct CursorStatusSnapshot: Sendable {
         self.accountName = accountName
         self.rawJSON = rawJSON
         self.sandUsage = sandUsage
+        self.unifiedUsage = unifiedUsage
         self.requestsUsed = requestsUsed
         self.requestsLimit = requestsLimit
     }
 
     /// Convert to UsageSnapshot for the common provider interface
     public func toUsageSnapshot(now: Date = Date()) -> UsageSnapshot {
+        let sandWindow = self.sandUsage?.extraRateWindow(now: now, resetDescription: Self.formatResetDate)
         let cursorRequests: CursorRequestUsage? = if let used = self.requestsUsed,
                                                      let limit = self.requestsLimit,
                                                      limit > 0
@@ -450,74 +456,51 @@ public struct CursorStatusSnapshot: Sendable {
             nil
         }
 
-        // Primary: For usable legacy request quotas, use request usage; otherwise preserve plan percentage.
-        let primaryUsedPercent = cursorRequests?.usedPercent ?? self.planPercentUsed
+        // Keep explicit request quotas. Unified token plans use the shared weekly pool;
+        // usage-summary still reports their old monthly cycle.
+        let sharedWeeklyPool = cursorRequests == nil && self.sandUsage?.isUnified == true
+            && sandWindow?.window.windowMinutes == 10080
+            && sandWindow?.window.resetsAt.map { $0 > now } == true ? sandWindow?.window : nil
+        let hidesMonthlyBreakdown = cursorRequests != nil || sharedWeeklyPool != nil
 
         let billingCycleWindowMinutes = CursorSandUsageStatus.windowMinutes(
             start: self.billingCycleStart,
             end: self.billingCycleEnd)
 
-        let primary = RateWindow(
-            usedPercent: primaryUsedPercent,
-            windowMinutes: billingCycleWindowMinutes,
-            resetsAt: self.billingCycleEnd,
-            resetDescription: cursorRequests.map { "\($0.used) / \($0.limit) requests" }
-                ?? self.billingCycleEnd.map { Self.formatResetDate($0) })
-
-        // Secondary: Auto + Composer usage (shown as its own bar below Total).
-        // Legacy request-based plans don't have the token-based Auto/API breakdown — those percentages
-        // come from the new usage-based pricing and are meaningless next to a request quota, so hide them.
-        let secondary: RateWindow? = cursorRequests != nil ? nil : self.autoPercentUsed.map { pct in
-            RateWindow(
-                usedPercent: pct,
-                windowMinutes: billingCycleWindowMinutes,
-                resetsAt: self.billingCycleEnd,
-                resetDescription: self.billingCycleEnd.map { Self.formatResetDate($0) })
+        func monthlyWindow(_ percent: Double?, description: String? = nil) -> RateWindow? {
+            percent.map {
+                RateWindow(
+                    usedPercent: $0,
+                    windowMinutes: billingCycleWindowMinutes,
+                    resetsAt: self.billingCycleEnd,
+                    resetDescription: description ?? self.billingCycleEnd.map(Self.formatResetDate))
+            }
         }
+        // Primary: For usable legacy request quotas, use request usage; otherwise preserve plan percentage.
+        let primary = sharedWeeklyPool ?? monthlyWindow(
+            cursorRequests?.usedPercent ?? self.planPercentUsed,
+            description: cursorRequests.map { "\($0.used) / \($0.limit) requests" })
+        // Request quotas and unified weekly pools have no monthly Auto/API breakdown.
+        let secondary = hidesMonthlyBreakdown ? nil : monthlyWindow(self.autoPercentUsed)
+        let tertiary = hidesMonthlyBreakdown ? nil : monthlyWindow(self.apiPercentUsed)
 
-        // Tertiary: API (named model) usage — hidden for legacy request-based plans (see above).
-        let tertiary: RateWindow? = cursorRequests != nil ? nil : self.apiPercentUsed.map { pct in
-            RateWindow(
-                usedPercent: pct,
-                windowMinutes: billingCycleWindowMinutes,
-                resetsAt: self.billingCycleEnd,
-                resetDescription: self.billingCycleEnd.map { Self.formatResetDate($0) })
-        }
-
-        // Grok Bot is a weekly included allowance on the same Cursor account, not the monthly
-        // Total/Cursor/Third Party bars. Hide it on legacy request plans so it cannot sit next
-        // to a request quota that does not share that token-based breakdown.
-        let extraRateWindows: [NamedRateWindow]? = if cursorRequests != nil {
-            nil
+        // Prefer authoritative personal billing, then a personal cap or the shared team budget.
+        let monthly = self.unifiedUsage?.currentMonthlyUsage(at: now)
+        let usesTeamBudget = monthly == nil && !((self.onDemandLimitUSD ?? 0) > 0)
+            && (self.teamOnDemandLimitUSD ?? 0) > 0
+        let (resolvedOnDemandUsed, resolvedOnDemandLimit): (Double, Double?) = if let monthly {
+            (monthly.usedCents / 100, monthly.limitCents / 100)
+        } else if usesTeamBudget {
+            (self.teamOnDemandUsedUSD ?? 0, self.teamOnDemandLimitUSD)
         } else {
-            self.sandUsage?.extraRateWindow(now: now, resetDescription: Self.formatResetDate).map { [$0] }
+            (self.onDemandUsedUSD, self.onDemandLimitUSD)
         }
 
-        // Prefer a personal cap. Team accounts with no user cap expose only the shared on-demand budget.
-        let resolvedOnDemandUsed: Double
-        let resolvedOnDemandLimit: Double?
-        if (self.onDemandLimitUSD ?? 0) > 0 {
-            resolvedOnDemandUsed = self.onDemandUsedUSD
-            resolvedOnDemandLimit = self.onDemandLimitUSD
-        } else if (self.teamOnDemandLimitUSD ?? 0) > 0 {
-            resolvedOnDemandUsed = self.teamOnDemandUsedUSD ?? 0
-            resolvedOnDemandLimit = self.teamOnDemandLimitUSD
-        } else {
-            resolvedOnDemandUsed = self.onDemandUsedUSD
-            resolvedOnDemandLimit = self.onDemandLimitUSD
-        }
-
-        // Your own on-demand spend to surface alongside a shared team pool (nil when the budget is personal).
-        let personalOnDemandUsed: Double? = if (self.onDemandLimitUSD ?? 0) > 0 {
-            nil
-        } else if (self.teamOnDemandLimitUSD ?? 0) > 0 {
-            self.onDemandUsedUSD > 0 ? self.onDemandUsedUSD : nil
-        } else {
-            nil
-        }
+        // Your own on-demand spend is separate only when the displayed budget is shared.
+        let personalOnDemandUsed = usesTeamBudget && self.onDemandUsedUSD > 0 ? self.onDemandUsedUSD : nil
 
         // Provider cost snapshot for on-demand usage (include budget before first spend)
-        let providerCost: ProviderCostSnapshot? = if resolvedOnDemandUsed > 0
+        let providerCost: ProviderCostSnapshot? = if monthly != nil || resolvedOnDemandUsed > 0
             || (resolvedOnDemandLimit ?? 0) > 0
         {
             ProviderCostSnapshot(
@@ -525,7 +508,7 @@ public struct CursorStatusSnapshot: Sendable {
                 limit: resolvedOnDemandLimit ?? 0,
                 currencyCode: "USD",
                 period: "Monthly",
-                resetsAt: self.billingCycleEnd,
+                resetsAt: monthly.flatMap { ISO8601DateParser.parse($0.resetsAt) } ?? self.billingCycleEnd,
                 personalUsed: personalOnDemandUsed,
                 updatedAt: now)
         } else {
@@ -542,7 +525,7 @@ public struct CursorStatusSnapshot: Sendable {
             primary: primary,
             secondary: secondary,
             tertiary: tertiary,
-            extraRateWindows: extraRateWindows,
+            extraRateWindows: hidesMonthlyBreakdown ? nil : sandWindow.map { [$0] },
             providerCost: providerCost,
             details: cursorRequests.map { requests in
                 [.makeSection(title: "Usage", rows: [
@@ -561,29 +544,19 @@ public struct CursorStatusSnapshot: Sendable {
     }
 
     private static func formatMembershipType(_ type: String) -> String {
-        let planName = switch type.lowercased() {
-        case "enterprise":
-            "Enterprise"
-        case "express":
-            "Start"
-        case "free":
-            "Free"
-        case "free_trial":
-            "Pro Trial"
-        case "hobby":
-            "Hobby"
-        case "pro", "pro_student":
-            "Pro"
-        case "pro_plus":
-            "Pro+"
-        case "team":
-            "Team"
-        case "ultra":
-            "Ultra"
-        default:
-            type
-        }
-        return "Cursor \(planName)"
+        let planNames = [
+            "enterprise": "Enterprise",
+            "express": "Start",
+            "free": "Free",
+            "free_trial": "Pro Trial",
+            "hobby": "Hobby",
+            "pro": "Pro",
+            "pro_student": "Pro",
+            "pro_plus": "Pro+",
+            "team": "Team",
+            "ultra": "Ultra",
+        ]
+        return "Cursor \(planNames[type.lowercased()] ?? type)"
     }
 }
 
@@ -1021,15 +994,9 @@ public struct CursorStatusProbe: Sendable {
     }
 
     private static func hasAccountIdentity(_ snapshot: CursorStatusSnapshot) -> Bool {
-        self.normalizedAccountIdentityValue(snapshot.accountID) != nil ||
-            self.normalizedAccountIdentityValue(snapshot.accountEmail) != nil
-    }
-
-    private static func normalizedAccountIdentityValue(_ value: String?) -> String? {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
-            return nil
+        [snapshot.accountID, snapshot.accountEmail].contains {
+            $0?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         }
-        return value
     }
     #endif
 
@@ -1258,8 +1225,8 @@ public struct CursorStatusProbe: Sendable {
     {
         enum FetchPart: Sendable {
             case usageSummary((CursorUsageSummary, String))
-            case userInfo(Result<CursorUserInfo, Error>)
-            case sandUsage(Result<(CursorSandUsageStatus, String), Error>)
+            case userInfo(CursorUserInfo?)
+            case sandUsage((CursorSandUsageStatus, String)?)
         }
 
         try Self.checkBrowserLoginDeadline(deadline)
@@ -1271,25 +1238,22 @@ public struct CursorStatusProbe: Sendable {
 
         try await withThrowingTaskGroup(of: FetchPart.self) { group in
             group.addTask {
-                try await .usageSummary(self.fetchUsageSummary(cookieHeader: cookieHeader, deadline: deadline))
+                try await .usageSummary(self.fetchJSON(
+                    path: "/api/usage-summary",
+                    cookieHeader: cookieHeader,
+                    timeout: self.requestTimeout(deadline: deadline),
+                    decodingLabel: "JSON"))
             }
             group.addTask {
-                do {
-                    return try await .userInfo(.success(self.fetchUserInfo(
-                        cookieHeader: cookieHeader,
-                        deadline: deadline)))
-                } catch {
-                    return .userInfo(.failure(error))
-                }
+                let response: (CursorUserInfo, String)? = try? await self.fetchJSON(
+                    path: "/api/auth/me",
+                    cookieHeader: cookieHeader,
+                    timeout: self.requestTimeout(deadline: deadline),
+                    failureMessage: "Failed to fetch user info")
+                return .userInfo(response?.0)
             }
             group.addTask {
-                do {
-                    return try await .sandUsage(.success(self.fetchSandUsage(
-                        cookieHeader: cookieHeader,
-                        deadline: deadline)))
-                } catch {
-                    return .sandUsage(.failure(error))
-                }
+                await .sandUsage(try? self.fetchSandUsage(cookieHeader: cookieHeader, deadline: deadline))
             }
 
             while let result = try await group.next() {
@@ -1297,9 +1261,9 @@ public struct CursorStatusProbe: Sendable {
                 case let .usageSummary(value):
                     usageSummaryResult = value
                 case let .userInfo(value):
-                    userInfo = try? value.get()
+                    userInfo = value
                 case let .sandUsage(value):
-                    if let (status, rawJSON) = try? value.get() {
+                    if let (status, rawJSON) = value {
                         sandUsage = status
                         sandUsageRawJSON = rawJSON
                     }
@@ -1327,16 +1291,32 @@ public struct CursorStatusProbe: Sendable {
         }
         try Task.checkCancellation()
 
+        // Unified accounts replace the irrelevant legacy request-quota lookup with their billing read.
+        // If optional billing is unavailable or invalid, preserve the existing summary spend and cap.
+        var unifiedUsage: CursorUnifiedUsageStatus?
+        let isUnified = usageSummary.usesUnifiedPersonalBilling
+        if isUnified, let timeout = self.optionalRequestTimeout(deadline: deadline, budget: Self.sandUsageTimeout) {
+            let response: (CursorUnifiedUsageStatus, String)? = try? await self.fetchJSON(
+                path: CursorUnifiedUsageStatus.endpointPath,
+                query: [URLQueryItem(name: "scope", value: "user")],
+                cookieHeader: cookieHeader,
+                timeout: timeout,
+                failureMessage: "Unified additional spend is unavailable")
+            unifiedUsage = response?.0
+        }
+
         // Fetch legacy request usage only if user has a sub ID.
         // Uses try? to avoid breaking the flow for users where this endpoint fails or returns unexpected data.
         var requestUsage: CursorUsageResponse?
         var requestUsageRawJSON: String?
-        if teamBudget == nil, let userId = userInfo?.sub ?? identityFallback?.requestUsageUserID {
+        if !isUnified, teamBudget == nil, let userId = userInfo?.sub ?? identityFallback?.requestUsageUserID {
             do {
-                let (usage, usageRawJSON) = try await self.fetchRequestUsage(
-                    userId: userId,
+                let (usage, usageRawJSON): (CursorUsageResponse, String) = try await self.fetchJSON(
+                    path: "/api/usage",
+                    query: [URLQueryItem(name: "user", value: userId)],
                     cookieHeader: cookieHeader,
-                    deadline: deadline)
+                    timeout: self.requestTimeout(deadline: deadline),
+                    failureMessage: "Failed to fetch request usage")
                 requestUsage = usage
                 requestUsageRawJSON = usageRawJSON
             } catch {
@@ -1361,89 +1341,24 @@ public struct CursorStatusProbe: Sendable {
             rawJSON: combinedRawJSON,
             requestUsage: requestUsage,
             sandUsage: sandUsage,
+            unifiedUsage: unifiedUsage,
             identityFallback: identityFallback,
             teamBudget: teamBudget)
-    }
-
-    private func fetchUsageSummary(
-        cookieHeader: String,
-        deadline: Date?) async throws -> (CursorUsageSummary, String)
-    {
-        let url = self.baseURL.appendingPathComponent("/api/usage-summary")
-        var request = URLRequest(url: url)
-        request.timeoutInterval = try self.requestTimeout(deadline: deadline)
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
-
-        let (data, response) = try await self.urlSession.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw CursorStatusProbeError.networkError("Invalid response")
-        }
-
-        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-            throw CursorStatusProbeError.notLoggedIn
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            throw CursorStatusProbeError.networkError("HTTP \(httpResponse.statusCode)")
-        }
-
-        let rawJSON = String(data: data, encoding: .utf8) ?? "<binary>"
-
-        do {
-            let decoder = JSONDecoder()
-            let summary = try decoder.decode(CursorUsageSummary.self, from: data)
-            return (summary, rawJSON)
-        } catch {
-            throw CursorStatusProbeError
-                .parseFailed("JSON decode failed: \(error.localizedDescription). Raw: \(rawJSON.prefix(200))")
-        }
     }
 
     private func fetchSandUsage(
         cookieHeader: String,
         deadline: Date?) async throws -> (CursorSandUsageStatus, String)
     {
-        let url = self.baseURL.appendingPathComponent(CursorSandUsageStatus.endpointPath)
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        // Best-effort: cap wait so a stalled Sand endpoint cannot consume the login deadline.
-        guard let sandTimeout = self.optionalRequestTimeout(
-            deadline: deadline,
-            budget: Self.sandUsageTimeout)
-        else {
+        guard let timeout = self.optionalRequestTimeout(deadline: deadline, budget: Self.sandUsageTimeout) else {
             throw CursorStatusProbeError.networkError("Sand usage skipped after login deadline")
         }
-        request.timeoutInterval = sandTimeout
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(self.originHeader, forHTTPHeaderField: "Origin")
-        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
-        request.httpBody = Data("{}".utf8)
-
-        let (data, response) = try await self.urlSession.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw CursorStatusProbeError.networkError("Invalid response")
-        }
-
-        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-            throw CursorStatusProbeError.notLoggedIn
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            throw CursorStatusProbeError.networkError("HTTP \(httpResponse.statusCode)")
-        }
-
-        let rawJSON = String(data: data, encoding: .utf8) ?? "<binary>"
-        do {
-            let status = try JSONDecoder().decode(CursorSandUsageStatus.self, from: data)
-            return (status, rawJSON)
-        } catch {
-            throw CursorStatusProbeError
-                .parseFailed("Sand usage decode failed: \(error.localizedDescription). Raw: \(rawJSON.prefix(200))")
-        }
+        return try await self.fetchJSON(
+            path: CursorSandUsageStatus.endpointPath,
+            cookieHeader: cookieHeader,
+            timeout: timeout,
+            method: "POST",
+            decodingLabel: "Sand usage")
     }
 
     private var originHeader: String {
@@ -1453,45 +1368,45 @@ public struct CursorStatusProbe: Sendable {
         return "\(scheme)://\(host)"
     }
 
-    private func fetchUserInfo(cookieHeader: String, deadline: Date?) async throws -> CursorUserInfo {
-        let url = self.baseURL.appendingPathComponent("/api/auth/me")
-        var request = URLRequest(url: url)
-        request.timeoutInterval = try self.requestTimeout(deadline: deadline)
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
-
-        let (data, response) = try await self.urlSession.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw CursorStatusProbeError.networkError("Failed to fetch user info")
-        }
-
-        let decoder = JSONDecoder()
-        return try decoder.decode(CursorUserInfo.self, from: data)
-    }
-
-    private func fetchRequestUsage(
-        userId: String,
+    private func fetchJSON<Response: Decodable>(
+        path: String,
+        query: [URLQueryItem] = [],
         cookieHeader: String,
-        deadline: Date?) async throws -> (CursorUsageResponse, String)
+        timeout: TimeInterval,
+        method: String = "GET",
+        failureMessage: String? = nil,
+        decodingLabel: String? = nil) async throws -> (Response, String)
     {
-        let url = self.baseURL.appendingPathComponent("/api/usage")
-            .appending(queryItems: [URLQueryItem(name: "user", value: userId)])
-        var request = URLRequest(url: url)
-        request.timeoutInterval = try self.requestTimeout(deadline: deadline)
+        let url = self.baseURL.appendingPathComponent(path)
+        var request = URLRequest(url: query.isEmpty ? url : url.appending(queryItems: query))
+        request.timeoutInterval = timeout
+        request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
-
-        let (data, response) = try await self.urlSession.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw CursorStatusProbeError.networkError("Failed to fetch request usage")
+        if method == "POST" {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(self.originHeader, forHTTPHeaderField: "Origin")
+            request.httpBody = Data("{}".utf8)
         }
-
+        let (data, response) = try await self.urlSession.data(for: request)
+        if let failureMessage, (response as? HTTPURLResponse)?.statusCode != 200 {
+            throw CursorStatusProbeError.networkError(failureMessage)
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw CursorStatusProbeError.networkError("Invalid response")
+        }
+        if http.statusCode == 401 || http.statusCode == 403 { throw CursorStatusProbeError.notLoggedIn }
+        guard http.statusCode == 200 else {
+            throw CursorStatusProbeError.networkError("HTTP \(http.statusCode)")
+        }
         let rawJSON = String(data: data, encoding: .utf8) ?? "<binary>"
-        let decoder = JSONDecoder()
-        let usage = try decoder.decode(CursorUsageResponse.self, from: data)
-        return (usage, rawJSON)
+        do {
+            return try (JSONDecoder().decode(Response.self, from: data), rawJSON)
+        } catch {
+            guard let decodingLabel else { throw error }
+            throw CursorStatusProbeError.parseFailed(
+                "\(decodingLabel) decode failed: \(error.localizedDescription). Raw: \(rawJSON.prefix(200))")
+        }
     }
 
     private static let sandUsageTimeout: TimeInterval = 5

@@ -20,6 +20,26 @@ App refreshes are scoped to the installed plugin runtime and its fetch settings.
 reconfiguring a plugin prevents an older refresh from publishing usage or errors. A replacement refresh waits for retired
 work to finish and reads the current configuration when its fetch starts. Display-only preferences do not invalidate usage.
 
+When icons are merged and the source is **Current selection**, selecting a user plugin also selects its menu-bar
+quota. Its Icon & percent number uses the same quota as the switcher gauge (see below).
+Before usage arrives, the plugin remains selected with unavailable usage. Other merged-icon sources retain their
+built-in provider behavior.
+
+## Menu-bar percentage
+
+In **Settings → Plugins**, each installed plugin has a **Menu bar metric** picker. **Auto** keeps the existing default:
+the most-used reported seven-day window, otherwise the first available primary, secondary, tertiary, or extra window.
+Choose **Primary**, **Secondary**, **Tertiary**, or a named extra window to use that quota for both the Icon & percent
+number and the provider-switcher gauge. Reported window titles replace the generic labels; named extras appear after
+the plugin reports them. For example, choosing a monthly window at 76.9% used displays **77%** even just after a weekly
+reset. Both surfaces honor the existing used/remaining display preference.
+
+The choice is saved per plugin using the existing menu-bar layout preferences and applies without another fetch.
+If the selected window is missing or has unknown usage, the display falls back to Auto and resumes the selected
+window when it returns. A selected extra remains in the picker while absent, using its ID until its title returns.
+The choice does not alter the two-lane meter icon, snapshot JSON, window order, durations, reset metadata, or hook
+payloads. Keep truthful `windowMinutes` values: display selection never requires removing cadence metadata.
+
 ## Bundled provider registration
 
 For a bundled plugin with a simple API-key configuration, declare a public `PluginProviderSpec` named `spec` in its
@@ -69,8 +89,18 @@ WorkBuddy uses this shared cookie host for its billing-only plugin. Its descript
 version because the website binds sessions to the browser User-Agent; cookie values stay opaque to the script.
 See [WorkBuddy](workbuddy.md) for the request contract, bounded optional reset lookup, and account coverage.
 
+[abliteration.ai](abliteration.md) uses a fixed-origin bearer request to read prepaid USD credits. It reuses the
+standard API-key field and classified errors, with no browser access or inferred reset schedule.
+
 [X API](xapi.md) uses the same cookie host with a bundled `ct0` header echo for account discovery and developer-console
 credits. Its script preserves dollar balances and debt without receiving cookie values or adding a native fetcher.
+
+[Gemini app](gemini.md) uses `gemini-web` for explicit web-source quotas on both engines. Request-URL-scoped,
+nonpersistent cookie sessions use the shared access gate; the existing Gemini CLI OAuth source stays native.
+
+[Claude Platform](claudeplatform.md) sends the opaque `sessionKey` cookie through the same cookie host, so its script
+never sees cookie values. It lists organizations, then reads required `prepaid/credits` (a 403 tries the next API
+organization) and optional `current_spend`, whose failures keep the balance. Both plugin engines run it.
 
 Manus, Muse (muse.ai), Perplexity, Hyper, Raycast, Sakana, and T3 Chat use the shared app implementation. Helmcode retains its tenant
 picker/snapshot, and Qoder retains its regional dashboard action and source-label adapter while sharing cookie UI.
@@ -119,13 +149,33 @@ defineProvider({
 - `id`: 1–64 lowercase ASCII letters, digits, or hyphens. It must not match a built-in provider or another installed
   plugin.
 - `name`: trimmed display name, 1–80 UTF-8 bytes.
-- `icon` (optional): `{monogram, tint}`. `monogram` is 1–3 characters; `tint` is `#RRGGBB`. The fallback is the first
-  letter of `name` with a neutral tint. File/SVG icons are not supported.
+- `icon` (optional): `{monogram, tint, svg}`. `monogram` is 1–3 characters; `tint` is `#RRGGBB`. The fallback is the first
+  letter of `name` with a neutral tint. `svg` (optional) is an inline monochrome SVG string of at most 8 KB, drawn as a
+  template image like built-in provider icons. Only `svg`, `g`, `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`,
+  `polygon`, `title`, and `desc` elements with plain geometry/fill/stroke attributes are accepted: no scripts, styles,
+  links, `url(...)` references, raster images, `foreignObject`, or DOCTYPE/entities. Attribute values may use only
+  letters, digits, spaces and `.,#%+-()` (no CSS escapes, comments or declarations); `fill`/`stroke` must be a colour
+  keyword, `#hex`, or numeric `rgb()`/`rgba()`; `xmlns` must be the SVG namespace. An SVG that fails these checks is
+  ignored and the monogram is shown. The host rasterizes accepted icons into a 32×32 bitmap before display;
+  canvas sizes are checked before native decoding and limited to 4096×4096. Include a finite `viewBox` or paired
+  positive `width`/`height` (numbers or `px`); partial dimensions and other canvas units fall back to the monogram.
+  File icons are not supported.
 - `topLevel` (optional, default `true`): gives an enabled plugin its own provider-switcher tab when Merge Icons is on. Set to `false` to keep an appended card.
+  Plugin tabs show a quota gauge using the [menu-bar percentage preference](#menu-bar-percentage). With Auto, they
+  use the most constrained reported seven-day window, otherwise the first available primary, secondary, tertiary,
+  or extra window. They follow the used/remaining display preference; unknown usage stays unavailable.
+  Merged meter icons use the primary window for the thick lane and the secondary window for the
+  thin lane, following the used/remaining preference. When both are absent, the existing tertiary/extra-window
+  single-meter fallback remains.
+  Enabled plugins can also be selected in **Settings → Menu Bar → Overview**; they share the
+  six-provider limit and render their existing usage card. Overview selections retain the same string-array format,
+  so older builds can still read the built-in providers while ignoring unknown plugin IDs.
 - `endpoints`: 1–16 declared network origins. A fixed endpoint is a normalized HTTPS origin such as
   `https://api.example.com` (no path, query, fragment, or user info). A settings-derived endpoint is
   `{setting: "BASE_URL", policy: "https"}`, `{setting: "BASE_URL", policy: "https-or-loopback-http"}`, or
   `{setting: "BASE_URL", policy: "https-or-private-network-http"}`. Its setting must be declared as `plain`.
+  A missing, empty, or whitespace-only value is required configuration, not an invalid manifest. CodexBar identifies
+  the plugin and missing setting; fetching stays blocked until a valid endpoint is configured and approved.
   `https-or-loopback-http` preserves the unauthenticated loopback-only rule. `https-or-private-network-http` also permits
   authenticated HTTP for loopback, RFC 1918 IPv4, IPv4 link-local, IPv6 unique-local/link-local, and `.local` targets,
   but only through the separate typed approval described below. Public targets always require HTTPS.
@@ -228,6 +278,9 @@ so portable third-party plugins must use the host helpers below instead of ECMA-
   Background imports remain non-interactive. Suppressed or denied access reports permission recovery guidance rather
   than a missing login when all authentication paths fail; valid fallback credentials can still succeed. A successful
   refresh retains each manifest's cookie persistence policy, including nonpersistent sessions.
+  When an admitted discovery attempt cannot read a browser profile, the error names the browser and points to
+  **System Settings → Privacy & Security → Files & Folders → CodexBar**. Enable that browser and refresh.
+  Policy-blocked imports do not probe profiles, and an observed Keychain denial keeps its existing guidance.
 - `ctx.browser.supportedBrowsers` is a comma-separated display list from the provider's configured browser catalog subset (Chrome for user plugins). It describes supported Automatic sources, not installed or searched profiles; it performs no browser or Keychain access. On platforms without browser import it reads `none on this platform`.
 - `await ctx.browser.cookieHeader(domain)` returns a cookie header only with the `browser-cookies` capability and for a
   declared domain. User plugins import from Chrome; bundled providers retain their declared browser order.
@@ -312,13 +365,17 @@ engine; the same rollback is available in **Settings → Debug → Provider Plug
 CodexBar. JavaScriptCore has no public interrupt API, so a timed-out rollback-engine context is discarded but its
 abandoned evaluation thread can remain alive until process exit.
 
+QuickJS worker jobs drain autoreleased host objects when they finish, preventing refresh temporaries from building up
+across a plugin's lifetime. JavaScriptCore registration and completed-fetch callbacks do not keep retired runtimes or
+contexts alive; active evaluations and the existing fetch watchdog still determine when cleanup can finish.
+
 ## Snapshot result
 
 Return at least one rate window, cost object, standalone balance, detail section, or non-empty identity field:
 
 ```js
 return {
-  primary: { usedPercent: 25, resetsAt: new Date(), windowMinutes: 300 },
+  primary: { title: "Requests", usedPercent: 25, resetsAt: new Date(), windowMinutes: 300 },
   secondary: { usedPercent: 40, resetsAt: "2026-08-10T00:00:00Z", windowMinutes: 10080 },
   tertiary: { usedPercent: 5 },
   extraWindows: [{ id: "daily", title: "Daily", window: { usedPercent: 12 } }],
@@ -343,10 +400,33 @@ Percentages must be finite and are clamped to 0–100. Window minutes are positi
 and a three-letter uppercase currency. Dates are JavaScript `Date` values or ISO-8601 strings. Snapshot identity is
 always scoped to the manifest's instance ID. Data confidence defaults to `unknown`. Details allow at most 8 sections, 24 rows per section, 120 chart points,
 and 120 characters per detail string. Wrong types and limit violations fail the whole fetch instead of truncating it.
+
+Standard windows (`primary`, `secondary`, and `tertiary`) may include an optional `title`. Generic menu cards and
+`plugins fetch` text output use it instead of Primary, Secondary, or Tertiary. Titles are trimmed, limited to 256 UTF-8
+bytes, and must be strings; omitted, null, or blank titles use the default label. JSON snapshots retain the title.
+
+Plugin cards show `resetsAt` using the app's countdown or absolute-time preference. When no usable timestamp is
+available, `resetDescription` supplies the reset text through the same formatter as built-in providers. A refresh
+failure appears alongside the last successful usage until a subsequent refresh succeeds.
+
+Rate windows may include `quotaLimit` (a positive finite number) and `quotaUnit` (`credits`, `requests`, or an
+ISO currency code) alongside `usedPercent`. Built-in provider cards use these units for monthly daily targets;
+without an absolute allowance it retains percentage units. Do not invent an allowance or reset date.
+
 Named extra windows accept an optional `usageKnown` boolean (default `true`). Set it to `false` for reset-only limits:
 the window remains visible as **Unavailable**, and its placeholder `usedPercent` is not presented as measured usage.
 Detail rows accept optional `progress` (a finite consumed fraction from 0 through 1) and `usageValue` (finite raw usage).
 The host maps the fraction to native progress with `used: progress, total: 1`; `usageValue` is preserved independently.
+An optional `pace` (a finite expected consumed fraction from 0 through 1) marks even consumption, for example elapsed
+time divided by the window length. The bar uses the native pace tip: green while `progress` is at or below `pace`,
+red once it runs ahead. Row `severity` controls the fill independently and does not change this comparison.
+Omit `pace` to hide the tip. The app's existing **Show pace** preference also hides detail pace markers.
+`pace` is ignored on rows without `progress`; invalid values fail the fetch.
+An optional row `severity: "normal" | "warning" | "critical"` uses the system green, orange, or red accent;
+warning and critical rows also show a labeled warning symbol. The plugin computes its own thresholds independently
+of `progress`. Omit `severity` (or pass null) to keep the existing provider tint. Invalid values fail the fetch.
+For example, a pool row can return `progress: used / total, severity: remaining < 20 ? "critical" :
+remaining < 50 ? "warning" : "normal"`; progress remains consumed usage, not remaining usage.
 Absent or null numeric fields leave existing text-only rows unchanged. A supplied `usageKnown` must be a boolean,
 including when the window uses the nested `window` form; null is invalid.
 For a wallet without measured spending or an allowance, report its value and explicit unit separately:
@@ -380,6 +460,21 @@ may return `{empty: true}` with optional identity. This creates no artificial ra
 validated. An empty object, an empty `identity` object, or metadata such as confidence and subscription dates without
 displayable usage or identity remains invalid unless `empty: true` is explicitly declared.
 
+## External hooks
+
+Installed user plugins appear in the existing Hooks provider picker. Rules can select the manifest ID or match any
+provider. Successful, current app refreshes emit `usage_updated` with the existing primary and secondary payload.
+`quota_low` uses primary and secondary threshold crossings; `quota_reached` uses a measured primary session window.
+`quota_reset` uses the app's confirmed session/weekly reset detection: a session needs a declared cadence of at most
+six hours, and a weekly lane needs an unambiguous seven-day cadence. A durationless primary can report depletion but
+cannot report a session reset. Custom titles do not change the hook window identifiers.
+
+Hooks retain the existing opt-in commands, privacy setting, and rate limiter. Failed, cancelled, and obsolete refreshes
+never publish usage/quota hooks. Disablement, fetch-setting changes, plugin replacement, and deletion clear quota
+baselines; display-only changes preserve depletion/reset baselines. As with built-ins, `quota_low` starts a fresh
+crossing baseline after a configuration edit. These plugin events come from the macOS app; `hooks watch` keeps its
+built-in-provider polling scope. See [configuration](configuration.md#external-event-hooks) for rule and payload details.
+
 ## Fetch result envelope
 
 `fetchUsage` may return a bare snapshot or `{ usage, sourceLabel?, card?, persist? }`. The two forms cannot be mixed;
@@ -393,6 +488,14 @@ every key. Null, arrays, wrong types, unknown keys, and cross-provider requests 
 Card payloads are descriptor-owned, never arbitrary Swift decoding. OpenAI's `card.openAIAPIUsage` adapter accepts daily
 cost, token, request, model, and line-item history for the existing native chart. It rejects unknown fields, bounds the
 history to 366 buckets and 10,000 breakdown entries, and validates finite numbers, safe integer counts, names, and dates.
+An optional `live` object contains `windowMinutes: 60`, Unix-second `startTime` and `fetchedAt`, and `buckets`
+with `startTime` and `models` (`name`, `inputTokens`, `cachedInputTokens`, `outputTokens`, `requests`, optional `batchTokens` and
+`batchRequests`). The batch fields default to 0 when missing, must be nonnegative integers, and must not exceed
+`inputTokens + outputTokens` and `requests`, respectively. Batch API subsets are excluded only from rate-limit
+utilization; charts and totals include all traffic. Both QuickJS
+and JavaScriptCore validate this payload. It accepts at most 60 buckets and 200 models per bucket, sharing the
+10,000-entry budget with daily breakdowns. Invalid live data drops only throughput; daily data remains valid.
+The Swift window fetcher and plugin adapter share the same zero-filled minute grid and reporting frontier.
 No other provider or user-installed plugin receives that adapter by declaring a card field.
 
 Fireworks alone allows `persist: { ACCOUNT_SLUG: "discovered-slug" }`. The app/CLI writer rechecks ownership, applies the
@@ -451,6 +554,9 @@ error and can also be deleted.
 
 ## Security and limitations
 
+User-plugin HTTP sessions are scoped to a single request and released after success or failure.
+Reloading or removing plugins does not leave inactive sessions retained by their delegates. Redirect and credential-isolation rules remain unchanged.
+
 Treat a plugin like code you run locally, even though its host capabilities are narrow. Read the manifest and source,
 verify every origin, and avoid installing files from untrusted repositories. Approval grants the listed origin network
 authority; DNS changes after approval are outside CodexBar's threat model. Secrets are never placed in URLs or logged,
@@ -472,6 +578,8 @@ disabled, all plugins retain appended-card placement regardless of `topLevel`.
 A single plugin works without a redundant switcher, and multiple plugin tabs work even with no built-in providers
 enabled. Refresh and Cmd-R refresh the selected plugin; each card’s refresh button targets that card. Completed
 refreshes update visible plugin cards, and repeated requests for the same plugin share its in-flight refresh.
+When a refresh fails, the card keeps the last successful usage and shows the error plus how long ago that usage was
+captured. A later successful refresh clears both warnings.
 Overview continues to summarize built-in providers. This setting changes placement only: it grants no additional host
 capabilities and does not change network approval.
 
@@ -544,6 +652,9 @@ are never erased. User plugins have no persistent cookie cache, so rejection is 
 
 ## Bundled provider examples
 
+[Trae CN](traecn.md) uses the shared browser-session broker and two read-only JSON POSTs. Its short-lived
+service token stays within one refresh; no native fetcher or parallel credential store is needed.
+
 Bundled scripts own requests, error classification, and snapshot mapping; Swift supplies registration, settings, and credential/origin validation. These examples illustrate contracts that differ from the minimal plugin:
 
 | Provider | Contract |
@@ -559,7 +670,7 @@ Bundled scripts own requests, error classification, and snapshot mapping; Swift 
 | [ZenMux](zenmux.md) | Both engines require subscription quotas. Optional USD PAYG enrichment failures preserve quotas except for credential rejection and cancellation. |
 | [Atlas Cloud](atlascloud.md), [Vercel AI Gateway](vercel.md) | Fixed-origin bearer GETs return account/team balances as generic details without quota windows. Scripts classify HTTP failures; the host bounds retries. |
 | [GitKraken AI](gitkraken.md) | First-party bearer GET with optional organization scope returns generic weekly windows/details. |
-| [Charm Hyper](hyper.md) | Declared-domain cookies or a secure API key reach one fixed credits endpoint. TypeScript owns session preference, API fallback, errors, and HC balance parsing. |
+| [Charm Hyper](hyper.md) | Declared-domain cookies read the signed-in Hyper dashboard; a secure API key reaches the fixed credits endpoint. TypeScript owns session preference, API fallback, errors, and HC balance parsing. |
 | [Zed](zed.md) | Swift discovers editor settings and Keychain credentials. Opt-in browser billing uses only the declared `zed.dev` cookie session, never editor credentials. |
 | [Aixy](aixy.md) | TypeScript maps key-scoped usage and budgets; the host validates the configured gateway origin and supplies the API key. |
 | [Qwen Cloud](qwen-cloud.md) | `qwencloud-team.ts` discovers the billing selector and fetches Team credits through form POSTs. Native Qwen cookie selection supplies one opaque dashboard session; Individual remains native as the fallback. |
@@ -617,3 +728,23 @@ exported as a cloud account snapshot: its ownership can only be verified on the 
 [Exa](exa.md) reads selected-key monthly spend using a support-enabled Team Management service key and API key ID.
 [TinyApi](tinyapi.md) reads aggregate available credits through its website session and the shared cookie host.
 These plugins omit undocumented reset dates, credit-bucket splits, and live request-rate headroom.
+
+## Spend-limit providers
+
+[Munito](munito.md) reads today's and this month's spend against the organization's spend limits from the Admin API
+with a bearer key that holds Read account data permission. The organization read is best-effort; missing or zero
+limits keep the spend rows without a percentage window, and no reset time is guessed.
+
+## Generative media credit providers
+
+[fal](fal.md) reads the account credit balance from the Platform API billing endpoint with a `Key`-scheme API key
+that holds billing read access. A successful response without the credits block is reported as a temporary provider
+outage rather than a parse failure, so the last good balance stays visible.
+
+[FLORA](flora.md) reads one workspace's available USD balance and UTC month-to-date spend with a bearer API key
+that holds billing permission. Its explicit workspace ID also supports keys whose workspace list is empty
+because they lack read permission. Unavailable spend keeps its documented reason instead of becoming zero.
+
+[Parallel](parallel.md) reads the prepaid credit balance through the shared cookie host with a session-cookie POST
+to the platform dashboard's internal balance endpoint. Parallel API keys cannot read the balance, and its Account API
+needs OAuth, so the provider is web-only. A changed response shape fails parsing instead of reporting zero.

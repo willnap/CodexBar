@@ -106,6 +106,15 @@ struct ConfigValidationTests {
     }
 
     @Test
+    func `allows OpenCode Go API source with an ambient CLI login`() {
+        let config = CodexBarConfig(providers: [ProviderConfig(id: .opencodego, source: .api)])
+
+        let issues = CodexBarConfigValidator.validate(config)
+
+        #expect(!issues.contains { $0.provider == .opencodego && $0.code == "api_key_missing" })
+    }
+
+    @Test
     func `accepts legacy factory cli source as compatibility alias`() {
         var config = CodexBarConfig.makeDefault()
         config.setProviderConfig(ProviderConfig(id: .factory, source: .cli))
@@ -379,7 +388,7 @@ struct ConfigValidationTests {
         let issue = issues.first { $0.provider == .gemini && $0.code == "workspace_unused" }
         let expectedMessage =
             "workspaceID is set but only azureopenai, openai, opencode, opencodego, devin, deepgram, " +
-            "xai, gitkraken, and muse support workspaceID."
+            "xai, gitkraken, muse, and vercel support workspaceID."
         #expect(issue?.message == expectedMessage)
     }
 
