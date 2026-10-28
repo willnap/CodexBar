@@ -799,8 +799,11 @@ struct NativeOrbitHistoryWidget: View {
     }
 
     private var timeLocale: Locale {
-        NativeOrbitChartTimeFormatter.locale(
-            displayLocale: codexBarLocalizationSignature().isEmpty ? self.locale : codexBarLocalizedResourceLocale())
+        // The combined chart borrows this widget's axis outside any view, where the environment is never installed and
+        // its locale is the empty root locale ("M10 21"); the person's own locale stands in.
+        let environment = self.locale.identifier.isEmpty ? Locale.autoupdatingCurrent : self.locale
+        return NativeOrbitChartTimeFormatter.locale(
+            displayLocale: codexBarLocalizationSignature().isEmpty ? environment : codexBarLocalizedResourceLocale())
     }
 
     /// Light vertical rules halfway between the labelled instants, so the span reads in even steps: while projecting,

@@ -229,10 +229,18 @@ struct NativeCombinedTokenChart: View {
         let value: Double
     }
 
+    /// The inspected moment within this chart's span. It has no forecast, so a moment ahead reads now, and its marker
+    /// never leaves the plot for the columns beside it.
+    private var inspectedDate: Date {
+        let now = self.displayedRequest.now
+        guard let date = self.state.inspectionDate else { return now }
+        return min(now, max(self.axis.start, date))
+    }
+
     private var readings: [Reading] {
         (self.displayedSnapshot?.model ?? self.model).readings(
             days: self.displayedRequest.days,
-            now: self.state.inspectionDate ?? self.displayedRequest.now)
+            now: self.inspectedDate)
             .compactMap { page, reading in self.metric.value(reading).map { Reading(id: page.id, value: $0) } }
     }
 
@@ -240,8 +248,7 @@ struct NativeCombinedTokenChart: View {
     private var marker: some View {
         let frame = self.plotFrame
         if frame.width > 0, frame.height > 16 {
-            let date = self.state.inspectionDate ?? self.displayedRequest.now
-            let x = self.axis.plotX(date, in: frame)
+            let x = self.axis.plotX(self.inspectedDate, in: frame)
             ZStack(alignment: .topLeading) {
                 NativeOrbitChartMarkerLine(
                     accent: .primary,
