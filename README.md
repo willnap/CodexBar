@@ -1,6 +1,95 @@
-# CodexBar 🎚️ — May your tokens never run out.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/native-showcase/icon-dark.png" />
+    <img src="docs/screenshots/native-showcase/icon-light.png" width="128" alt="CodexBar's app icon: gauge marks either side of a glass face." />
+  </picture>
+</p>
 
-> Every AI coding limit, in your menu bar.
+<h1 align="center">CodexBar Redesign</h1>
+
+<p align="center">A new interface for <a href="https://github.com/steipete/CodexBar">CodexBar</a> on macOS 27.</p>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/native-showcase/hero-dark.png" />
+  <img src="docs/screenshots/native-showcase/hero-light.png" alt="CodexBar's window under its menu bar item: an All page with a pie chart and every account's history, then a gauge, warning lights and chart for each account." width="100%" />
+</picture>
+
+CodexBar already tracks usage, limits and spend for 110 providers, and does it thoroughly. I kept all of that and
+designed a new interface on top, one that fits far more information into the same space and is still easier to read at
+a glance.
+
+## Before and after
+
+<img src="docs/screenshots/native-showcase/before-after.png" alt="Left: CodexBar 0.82.1 from the main branch, its menu running off the screen with a red Claude sign-in error. Right: the redesign's window with every account's gauge, warning lights and history." width="100%" />
+
+## What's new
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<h3>Gauges</h3>
+<img src="docs/screenshots/native-showcase/feature-gauge.png" width="100%" alt="A Claude dial: session, Fable-only and weekly rings, reset countdowns, spend and tokens in the corners." />
+<p>Every account has a dial. Each of its limits, such as the 5-hour session or the weekly cap, is a ring that starts full and empties as you use it. The blocks on the left count down to each limit's reset. The four corners show spend, tokens, saved resets and extra usage.</p>
+</td>
+<td width="50%" valign="top">
+<h3>Warning lights</h3>
+<img src="docs/screenshots/native-showcase/feature-lamps.png" width="100%" alt="A Codex dial during an outage: an outage light, failing reads and an empty session." />
+<p>Keeping on top of AI coding means tracking plans, quotas, outages, CLIs and logins across several providers at once. That's closer to driving a car than reading a meter, so I borrowed a dashboard's warning lights. Each light always sits in the same place, amber is a warning, red is a problem, and when everything's fine nothing is lit. Hover a light to see what's wrong, and click it to go and fix it, for example the provider's status page or your notification settings. The first time the window opens after launch, every light comes on and goes off once, like a car starting.</p>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h3>History and forecast</h3>
+<img src="docs/screenshots/native-showcase/feature-hover.png" width="100%" alt="A Claude account inspected seven hours into its forecast: the session ring nearly empty and the fuel light lit." />
+<p>Below each dial is a line chart of the last day, week or month. It carries on past now with CodexBar's projection, so you can see when you'll run out. Hover over any point, past or future, and the dial, numbers and warning lights update to that time. In this screenshot I'm hovering seven hours ahead, where the session has run out and the fuel light is on.</p>
+</td>
+<td width="50%" valign="top">
+<h3>Menu bar and All</h3>
+<img src="docs/screenshots/native-showcase/feature-all.png" width="100%" alt="The menu bar item with two account gauges, and the All page: a pie chart by account above a line chart per account." />
+<p>The menu bar item shows small gauges for your two most recently used accounts. Clicking it opens one window with all your accounts side by side. Its first page, All, combines them: a pie chart of how much each account has used, and one line chart with every account's history.</p>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<h3>Switching accounts</h3>
+<img src="docs/screenshots/native-showcase/feature-switch.png" width="100%" alt="Two Codex logins side by side; the spare one is marked as reset by OpenAI at 5:49 PM, with Use one click away." />
+<p>CodexBar can already switch your Codex and Claude logins from a submenu. The redesign puts every login side by side with a Use button on each, so switching is one click. Switching Codex also hands the ChatGPT/Codex desktop app over to the new login, so you never have to log out and back in. Resets show who made them, so you can see when OpenAI has reset one of your accounts.</p>
+</td>
+<td width="50%" valign="top">
+<h3>Telling logins apart</h3>
+<img src="docs/screenshots/native-showcase/feature-symbols.png" width="100%" alt="Three Claude logins with a palette, a house and an office building in the middle of their dials." />
+<p>When you have several logins for the same service, the on-device model in Apple's Foundation Models framework picks an icon for each one, an SF Symbol chosen from the account, like a paint palette for a design studio's email or a house for a personal one. It makes them easy to tell apart, and it's the kind of small detail on-device models make possible.</p>
+</td>
+</tr>
+</table>
+
+### Also
+
+- Liquid Glass, SF Symbols, Swift Charts and standard controls throughout, so it looks and behaves like the rest of
+  macOS.
+- Everything animates, from numbers rolling to rings filling (Reduce Motion turns it off).
+- It works with touch on the new touchscreen MacBook Pros: tap Use to switch accounts, tap Day, Week or Month, swipe
+  between accounts, and drag along a chart to move through time.
+
+## Demo
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/native-showcase/motion-dark.webp" />
+  <img src="docs/screenshots/native-showcase/motion-light.webp" alt="The window opening with its bulb check, All switching to spend, the pointer reading back through the charts, a Codex login that OpenAI just reset becoming the active one, then Week and Month." width="100%" />
+</picture>
+
+## Building
+
+```bash
+./Scripts/build_native_app.sh
+```
+
+This builds and installs `/Applications/CodexBar.app`. The original design is still there under Settings → Menu Bar →
+Design.
+
+## About CodexBar
+
+Everything below describes CodexBar itself, the app this redesign builds on, and its released versions.
 
 [![Latest release](https://img.shields.io/github/v/release/steipete/CodexBar?style=flat-square&color=0a0a0c)](https://github.com/steipete/CodexBar/releases/latest)
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-0a0a0c?style=flat-square)](https://github.com/steipete/CodexBar/releases/latest)
@@ -10,13 +99,9 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-6e5aff?style=flat-square)](LICENSE)
 [![Site](https://img.shields.io/badge/site-codexbar.app-16d3b4?style=flat-square)](https://codexbar.app)
 
-<a href="https://codexbar.app"><img src="docs/social.png?v=1436859e75bb3a24" alt="CodexBar — every AI coding limit in your menu bar. 110 providers." width="100%" /></a>
-
 Tiny macOS 14+ menu bar app that keeps **AI coding-provider limits visible** and shows when each window resets. See the [supported providers](#providers) below. One status item per provider, or Merge Icons mode with a provider switcher. No Dock icon, minimal UI, dynamic bar icons.
 
 Also available as a [Linux desktop app](Integrations/Linux/README.md) with usage and spending windows, separate settings, desktop notifications, and an optional tray icon. On Omarchy, a native bar widget shares the desktop app’s data and follows your theme.
-
-<img src="docs/codexbar.png" alt="CodexBar menu popover with provider tiles, usage bars, and reset countdowns" width="520" />
 
 ## Why
 

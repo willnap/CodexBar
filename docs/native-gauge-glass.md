@@ -40,7 +40,8 @@ clear of edges. Rail arcs are split at fixed 15° stops so that overlapping piec
 ## Showcase renders
 
 The README images in `docs/screenshots/native-showcase/` are the production views fed a month of generated usage for
-fictitious accounts (`NativeOrbitShowcaseScene`); nothing is drawn to imitate them. They are tracked with Git LFS.
+fictitious accounts (`NativeOrbitShowcaseScene`); nothing is drawn to imitate them. Each stays under the repository's
+2 MB file limit.
 
 - `hero-{light,dark}`: `--preview-scene`, the combined window on its All page, three and three-quarter columns wide,
   cropped to the window with an even margin under the right end of a full-width menu bar, over the Solar Gradients
@@ -74,16 +75,16 @@ open -n /Applications/CodexBar.app --args --native-preview --preview-scene --pre
 screencapture -x -o -l <window id> combined-light.png
 ```
 
-The `motion` GIF records `--preview-scene-motion`: the combined window four whole columns wide (All, both Claude
+The `motion` animation records `--preview-scene-motion`: the combined window four whole columns wide (All, both Claude
 logins, Codex), where OpenAI has just reset Codex's spare login. With `CODEXBAR_PREVIEW_PLAY=motion` a drawn pointer
 starts two seconds after the scene appears and uses the window as a person would, its moves sent to the window as real
 hover, click and scroll events: it opens the window (the ignition check), switches All to money, reads back along All's
 chart and Claude's, swipes one column to the spare Codex login, rests on its "Reset by OpenAI" mark, clicks Use (in
 memory only), steps through Week, Month and Day, and returns to tokens. The real pointer is ignored. Record only the
 window and without the pointer (a ScreenCaptureKit stream with `showsCursor` off; `screencapture -v` also records the
-real pointer), over a solid backdrop in GitHub's page colour (`CODEXBAR_PREVIEW_BACKDROP`), then convert with ffmpeg
-(`fps=15`, one 256-colour `palettegen` with `stats_mode=full`, `paletteuse=dither=none`; a dither re-applied only to
-changed rectangles flickers on the dark backgrounds). `CODEXBAR_PREVIEW_PLAY=startup` reruns the ignition check
+real pointer), over a solid backdrop in GitHub's page colour (`CODEXBAR_PREVIEW_BACKDROP`), then extract frames at
+15 fps with ffmpeg and encode an animated WebP (`img2webp -loop 0 -lossy -q 60 -m 6 -d 67`), which stays under 2 MB
+where a GIF of the same recording is 7-8 MB. `CODEXBAR_PREVIEW_PLAY=startup` reruns the ignition check
 alone in any scene.
 
 `--preview-scene-services` fans out one popover per service, and `CODEXBAR_PREVIEW_BACKDROP` puts an image behind any

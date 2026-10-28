@@ -171,15 +171,20 @@ function imageReferences(repoRoot, imageHash) {
   ]) {
     index = replaceTagAttribute(index, "meta", (attrs) => attrs[attribute] === name, "content", imageURL, name);
   }
-  const readme = replaceTagAttribute(
-    fs.readFileSync(path.join(repoRoot, "README.md"), "utf8"),
-    "img",
-    (attrs) => /^docs\/social\.png(?:[?#]|$)/.test(attrs.src ?? ""),
-    "src",
-    `${imagePath}${query}`,
-    "README social card",
-  );
-  return { "docs/index.html": index, "README.md": readme };
+  const references = { "docs/index.html": index };
+  // The README may open on its own screenshot instead of the card; when it shows the card, the cache token follows.
+  const readme = fs.readFileSync(path.join(repoRoot, "README.md"), "utf8");
+  if (/<img\b[^>]*\ssrc\s*=\s*["']?docs\/social\.png/i.test(readme)) {
+    references["README.md"] = replaceTagAttribute(
+      readme,
+      "img",
+      (attrs) => /^docs\/social\.png(?:[?#]|$)/.test(attrs.src ?? ""),
+      "src",
+      `${imagePath}${query}`,
+      "README social card",
+    );
+  }
+  return references;
 }
 
 export function checkSocialCard(repoRoot) {
