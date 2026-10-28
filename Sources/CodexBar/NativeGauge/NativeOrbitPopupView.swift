@@ -679,16 +679,18 @@ struct NativeOrbitPopupView: View {
 
     /// Names and equal-sized Active/Use capsules share the column inset, with breathing room above the toolbar.
     private func footer(_ account: NativeOrbitAccountPresentation) -> some View {
-        HStack(spacing: 8) {
+        // No stack spacing: a spacer is a child too, so spacing would be reserved on both sides of it even at zero
+        // width, and the name would shorten beside room it could have used. The spacer's minimum is the one gap.
+        HStack(spacing: 0) {
             if self.displayedAccountID != nil || self.state.accounts.count > 1 {
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     // A login nothing identifies shows no name, rather than its service's.
                     if account.isNamed { self.accountName(account).layoutPriority(1) }
                     self.planBadge(account)
                 }
                 // The name takes the room it needs before anything gives; it shortens only when nothing else can.
                 .layoutPriority(1)
-                Spacer(minLength: 0)
+                Spacer(minLength: 8)
                 self.accountStatus(account)
             } else if let signIn = self.signIn, account.updatedAt == nil {
                 Button(L("Sign In…"), action: signIn).buttonStyle(.plain)
@@ -777,7 +779,8 @@ struct NativeOrbitPopupView: View {
             .foregroundStyle(Color.primary)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
-            .frame(width: 48, height: 22)
+            // "Active", the wider label, with 5 pt either side; a narrower capsule leaves the login its full name.
+            .frame(width: 44, height: 22)
     }
 }
 
