@@ -85,11 +85,11 @@ final class NativePopoverEdgeResizer: NSView {
     override func cursorUpdate(with event: NSEvent) {
         let point = self.convert(event.locationInWindow, from: nil)
         guard let edge = self.drag?.edge ?? self.edge(at: point) else { return super.cursorUpdate(with: event) }
-        self.cursor(edge).set()
+        self.resizeCursor(edge).set()
     }
 
     /// The system cursor for this edge, its arrows limited to the ways the width can still change.
-    private func cursor(_ edge: Edge) -> NSCursor {
+    private func resizeCursor(_ edge: Edge) -> NSCursor {
         let width = self.width()
         let limits = self.limits()
         var directions: NSCursor.FrameResizeDirection.Set = []
@@ -121,7 +121,7 @@ final class NativePopoverEdgeResizer: NSView {
             startEdge: start,
             startWidth: self.width())
         self.began()
-        self.cursor(edge).set()
+        self.resizeCursor(edge).set()
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -137,7 +137,7 @@ final class NativePopoverEdgeResizer: NSView {
             if response.isFinite, response >= 0.2, response <= 1.05 { drag.response = min(1, response) }
         }
         self.drag = drag
-        self.cursor(drag.edge).set()
+        self.resizeCursor(drag.edge).set()
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -156,6 +156,6 @@ final class NativePopoverEdgeResizer: NSView {
                 "edgeMoved": String(format: "%.1f", ((self.screenEdge(drag.edge) ?? 0) - drag.startEdge) * drag.sign),
             ])
         let point = self.convert(event.locationInWindow, from: nil)
-        if self.edge(at: point) == drag.edge { self.cursor(drag.edge).set() } else { NSCursor.arrow.set() }
+        if self.edge(at: point) == drag.edge { self.resizeCursor(drag.edge).set() } else { NSCursor.arrow.set() }
     }
 }

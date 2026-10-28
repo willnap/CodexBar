@@ -3,7 +3,7 @@
 import Foundation
 
 enum NativeOrbitBadgeVocabulary {
-    static let version = "988b8d74b1619e04"
+    static let version = "7a71ea1cafef01b0"
     static let entries: [NativeOrbitBadgeCatalog.Entry] = [
         .init(key: "shopping", title: "shopping purchases buying checkout orders retail", symbol: "cart.fill", kind: .meaning, domains: [], clues: ["shopping", "purchases", "buying", "checkout", "orders", "retail"]),
         .init(key: "sales", title: "sales discount coupon voucher bargain", symbol: "tag.fill", kind: .meaning, domains: [], clues: ["sales", "discount", "coupon", "voucher", "bargain"]),
@@ -184,7 +184,7 @@ enum NativeOrbitBadgeVocabulary {
         .init(key: "rocket", title: "rocket launch space", symbol: "account.project.rocket", kind: .meaning, domains: [], clues: ["rocket", "launch", "space"]),
         .init(key: "leaf", title: "leaf green eco ecology environment sustainability foliage plants gardening", symbol: "leaf.fill", kind: .meaning, domains: [], clues: ["leaf", "green", "eco", "ecology", "environment", "sustainability", "foliage", "plants", "gardening"]),
         .init(key: "tree", title: "tree trees oak pine forest woodland maple cedar forestry", symbol: "tree.fill", kind: .meaning, domains: [], clues: ["tree", "trees", "oak", "pine", "forest", "woodland", "maple", "cedar", "forestry"]),
-        .init(key: "flower", title: "flower flowers bloom blossom flora botany floral", symbol: "camera.macro", kind: .meaning, domains: [], clues: ["flower", "flowers", "bloom", "blossom", "flora", "botany", "floral"]),
+        .init(key: "flower", title: "flower flowers bloom blossom botany floral", symbol: "camera.macro", kind: .meaning, domains: [], clues: ["flower", "flowers", "bloom", "blossom", "botany", "floral"]),
         .init(key: "mountain", title: "mountain alpine summit peak hills", symbol: "mountain.2.fill", kind: .meaning, domains: [], clues: ["mountain", "alpine", "summit", "peak", "hills"]),
         .init(key: "ocean", title: "ocean sea seawater wave waves aqua water marine aquatic", symbol: "water.waves", kind: .meaning, domains: [], clues: ["ocean", "sea", "seawater", "wave", "waves", "aqua", "water", "marine", "aquatic"]),
         .init(key: "fire", title: "fire flame ember bonfire", symbol: "flame.fill", kind: .meaning, domains: [], clues: ["fire", "flame", "ember", "bonfire"]),

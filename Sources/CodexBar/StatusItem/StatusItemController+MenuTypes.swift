@@ -9,12 +9,13 @@ extension StatusItemController {
     }
 
     var fallbackProvider: UsageProvider? {
-        if self.settings.usesNativeGauges {
-            return self.store.enabledProvidersForDisplay().contains(where: { $0.firstPartyProvider != nil })
-                ? nil : .codex
-        }
-        // A configured fleet-backed provider counts as real content, not an empty local installation.
-        return self.store.enabledProviders().isEmpty && self.menuBarEligibleProviders().isEmpty ? .codex : nil
+        // The redesign counts only first-party services; in the original, a configured fleet-backed provider counts
+        // as real content, not an empty local installation.
+        let isEmpty = self.settings.usesNativeGauges
+            ? !self.store.enabledProvidersForDisplay().contains(where: { $0.firstPartyProvider != nil })
+            : self.store.enabledProviders().isEmpty && self.menuBarEligibleProviders().isEmpty
+        // Provider-specific by design: with nothing enabled, Codex's item stands in so the app stays reachable.
+        return isEmpty ? .codex : nil
     }
 }
 

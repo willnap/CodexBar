@@ -390,7 +390,8 @@ extension UsageStore {
                 localUsage: localUsage?.usage,
                 usageLastKnownAt: localUsage?.lastKnownAt)
             // Ambient observations enter this owner bucket only through a verified accepted-publication bridge.
-            // claude-swap's own reports carry its source label where a plan goes; that names no plan.
+            // Provider-specific by design: claude-swap's own reports carry its source label where a plan goes; that
+            // names no plan.
             let reportedPlan = snapshot?.loginMethod(for: .claude) == ClaudeSwapAccountProjection.sourceLabel
                 ? nil : row.plan
             row.plan = reportedPlan ?? NativeClaudeSwapProfilePlan.plan(email: account.accountEmail)

@@ -13,8 +13,9 @@ struct WarpAutomaticCreditsTests {
         (1500, 0, 1000, false, (0.0, "C ")),
         (1500, 0, 0, false, (0.0, "")),
         (375, 770, 1000, false, (75.0, "C ")),
-        // Unlimited monthly access has no measured percentage, so automatic follows the add-on pool.
-        (1500, 770, 1000, true, (77.0, "C ")),
+        // Unlimited monthly access has no measured percentage, so automatic follows the add-on pool, the only
+        // measured window, which needs no label.
+        (1500, 770, 1000, true, (77.0, "")),
     ])
     func `automatic follows monthly then add-on credits`(
         used: Int, bonus: Int, bonusTotal: Int, unlimited: Bool, expectation: (Double, String)) throws
