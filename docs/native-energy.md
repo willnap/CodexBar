@@ -92,9 +92,9 @@ Release build, adaptive refresh, the same accounts and history (2026-10-20, 22:3
 
 ```sh
 # CPU seconds per 10 s, with the large caches' write times
-ps -o time= -p "$(pgrep -x CodexBarNative)"
-top -l 0 -s 1 -pid "$(pgrep -x CodexBarNative)" -stats pid,cpu,idlew,power
-sample "$(pgrep -x CodexBarNative)" 12 1 -file sample.txt   # during a burst
+ps -o time= -p "$(pgrep -x CodexBar)"
+top -l 0 -s 1 -pid "$(pgrep -x CodexBar)" -stats pid,cpu,idlew,power
+sample "$(pgrep -x CodexBar)" 12 1 -file sample.txt   # during a burst
 ```
 
 Don't measure with `--native-popup-preview-provider`: its proof dump rebuilds every provider on each popup refresh.

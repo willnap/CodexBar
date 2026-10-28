@@ -1,9 +1,9 @@
-# Native development app identity
+# App signing identity
 
 `Scripts/build_native_app.sh` signs each rebuild with the same certificate instead
-of an ad-hoc signature. The installed app stays at
-`~/Applications/CodexBar Native.app` and keeps the bundle identifier
-`com.will.codexbar.native.debug`.
+of an ad-hoc signature. The installed app is `/Applications/CodexBar.app` with
+CodexBar's own bundle identifier, `com.steipete.codexbar`; an install that isn't
+one of these builds is moved to `~/Applications/CodexBar Backups/` first.
 
 The default signing identity lives in:
 

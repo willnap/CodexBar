@@ -10,8 +10,8 @@ enum NativeGaugeStyle: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .laurel: L("Custom gauges")
-        case .legacy: L("Legacy icons")
+        case .laurel: L("Redesign")
+        case .legacy: L("Original")
         }
     }
 }

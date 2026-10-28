@@ -69,7 +69,7 @@ struct SettingsSearchIndex: Sendable {
             }
             switch pane {
             case .menuBar:
-                return ["Style", "Custom gauges", "Legacy icons"].contains(key)
+                return ["Design", "Redesign", "Original"].contains(key)
                     || Self.nativeMenuBarOnlyKeys.contains(key)
             case .menu:
                 let legacyPrefixes = [

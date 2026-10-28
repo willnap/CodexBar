@@ -21,9 +21,9 @@ struct SettingsSearchIndexTests {
     }
 
     @Test
-    func `native Menu Bar search exposes its style selector and excludes legacy editors`() {
+    func `native Menu Bar search exposes its design selector and excludes legacy editors`() {
         CodexBarLocalizationOverride.$appLanguage.withValue("en") {
-            for query in ["Style", "Custom gauges", "Legacy icons"] {
+            for query in ["Design", "Redesign", "Original"] {
                 #expect(SettingsSearchIndex.shared.match(pane: .menuBar, query: query, usesNativeGauges: true) != nil)
             }
             for query in ["Color by provider", "Merge icons", "Pace sign"] {
@@ -38,7 +38,7 @@ struct SettingsSearchIndexTests {
         CodexBarLocalizationOverride.$appLanguage.withValue("en") {
             #expect(SettingsSearchIndex.shared.match(pane: .menuBar, query: "combine icon", usesNativeGauges: true)
                 == "Combine into one icon")
-            // Legacy icons keep their own Combined icon section.
+            // The original design keeps its own Combined icon section.
             #expect(SettingsSearchIndex.shared.match(pane: .menuBar, query: "combine icon", usesNativeGauges: false)
                 == "Combined icon")
             #expect(SettingsSearchIndex.shared.match(pane: .menuBar, query: "4 or more", usesNativeGauges: false)

@@ -83,7 +83,7 @@ struct CodexBarApp: App {
         }
 
         let preferencesSelection = PreferencesSelection()
-        let settings = SettingsStore(configStore: NativeGaugeConfiguration.configStore())
+        let settings = SettingsStore()
         Self.applyLanguagePreference(from: settings)
         configureUsageFormatterLocalizationProvider()
         let managedCodexAccountCoordinator = ManagedCodexAccountCoordinator()

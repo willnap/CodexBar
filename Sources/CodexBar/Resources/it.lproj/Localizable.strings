@@ -2562,7 +2562,7 @@
 "Approve in Login Items…" = "Approva in Elementi login…";
 "Available services" = "Servizi disponibili";
 "Configured services" = "Servizi configurati";
-"Custom gauges" = "Indicatori personalizzati";
+"Redesign" = "Redesign";
 "Combine into one icon" = "Unisci in un’unica icona";
 "With 4 or more services" = "Con 4 o più servizi";
 "Always" = "Sempre";
@@ -2570,8 +2570,7 @@
 "Enabled services" = "Servizi abilitati";
 "Folder access could not be saved. Choose the folder again." = "Non è stato possibile salvare l’accesso alla cartella. Seleziona di nuovo la cartella.";
 "Keep Mac awake while agents run" = "Mantieni il Mac attivo mentre gli agenti sono in esecuzione";
-"Legacy" = "Tradizionale";
-"Legacy icons" = "Icone tradizionali";
+"Original" = "Original";
 "Local agents" = "Agenti locali";
 "No usage access" = "Nessun accesso ai dati di utilizzo";
 "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Impedisce lo stop del sistema per inattività. Consuma batteria; non impedisce lo stop alla chiusura del coperchio o lo stop dello schermo.";
@@ -2580,7 +2579,7 @@
 "Service maintenance" = "Servizio in manutenzione";
 "Service outage" = "Interruzione del servizio";
 "Sign in required" = "Accesso richiesto";
-"Style" = "Stile";
+"Design" = "Design";
 "Usage delayed or service degraded" = "Dati di utilizzo in ritardo o servizio degradato";
 "Usage pace" = "Ritmo di utilizzo";
 "Usage unknown" = "Utilizzo sconosciuto";

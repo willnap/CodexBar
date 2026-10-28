@@ -213,9 +213,9 @@ native bundle, which includes the authored SF Symbol catalog and native app conf
 
 ```sh
 NATIVE_BUILD_CONFIGURATION=debug ./Scripts/build_native_app.sh
-open -n "$HOME/Applications/CodexBar Native.app" --args --native-preview --preview-combined \
+open -n /Applications/CodexBar.app --args --native-preview --preview-combined \
   --preview-output /tmp/codexbar-combined
-open -n "$HOME/Applications/CodexBar Native.app" --args --native-preview --preview-combined --preview-overview \
+open -n /Applications/CodexBar.app --args --native-preview --preview-combined --preview-overview \
   --preview-output /tmp/codexbar-overview
 ```
 

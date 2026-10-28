@@ -1,6 +1,7 @@
 import CodexBarCore
 import Foundation
 import Testing
+@testable import CodexBar
 
 struct NativeOrbitMeasuredWindowSelectionTests {
     @Test(arguments: [UsageProvider.minimax, .opencodego, .zai])
@@ -12,17 +13,14 @@ struct NativeOrbitMeasuredWindowSelectionTests {
             primary: self.window(used: 100, synthetic: true),
             secondary: actual,
             updatedAt: Date(timeIntervalSince1970: 1_800_000_000))
-        let presentation = ProviderDescriptorRegistry.descriptor(for: provider).presentation
-        guard case let .resolved(selected) = presentation.menuBarWindow(context: .init(
-            metric: .automatic,
+        // The provider offers its windows as automatic candidates; the menu bar's shared selection never takes a
+        // descriptive placeholder over a measured allowance.
+        let selected = MenuBarMetricWindowResolver.rateWindow(
+            preference: .automatic,
+            provider: provider,
             snapshot: snapshot,
             supportsAverage: false,
-            prioritizesExhaustedQuotas: false,
-            now: snapshot.updatedAt))
-        else {
-            Issue.record("Expected the provider's registered automatic selection")
-            return
-        }
+            now: snapshot.updatedAt)
         #expect(selected == actual)
     }
 

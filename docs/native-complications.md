@@ -278,8 +278,8 @@ default for `Scripts/build_native_app.sh`; `NATIVE_BUILD_CONFIGURATION=debug`
 packages a debug build):
 
 ```sh
-pkill -x CodexBarNative
-open -n "$HOME/Applications/CodexBar Native.app" --args --native-popup-preview-provider claude
+pkill -x CodexBar
+open -n /Applications/CodexBar.app --args --native-popup-preview-provider claude
 ```
 
 Add `--native-popup-benchmark` to time popup opens and history hover sweeps

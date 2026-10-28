@@ -47,6 +47,22 @@ COMMON_PROVIDER_FILES = [
 ]
 
 
+def app_file(name):
+    """A source under Sources/CodexBar by its path there, or by its file name in whichever folder holds it."""
+    direct = APP / name
+    if direct.exists():
+        return direct
+    matches = sorted(APP.rglob(name.split("/")[-1]))
+    if len(matches) != 1:
+        raise FileNotFoundError(f"{name}: {len(matches)} matches under {APP}")
+    return matches[0]
+
+
+def app_glob(pattern):
+    """Sources matching a pattern, wherever they sit under Sources/CodexBar."""
+    return sorted(APP.glob(pattern)) or sorted(APP.rglob(pattern.split("/")[-1]))
+
+
 def decoded(literal):
     try:
         return json.loads(literal)
@@ -89,23 +105,23 @@ def generate():
     known = {decoded(match.group(1)) for match in re.finditer('(' + STRING + r')\s*=', english)}
     panes = {}
     enum_sources = "\n".join(path.read_text() for path in [
-        APP / "SettingsStore.swift", APP / "SettingsStore+MenuPreferences.swift"])
+        app_file("SettingsStore.swift"), app_file("SettingsStore+MenuPreferences.swift")])
     for pane, patterns in PANE_FILES.items():
-        keys = file_keys([path for pattern in patterns for path in APP.glob(pattern)], known)
+        keys = file_keys([path for pattern in patterns for path in app_glob(pattern)], known)
         for name in PANE_ENUMS.get(pane, []):
             keys.update(extract(enum_text(enum_sources, name), known))
         panes[pane] = sorted(keys)
 
-    common = file_keys([APP / name for name in COMMON_PROVIDER_FILES], known)
-    quota_text = (APP / "QuotaWarningSettingsViews.swift").read_text()
+    common = file_keys([app_file(name) for name in COMMON_PROVIDER_FILES], known)
+    quota_text = app_file("QuotaWarningSettingsViews.swift").read_text()
     provider_quota = quota_text.split("struct ProviderQuotaWarningSettingsView", 1)[1].split(
         "enum ProviderQuotaWarningOverrideMode", 1)[0]
     common.update(extract(provider_quota, known))
-    detail_text = (APP / "PreferencesProviderDetailView.swift").read_text()
+    detail_text = app_file("PreferencesProviderDetailView.swift").read_text()
     visibility_text = detail_text.split("struct ProviderUsageItemVisibilitySettingsView", 1)[1].split(
         "struct ProviderDetailInfoRows", 1)[0]
     common.update(extract(visibility_text, known))
-    rows_text = (APP / "PreferencesProviderSettingsRows.swift").read_text()
+    rows_text = app_file("PreferencesProviderSettingsRows.swift").read_text()
     token_rows = re.search(r'struct ProviderSettingsTokenAccountsRowView\b.*?(?=^extension View)',
                            rows_text, re.S)
     token_keys = extract(token_rows.group(), known) if token_rows else set()
@@ -133,7 +149,7 @@ def generate():
         provider = match.group(1)
         keys = providers.setdefault(provider, set(common))
         keys.update(file_keys(list(path.parent.glob("*.swift"))
-                              + list(APP.glob(f"Preferences{path.parent.name}*.swift")), known))
+                              + list(app_glob(f"Preferences{path.parent.name}*.swift")), known))
         if "ProviderCookieSourceUI" in source:
             keys.update(file_keys([APP / "Providers/Shared/ProviderCookieSourceUI.swift"], known))
         if "supportsLoginFlow: Bool = true" in source:

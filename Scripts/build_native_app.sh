@@ -4,10 +4,13 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WORKSPACE=$(cd "$ROOT/../.." && pwd)
 GAUGE_SOURCE="$WORKSPACE/Implementation/Components/UsageIndicator"
-APP="$WORKSPACE/App/CodexBar Native.app"
-LOCAL_APP="${NATIVE_APP_INSTALL_PATH:-$HOME/Applications/CodexBar Native.app}"
+# One app: CodexBar, with the redesign as its default design and the original a setting away.
+APP="$WORKSPACE/App/CodexBar.app"
+LOCAL_APP="${NATIVE_APP_INSTALL_PATH:-/Applications/CodexBar.app}"
+# An install that isn't one of these builds (such as an upstream release) is kept here, not discarded.
+BACKUPS="${NATIVE_APP_BACKUP_DIR:-$HOME/Applications/CodexBar Backups}"
 STAGE_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/codexbar-native-package.XXXXXX")
-STAGE="$STAGE_ROOT/CodexBar Native.app"
+STAGE="$STAGE_ROOT/CodexBar.app"
 trap 'rm -rf "$STAGE_ROOT"' EXIT
 export COPYFILE_DISABLE=1
 # The installed app is optimized; set NATIVE_BUILD_CONFIGURATION=debug for a debug package.
@@ -16,6 +19,7 @@ SCRATCH_PATH="${NATIVE_SWIFTPM_SCRATCH_PATH:-}"
 export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 export CLANG_MODULE_CACHE_PATH="${NATIVE_CLANG_MODULE_CACHE_PATH:-$ROOT/.build/clang-cache}"
 cd "$ROOT"
+source "$ROOT/version.env"
 python3 "$ROOT/Scripts/generate_settings_search_index.py" --check
 
 # Always build the current workspace gauge component; keep the derivative standalone.
@@ -56,7 +60,7 @@ else
 fi
 
 mkdir -p "$STAGE/Contents/MacOS" "$STAGE/Contents/Resources" "$STAGE/Contents/Frameworks" "$STAGE/Contents/Helpers"
-cp "$BIN/CodexBar" "$STAGE/Contents/MacOS/CodexBarNative"
+cp "$BIN/CodexBar" "$STAGE/Contents/MacOS/CodexBar"
 cp "$BIN/CodexBarCLI" "$STAGE/Contents/Helpers/CodexBarCLI"
 cp "$BIN/CodexBarClaudeWatchdog" "$STAGE/Contents/Helpers/CodexBarClaudeWatchdog"
 cp "$ROOT/LICENSE" "$STAGE/Contents/Resources/CodexBar-LICENSE.txt"
@@ -73,26 +77,26 @@ for bundle in "$BIN/"*.bundle; do
 done
 cp -R "$BIN/CodexBar_CodexBarCore.bundle" "$STAGE/Contents/Helpers/"
 cp -R "$BIN/Sparkle.framework" "$STAGE/Contents/Frameworks/"
-install_name_tool -add_rpath '@executable_path/../Frameworks' "$STAGE/Contents/MacOS/CodexBarNative" 2>/dev/null || true
+install_name_tool -add_rpath '@executable_path/../Frameworks' "$STAGE/Contents/MacOS/CodexBar" 2>/dev/null || true
 
-cat > "$STAGE/Contents/Info.plist" <<'PLIST'
+cat > "$STAGE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleName</key><string>CodexBar Native</string>
-<key>CFBundleDisplayName</key><string>CodexBar Native</string>
-<key>CFBundleIdentifier</key><string>com.will.codexbar.native.debug</string>
-<key>CFBundleExecutable</key><string>CodexBarNative</string>
+<key>CFBundleName</key><string>CodexBar</string>
+<key>CFBundleDisplayName</key><string>CodexBar</string>
+<key>CFBundleIdentifier</key><string>com.steipete.codexbar</string>
+<key>CFBundleExecutable</key><string>CodexBar</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.0</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>${MARKETING_VERSION}</string>
+<key>CFBundleVersion</key><string>${BUILD_NUMBER}</string>
 <key>LSMinimumSystemVersion</key><string>26.0</string>
 <key>LSUIElement</key><true/>
 <key>CodexBarNativeGauges</key><true/>
 <key>CodexBarTeamID</key><string>NATIVEGAUGE</string>
 <key>SUEnableAutomaticChecks</key><false/>
 <key>SUFeedURL</key><string></string>
-<key>NSHumanReadableCopyright</key><string>CodexBar © Peter Steinberger. MIT License. Native gauge redesign by Will.</string>
+<key>NSHumanReadableCopyright</key><string>CodexBar © Peter Steinberger. MIT License. Redesign by Will.</string>
 </dict></plist>
 PLIST
 
@@ -132,16 +136,23 @@ codesign --verify --deep --strict "$STAGE"
 # outside cloud storage and expose it here through a stable link plus an archive.
 mkdir -p "$(dirname "$LOCAL_APP")" "$ROOT/.build/native-package"
 if [[ -d "$LOCAL_APP" ]]; then
-    mv "$LOCAL_APP" "$BUILD_STORAGE/Previous Native $(date +%Y%m%d-%H%M%S).app"
+    if /usr/libexec/PlistBuddy -c 'Print :CodexBarNativeGauges' "$LOCAL_APP/Contents/Info.plist" >/dev/null 2>&1; then
+        mv "$LOCAL_APP" "$BUILD_STORAGE/Previous $(date +%Y%m%d-%H%M%S).app"
+    else
+        PREVIOUS_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || echo unknown)
+        mkdir -p "$BACKUPS"
+        mv "$LOCAL_APP" "$BACKUPS/CodexBar $PREVIOUS_VERSION $(date +%Y%m%d-%H%M%S).app"
+        printf 'Moved the previous CodexBar %s to %s\n' "$PREVIOUS_VERSION" "$BACKUPS"
+    fi
 fi
 ditto --noextattr --norsrc "$STAGE" "$LOCAL_APP"
 xattr -cr "$LOCAL_APP"
 codesign --verify --deep --strict "$LOCAL_APP"
-ditto -c -k --keepParent --norsrc --noextattr "$STAGE" "$WORKSPACE/App/CodexBar Native.zip"
+ditto -c -k --keepParent --norsrc --noextattr "$STAGE" "$WORKSPACE/App/CodexBar.zip"
 if [[ -L "$APP" ]]; then
     rm "$APP"
 elif [[ -d "$APP" ]]; then
-    mv "$APP" "$ROOT/.build/native-package/Previous Cloud Native $(date +%Y%m%d-%H%M%S).app"
+    mv "$APP" "$ROOT/.build/native-package/Previous Cloud $(date +%Y%m%d-%H%M%S).app"
 fi
 ln -s "$LOCAL_APP" "$APP"
 printf 'Built %s (workspace link: %s)\n' "$LOCAL_APP" "$APP"

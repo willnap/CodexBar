@@ -39,7 +39,7 @@ struct MenuBarPane: View {
                     SettingsMenuPicker(
                         selection: self.$settings.nativeGaugeStyle,
                         options: NativeGaugeStyle.allCases,
-                        label: { Text(L("Style")) },
+                        label: { Text(L("Design")) },
                         optionLabel: { Text($0.label) })
 
                     if self.settings.usesNativeGauges {
@@ -65,7 +65,7 @@ struct MenuBarPane: View {
                         options: MenuBarSettingsMenuOptions.iconStyles,
                         label: { Text(L("menu_bar_style_title")) },
                         optionLabel: { style in
-                            Text(NativeGaugeConfiguration.isEnabled ? "\(L("Legacy")) · \(style.label)" : style.label)
+                            Text(NativeGaugeConfiguration.isEnabled ? "\(L("Original")) · \(style.label)" : style.label)
                         })
 
                     Toggle(isOn: self.$settings.menuBarHighContrastOnInactiveDisplays) {

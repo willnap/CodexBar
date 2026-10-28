@@ -2556,7 +2556,7 @@
 "Approve in Login Items…" = "Approve in Login Items…";
 "Available services" = "Available services";
 "Configured services" = "Configured services";
-"Custom gauges" = "Custom gauges";
+"Redesign" = "Redesign";
 "Combine into one icon" = "Combine into one icon";
 "With 4 or more services" = "With 4 or more services";
 "Always" = "Always";
@@ -2564,8 +2564,7 @@
 "Enabled services" = "Enabled services";
 "Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
 "Keep Mac awake while agents run" = "Keep Mac awake while agents run";
-"Legacy" = "Legacy";
-"Legacy icons" = "Legacy icons";
+"Original" = "Original";
 "Local agents" = "Local agents";
 "No usage access" = "No usage access";
 "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
@@ -2574,7 +2573,7 @@
 "Service maintenance" = "Service maintenance";
 "Service outage" = "Service outage";
 "Sign in required" = "Sign in required";
-"Style" = "Style";
+"Design" = "Design";
 "Usage delayed or service degraded" = "Usage delayed or service degraded";
 "Usage pace" = "Usage pace";
 "Usage unknown" = "Usage unknown";
