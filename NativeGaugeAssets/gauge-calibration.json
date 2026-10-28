@@ -1,0 +1,384 @@
+{
+  "glyphs": [
+    {
+      "centerX": 47.625,
+      "centerY": 47.914393628202085,
+      "diameter": 81.75,
+      "height": 84.5,
+      "minY": 7,
+      "scale": 0,
+      "stroke": 2.2450980392156863,
+      "weightIndex": 0,
+      "width": 95.25
+    },
+    {
+      "centerX": 48.125,
+      "centerY": 48.37597065203239,
+      "diameter": 82.75,
+      "height": 85.5,
+      "minY": 7,
+      "scale": 0,
+      "stroke": 3.414705882352941,
+      "weightIndex": 1,
+      "width": 96.25
+    },
+    {
+      "centerX": 49,
+      "centerY": 49.276559310098136,
+      "diameter": 84.5,
+      "height": 87.5,
+      "minY": 7,
+      "scale": 0,
+      "stroke": 5.697058823529412,
+      "weightIndex": 2,
+      "width": 98.25
+    },
+    {
+      "centerX": 49.75,
+      "centerY": 49.959107416262185,
+      "diameter": 86,
+      "height": 88.75,
+      "minY": 7,
+      "scale": 0,
+      "stroke": 7.422549019607843,
+      "weightIndex": 3,
+      "width": 99.5
+    },
+    {
+      "centerX": 50.375,
+      "centerY": 50.54668594615888,
+      "diameter": 87.25,
+      "height": 90,
+      "minY": 7,
+      "scale": 0,
+      "stroke": 8.881372549019607,
+      "weightIndex": 4,
+      "width": 100.75
+    },
+    {
+      "centerX": 50.75,
+      "centerY": 50.99852150235028,
+      "diameter": 88,
+      "height": 90.75,
+      "minY": 7,
+      "scale": 0,
+      "stroke": 10.000000000000002,
+      "weightIndex": 5,
+      "width": 101.75
+    },
+    {
+      "centerX": 51.375,
+      "centerY": 51.59332554816358,
+      "diameter": 89.25,
+      "height": 91.75,
+      "minY": 7,
+      "scale": 0,
+      "stroke": 11.47549019607843,
+      "weightIndex": 6,
+      "width": 102.75
+    },
+    {
+      "centerX": 52.125,
+      "centerY": 52.456618446572605,
+      "diameter": 90.75,
+      "height": 93.25,
+      "minY": 7,
+      "scale": 0,
+      "stroke": 13.61470588235294,
+      "weightIndex": 7,
+      "width": 104.5
+    },
+    {
+      "centerX": 53,
+      "centerY": 53.228694968114,
+      "diameter": 92.5,
+      "height": 94.75,
+      "minY": 7,
+      "scale": 0,
+      "stroke": 15.528431372549019,
+      "weightIndex": 8,
+      "width": 106
+    },
+    {
+      "centerX": 60.75,
+      "centerY": 61.01895650779127,
+      "diameter": 104,
+      "height": 107.75,
+      "minY": 9,
+      "scale": 1,
+      "stroke": 2.415686274509804,
+      "weightIndex": 0,
+      "width": 121.5
+    },
+    {
+      "centerX": 61.25,
+      "centerY": 61.54118908766299,
+      "diameter": 105,
+      "height": 108.75,
+      "minY": 9,
+      "scale": 1,
+      "stroke": 3.7372549019607844,
+      "weightIndex": 1,
+      "width": 122.75
+    },
+    {
+      "centerX": 62.375,
+      "centerY": 62.55873334194966,
+      "diameter": 107.25,
+      "height": 111,
+      "minY": 9,
+      "scale": 1,
+      "stroke": 6.316666666666667,
+      "weightIndex": 2,
+      "width": 124.75
+    },
+    {
+      "centerX": 63.125,
+      "centerY": 63.32993078890619,
+      "diameter": 108.75,
+      "height": 112.5,
+      "minY": 9,
+      "scale": 1,
+      "stroke": 8.267647058823531,
+      "weightIndex": 3,
+      "width": 126.5
+    },
+    {
+      "centerX": 63.875,
+      "centerY": 64.10583742759968,
+      "diameter": 110.25,
+      "height": 114,
+      "minY": 9,
+      "scale": 1,
+      "stroke": 10.19607843137255,
+      "weightIndex": 4,
+      "width": 128
+    },
+    {
+      "centerX": 64.5,
+      "centerY": 64.70009895573097,
+      "diameter": 111.5,
+      "height": 115,
+      "minY": 9,
+      "scale": 1,
+      "stroke": 11.673529411764706,
+      "weightIndex": 5,
+      "width": 129.25
+    },
+    {
+      "centerX": 65.25,
+      "centerY": 65.48601879797674,
+      "diameter": 113,
+      "height": 116.5,
+      "minY": 9,
+      "scale": 1,
+      "stroke": 13.624509803921569,
+      "weightIndex": 6,
+      "width": 130.75
+    },
+    {
+      "centerX": 66.375,
+      "centerY": 66.62446622750868,
+      "diameter": 115.25,
+      "height": 118.5,
+      "minY": 9,
+      "scale": 1,
+      "stroke": 16.45294117647059,
+      "weightIndex": 7,
+      "width": 133
+    },
+    {
+      "centerX": 67.375,
+      "centerY": 67.64210296491419,
+      "diameter": 117.25,
+      "height": 120.5,
+      "minY": 9,
+      "scale": 1,
+      "stroke": 18.98137254901961,
+      "weightIndex": 8,
+      "width": 135
+    },
+    {
+      "centerX": 78,
+      "centerY": 78.48834532904641,
+      "diameter": 133.5,
+      "height": 138.5,
+      "minY": 11.75,
+      "scale": 2,
+      "stroke": 2.544117647058824,
+      "weightIndex": 0,
+      "width": 156
+    },
+    {
+      "centerX": 78.625,
+      "centerY": 79.07005256743906,
+      "diameter": 134.75,
+      "height": 139.75,
+      "minY": 11.75,
+      "scale": 2,
+      "stroke": 4.017647058823529,
+      "weightIndex": 1,
+      "width": 157.25
+    },
+    {
+      "centerX": 79.75,
+      "centerY": 80.20712845476058,
+      "diameter": 137,
+      "height": 142,
+      "minY": 11.75,
+      "scale": 2,
+      "stroke": 6.895098039215686,
+      "weightIndex": 2,
+      "width": 159.75
+    },
+    {
+      "centerX": 80.75,
+      "centerY": 81.06365902559938,
+      "diameter": 139,
+      "height": 144,
+      "minY": 11.75,
+      "scale": 2,
+      "stroke": 9.07156862745098,
+      "weightIndex": 3,
+      "width": 161.5
+    },
+    {
+      "centerX": 81.625,
+      "centerY": 82.00308043770337,
+      "diameter": 140.75,
+      "height": 145.75,
+      "minY": 11.75,
+      "scale": 2,
+      "stroke": 11.407843137254902,
+      "weightIndex": 4,
+      "width": 163.25
+    },
+    {
+      "centerX": 82.375,
+      "centerY": 82.72118873409988,
+      "diameter": 142.25,
+      "height": 147,
+      "minY": 11.75,
+      "scale": 2,
+      "stroke": 13.200980392156863,
+      "weightIndex": 5,
+      "width": 164.75
+    },
+    {
+      "centerX": 83.25,
+      "centerY": 83.6715779591317,
+      "diameter": 144,
+      "height": 148.75,
+      "minY": 11.75,
+      "scale": 2,
+      "stroke": 15.563725490196077,
+      "weightIndex": 6,
+      "width": 166.75
+    },
+    {
+      "centerX": 84.625,
+      "centerY": 85.04787878758489,
+      "diameter": 146.75,
+      "height": 151.25,
+      "minY": 11.75,
+      "scale": 2,
+      "stroke": 18.992156862745098,
+      "weightIndex": 7,
+      "width": 169.5
+    },
+    {
+      "centerX": 85.75,
+      "centerY": 86.1693457003216,
+      "diameter": 149,
+      "height": 153.25,
+      "minY": 11.75,
+      "scale": 2,
+      "stroke": 21.783333333333335,
+      "weightIndex": 8,
+      "width": 171.5
+    }
+  ],
+  "profiles": [
+    {
+      "innerDiameter": 13.1,
+      "outerDiameter": 19.1,
+      "size": 18,
+      "strokes": [
+        1.4,
+        1.5,
+        1.7,
+        1.95,
+        2.02,
+        2.09,
+        2.16,
+        2.23,
+        2.3
+      ]
+    },
+    {
+      "innerDiameter": 15,
+      "outerDiameter": 21.1,
+      "size": 20,
+      "strokes": [
+        1.45,
+        1.6,
+        1.8,
+        2.05,
+        2.13,
+        2.21,
+        2.29,
+        2.37,
+        2.45
+      ]
+    },
+    {
+      "innerDiameter": 16.8,
+      "outerDiameter": 23.1,
+      "size": 22,
+      "strokes": [
+        1.5,
+        1.65,
+        1.85,
+        2.15,
+        2.25,
+        2.35,
+        2.45,
+        2.55,
+        2.65
+      ]
+    },
+    {
+      "innerDiameter": 21.15,
+      "outerDiameter": 30,
+      "size": 32,
+      "strokes": [
+        0.75,
+        0.99,
+        1.3499999999999999,
+        1.74,
+        2.1,
+        2.4,
+        2.67,
+        2.97,
+        3.2399999999999998
+      ]
+    },
+    {
+      "innerDiameter": 32.4,
+      "outerDiameter": 45,
+      "size": 48,
+      "strokes": [
+        1.125,
+        1.485,
+        2.025,
+        2.6100000000000003,
+        3.1500000000000004,
+        3.6,
+        4.005,
+        4.455,
+        4.86
+      ]
+    }
+  ],
+  "revision": 37
+}

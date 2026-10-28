@@ -2,10 +2,12 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# The gauge's symbol catalog, calibration and artwork licences live in NativeGaugeAssets. When this checkout sits
+# in the design workspace it came from, the workspace's gauge component is the source and is copied in first.
 WORKSPACE=$(cd "$ROOT/../.." && pwd)
-GAUGE_SOURCE="$WORKSPACE/Implementation/Components/UsageIndicator"
+WORKSPACE_GAUGE="$WORKSPACE/Implementation/Components/UsageIndicator"
+GAUGE_SOURCE="$ROOT/NativeGaugeAssets"
 # One app: CodexBar, with the redesign as its default design and the original a setting away.
-APP="$WORKSPACE/App/CodexBar.app"
 LOCAL_APP="${NATIVE_APP_INSTALL_PATH:-/Applications/CodexBar.app}"
 # An install that isn't one of these builds (such as an upstream release) is kept here, not discarded.
 BACKUPS="${NATIVE_APP_BACKUP_DIR:-$HOME/Applications/CodexBar Backups}"
@@ -22,13 +24,19 @@ cd "$ROOT"
 source "$ROOT/version.env"
 python3 "$ROOT/Scripts/generate_settings_search_index.py" --check
 
-# Always build the current workspace gauge component; keep the derivative standalone.
-mkdir -p "$ROOT/Sources/CodexBar/NativeGauge/Generated"
-for name in ComputeGauge LaurelGauge NativeGaugeGeometry UsageModel ServiceIdentity; do
-    if ! cmp -s "$GAUGE_SOURCE/$name.swift" "$ROOT/Sources/CodexBar/NativeGauge/Generated/$name.swift"; then
-        cp "$GAUGE_SOURCE/$name.swift" "$ROOT/Sources/CodexBar/NativeGauge/Generated/$name.swift"
-    fi
-done
+# In the design workspace, build its current gauge component; the checkout keeps its own copy for anyone else.
+if [[ -d "$WORKSPACE_GAUGE/ComputeGauge.xcassets" ]]; then
+    mkdir -p "$ROOT/Sources/CodexBar/NativeGauge/Generated"
+    for name in ComputeGauge LaurelGauge NativeGaugeGeometry UsageModel ServiceIdentity; do
+        if ! cmp -s "$WORKSPACE_GAUGE/$name.swift" "$ROOT/Sources/CodexBar/NativeGauge/Generated/$name.swift"; then
+            cp "$WORKSPACE_GAUGE/$name.swift" "$ROOT/Sources/CodexBar/NativeGauge/Generated/$name.swift"
+        fi
+    done
+    rsync -a --delete --exclude .DS_Store "$WORKSPACE_GAUGE/ComputeGauge.xcassets/" "$GAUGE_SOURCE/ComputeGauge.xcassets/"
+    for name in gauge-calibration.json Provider-LICENSE.txt AccountIdentity-LICENSE.txt; do
+        cp "$WORKSPACE_GAUGE/$name" "$GAUGE_SOURCE/$name"
+    done
+fi
 
 # iCloud adds Finder metadata to generated resource bundles during signing.
 # Keep SwiftBuild outputs in temporary local storage; source and app stay here.
@@ -117,12 +125,11 @@ with open(path, "wb") as target:
 PYPLIST
 fi
 
-printf 'Upstream revision: %s\nGauge source: current UsageIndicator component\n' "$(/usr/bin/git rev-parse HEAD)" \
-    > "$STAGE/Contents/Resources/Build-Provenance.txt"
+printf 'Source revision: %s\n' "$(/usr/bin/git rev-parse HEAD)" > "$STAGE/Contents/Resources/Build-Provenance.txt"
 (
-    cd "$GAUGE_SOURCE"
+    cd "$ROOT/Sources/CodexBar/NativeGauge/Generated"
     /usr/bin/shasum -a 256 ComputeGauge.swift LaurelGauge.swift NativeGaugeGeometry.swift UsageModel.swift \
-        ServiceIdentity.swift gauge-calibration.json
+        ServiceIdentity.swift "$GAUGE_SOURCE/gauge-calibration.json"
 ) >> "$STAGE/Contents/Resources/Build-Provenance.txt"
 (
     cd "$STAGE"
@@ -148,11 +155,15 @@ fi
 ditto --noextattr --norsrc "$STAGE" "$LOCAL_APP"
 xattr -cr "$LOCAL_APP"
 codesign --verify --deep --strict "$LOCAL_APP"
-ditto -c -k --keepParent --norsrc --noextattr "$STAGE" "$WORKSPACE/App/CodexBar.zip"
-if [[ -L "$APP" ]]; then
-    rm "$APP"
-elif [[ -d "$APP" ]]; then
-    mv "$APP" "$ROOT/.build/native-package/Previous Cloud $(date +%Y%m%d-%H%M%S).app"
+# In the design workspace, also keep a portable archive and a link to the installed app there.
+if [[ -d "$WORKSPACE_GAUGE" ]]; then
+    APP="$WORKSPACE/App/CodexBar.app"
+    ditto -c -k --keepParent --norsrc --noextattr "$STAGE" "$WORKSPACE/App/CodexBar.zip"
+    if [[ -L "$APP" ]]; then
+        rm "$APP"
+    elif [[ -d "$APP" ]]; then
+        mv "$APP" "$ROOT/.build/native-package/Previous Cloud $(date +%Y%m%d-%H%M%S).app"
+    fi
+    ln -s "$LOCAL_APP" "$APP"
 fi
-ln -s "$LOCAL_APP" "$APP"
-printf 'Built %s (workspace link: %s)\n' "$LOCAL_APP" "$APP"
+printf 'Built %s\n' "$LOCAL_APP"

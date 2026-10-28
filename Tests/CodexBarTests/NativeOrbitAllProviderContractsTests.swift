@@ -168,10 +168,10 @@ struct NativeOrbitAllProviderContractsTests {
         provider: UsageProvider)
     {
         var root = URL(fileURLWithPath: #filePath)
-        for _ in 0..<5 {
+        for _ in 0..<3 {
             root.deleteLastPathComponent()
         }
-        let catalogue = root.appendingPathComponent("Implementation/Components/UsageIndicator/ComputeGauge.xcassets")
+        let catalogue = root.appendingPathComponent("NativeGaugeAssets/ComputeGauge.xcassets")
         func exists(_ name: String) -> Bool {
             FileManager.default.fileExists(atPath: catalogue.appendingPathComponent(name + ".symbolset").path)
         }
