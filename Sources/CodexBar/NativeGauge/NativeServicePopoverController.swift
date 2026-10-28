@@ -498,6 +498,30 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         }
     }
 
+    /// The combined popup's first opening after launch runs every service's ignition check together, as a
+    /// service's own popup does: armed before it appears, run once it has.
+    func armCombinedStartup() {
+        self.orbitState.armStartup(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        self.orbitState.prepareStartupArtwork(
+            screen: self.statusButton?.window?.screen,
+            appearance: self.isViewLoaded ? self.view.effectiveAppearance : nil)
+    }
+
+    func runCombinedStartup(in view: NSView) {
+        self.startupTask?.cancel()
+        self.startupTask = Task { @MainActor [weak self] in
+            view.layoutSubtreeIfNeeded()
+            view.window?.displayIfNeeded()
+            CATransaction.flush()
+            await Task.yield()
+            guard let self, !Task.isCancelled else { return }
+            await self.orbitState.runStartup()
+            guard !Task.isCancelled else { return }
+            self.startupTask = nil
+            if self.presentationDirty { self.schedulePresentationRefresh() }
+        }
+    }
+
     /// The combined popup has finished appearing; see `popoverDidShow`.
     func combinedPresentationDidShow() {
         self.applyPendingPresentationAfterShowing()
@@ -505,6 +529,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     }
 
     func endCombinedPresentation() {
+        self.cancelStartup()
         self.isInCombinedPresentation = false
         self.holdsPresentation = false
         self.presentationClockTask?.cancel()

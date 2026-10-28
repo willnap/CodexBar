@@ -10,6 +10,8 @@ final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate
     private let showing = NativeCombinedShowing()
     private weak var button: NSStatusBarButton?
     private let didClose: () -> Void
+    private let startupLaunch = NativeOrbitStartupLaunch.shared
+    private let startupOwner = UUID()
 
     init(controllers: [NativeServicePopoverController], button: NSStatusBarButton, didClose: @escaping () -> Void) {
         self.controllers = controllers
@@ -100,6 +102,12 @@ final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate
 
     func popoverWillShow(_: Notification) {
         self.button?.highlight(true)
+        // The first opening after launch runs the ignition check on every page.
+        if self.startupLaunch.reserve(self.startupOwner) {
+            for controller in self.controllers {
+                controller.armCombinedStartup()
+            }
+        }
     }
 
     func popoverDidShow(_: Notification) {
@@ -107,9 +115,15 @@ final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate
             controller.combinedPresentationDidShow()
         }
         self.showing.shown()
+        if self.startupLaunch.shown(self.startupOwner) {
+            for controller in self.controllers {
+                controller.runCombinedStartup(in: self.view)
+            }
+        }
     }
 
     func popoverDidClose(_: Notification) {
+        self.startupLaunch.cancel(self.startupOwner)
         for controller in self.controllers {
             controller.endCombinedPresentation()
         }
