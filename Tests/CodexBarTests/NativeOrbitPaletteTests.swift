@@ -5,6 +5,58 @@ import Testing
 
 @MainActor
 struct NativeOrbitPaletteTests {
+    private final class Resolutions: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        private var notifyNext = false
+        var value: Int {
+            self.lock.withLock { self.count }
+        }
+
+        func record() {
+            let notify = self.lock.withLock {
+                self.count += 1
+                let notify = self.notifyNext
+                self.notifyNext = false
+                return notify
+            }
+            if notify {
+                NotificationCenter.default.post(name: NSColor.systemColorsDidChangeNotification, object: nil)
+            }
+        }
+
+        func reset() { self.lock.withLock { self.count = 0 } }
+        func notifyWhenResolving() { self.lock.withLock { self.notifyNext = true } }
+    }
+
+    @Test(arguments: ["session", "weekly"])
+    func `repeated chart tint resolution reuses pigment until system colors change`(id: String) throws {
+        let resolutions = Resolutions()
+        let accent = Color(nsColor: NSColor(name: nil) { _ in
+            resolutions.record()
+            return NSColor(srgbRed: 0.12, green: 0.42, blue: 0.50, alpha: 1)
+        })
+        let color = NativeOrbitPalette.color(accent: accent, id: id, period: 18000)
+        let light = try Self.resolve(color, appearance: .aqua)
+        let dark = try Self.resolve(color, appearance: .darkAqua)
+        resolutions.reset()
+        for _ in 0..<100 {
+            #expect(try Self.resolve(color, appearance: .aqua) == light)
+            #expect(try Self.resolve(color, appearance: .darkAqua) == dark)
+        }
+        #expect(resolutions.value == 0)
+        NotificationCenter.default.post(name: NSColor.systemColorsDidChangeNotification, object: nil)
+        #expect(try Self.resolve(color, appearance: .aqua) == light)
+        #expect(resolutions.value > 0)
+        // A dynamic accent is user code: it may synchronously invalidate colors while being resolved.
+        resolutions.notifyWhenResolving()
+        NotificationCenter.default.post(name: NSColor.systemColorsDidChangeNotification, object: nil)
+        #expect(try Self.resolve(color, appearance: .aqua) == light)
+        resolutions.reset()
+        #expect(try Self.resolve(color, appearance: .aqua) == light)
+        #expect(resolutions.value > 0)
+    }
+
     @Test
     func `unchanged quota tints retain identity across inspection updates and aliases`() {
         let accent = Color(red: 0.13, green: 0.37, blue: 0.61)

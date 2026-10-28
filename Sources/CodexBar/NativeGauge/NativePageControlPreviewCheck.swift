@@ -65,7 +65,8 @@ enum NativePageControlPreviewCheck {
                 pitch: 22,
                 symbolWidths: indicators.map {
                     NativePageControlSymbol($0, configuration: .init()).size.width
-                }).position(of: target)
+                },
+                groups: indicators.map { $0.expanded ? $0.group : nil }).position(of: target)
         }
         func click(_ index: Int) async {
             guard let x = location(targetID: control.pages[index].id) else { return }

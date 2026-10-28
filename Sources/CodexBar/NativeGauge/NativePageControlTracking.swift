@@ -125,9 +125,16 @@ struct NativePageControlRepeatState {
 /// Keep the requested highlight stable during an animated jump, then adopt native truth if the user interrupts it.
 struct NativePageControlNavigation {
     struct Request: Equatable {
+        /// The page brought to the leading edge.
         let id: String
         let interaction: NativePageControlInteraction
+        /// The page selected once it is there: the same page, unless resuming where the pages were left.
+        var selects: String?
         let generation = UUID()
+
+        var selectionID: String {
+            self.selects ?? self.id
+        }
     }
 
     private(set) var selectionID: String
@@ -144,6 +151,12 @@ struct NativePageControlNavigation {
         self.request = Request(id: id, interaction: interaction)
     }
 
+    /// Bring `leadingID` back to the leading edge with `selectionID` selected, where a showing left them.
+    mutating func resume(selectionID: String, leadingID: String) {
+        self.selectionID = selectionID
+        self.request = Request(id: leadingID, interaction: .continuous, selects: selectionID)
+    }
+
     mutating func inventoryChanged(validIDs: [String], fallbackID: String) {
         let target = validIDs.contains(self.selectionID) ? self.selectionID
             : validIDs.contains(fallbackID) ? fallbackID : validIDs.first
@@ -154,7 +167,7 @@ struct NativePageControlNavigation {
     mutating func observe(_ id: String?, validIDs: [String]) {
         guard let id, validIDs.contains(id) else { return }
         self.visibleID = id
-        if self.request == nil || self.request?.id == id { self.selectionID = id }
+        if self.request == nil || self.request?.selectionID == id { self.selectionID = id }
     }
 
     mutating func interrupt(at id: String?, validIDs: [String]) {
@@ -165,7 +178,7 @@ struct NativePageControlNavigation {
 
     mutating func settle(at id: String?, validIDs: [String]) {
         self.observe(id, validIDs: validIDs)
-        if self.request?.id == self.visibleID { self.request = nil }
+        if self.request?.selectionID == self.visibleID { self.request = nil }
         if self.request == nil, validIDs.contains(self.visibleID) { self.selectionID = self.visibleID }
     }
 }

@@ -47,6 +47,20 @@ struct NativePageControlLayout {
         case step(Int)
     }
 
+    /// A provider mark and the accounts it holds, drawn on one platter.
+    struct Group: Equatable {
+        let id: String
+        let lower: CGFloat
+        let upper: CGFloat
+    }
+
+    /// Marks inside a group sit closer than marks outside it, and the group keeps clear of its neighbours.
+    static let groupGap: CGFloat = 5
+    static let groupMargin: CGFloat = 13
+    /// How far a group's platter reaches past its outermost marks.
+    static let platterPadding: CGFloat = 5
+    static let platterThickness: CGFloat = 22
+
     let count: Int
     let selection: Int
     let availableLength: CGFloat
@@ -59,6 +73,7 @@ struct NativePageControlLayout {
     private let inset: CGFloat
     private let centers: [CGFloat]
     private let widths: [CGFloat]
+    private let groupIDs: [String?]
     private let firstVisible: Int
     private let visibleCount: Int
     private let gap: CGFloat
@@ -72,7 +87,8 @@ struct NativePageControlLayout {
         expanded _: Bool = false,
         pitch: CGFloat = 20,
         glyphSize: CGFloat = 12,
-        symbolWidths: [CGFloat]? = nil)
+        symbolWidths: [CGFloat]? = nil,
+        groups: [String?]? = nil)
     {
         self.count = max(0, count)
         self.selection = min(max(0, selection), max(0, count - 1))
@@ -83,18 +99,30 @@ struct NativePageControlLayout {
         let custom = symbolWidths.flatMap { $0.count == max(0, count) ? $0 : nil }
         let widths = custom ?? Array(repeating: self.glyphSize, count: self.count)
         let gap = custom == nil ? max(0, self.pitch - self.glyphSize) : 8
+        let groupIDs = groups.flatMap { $0.count == max(0, count) ? $0 : nil }
+            ?? Array(repeating: nil, count: self.count)
         self.widths = widths
         self.gap = gap
+        self.groupIDs = groupIDs
         var centers: [CGFloat] = []
         var origins: [CGFloat] = []
         var cursor: CGFloat = 0
-        for width in widths {
+        var lastGap: CGFloat = 0
+        for (index, width) in widths.enumerated() {
             origins.append(cursor)
             centers.append(ceil((cursor + width / 2) * 2) / 2)
-            cursor += width + gap
+            let next = index + 1 < groupIDs.count ? groupIDs[index + 1] : nil
+            lastGap = if let group = groupIDs[index], group == next {
+                Self.groupGap
+            } else if groupIDs[index] != nil || next != nil {
+                Self.groupMargin
+            } else {
+                gap
+            }
+            cursor += width + lastGap
         }
         self.centers = centers
-        let strip = max(0, cursor - gap)
+        let strip = max(0, cursor - lastGap)
         var visible = min(10, self.count)
         var longest: CGFloat = 0
         while visible >= 1 {
@@ -155,6 +183,25 @@ struct NativePageControlLayout {
                 scale = min(scale, anchors[min(3, max(0, self.firstVisible + self.visibleCount - index))])
             }
             return Mark(index: index, position: position, scale: index == self.selection ? 1 : scale)
+        }
+    }
+
+    /// Each group's span along the control, platter included, from its marks as they are drawn.
+    var groups: [Group] {
+        var spans: [String: (lower: CGFloat, upper: CGFloat)] = [:]
+        var order: [String] = []
+        for mark in self.marks where mark.scale > 0 {
+            guard let id = self.groupIDs[mark.index] else { continue }
+            let half = self.widths[mark.index] * mark.scale / 2
+            let span = spans[id]
+            if span == nil { order.append(id) }
+            spans[id] = (
+                min(span?.lower ?? .infinity, mark.position - half),
+                max(span?.upper ?? -.infinity, mark.position + half))
+        }
+        return order.compactMap { id in
+            spans[id]
+                .map { Group(id: id, lower: $0.lower - Self.platterPadding, upper: $0.upper + Self.platterPadding) }
         }
     }
 

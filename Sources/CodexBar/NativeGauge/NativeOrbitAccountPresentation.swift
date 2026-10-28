@@ -24,6 +24,10 @@ struct NativeOrbitAccountPresentation: Identifiable {
     let id: String
     let label: String
     let email: String?
+    /// False when `label` only stands in with the service's name: nothing identifies this login.
+    var isNamed = true
+    /// The plan as the menu names it ("Claude Max 20x", "Pro 5x", "Plus").
+    var plan: String?
     var symbol: String
     let isActive: Bool
     let canActivate: Bool
@@ -357,7 +361,7 @@ extension UsageStore {
                 ? error ?? L(
                     "claude_showing_last_known_usage",
                     account.snapshot?.updatedAt.formatted(date: .abbreviated, time: .shortened) ?? "—") : error
-            return self.nativeOrbitAccount(
+            var row = self.nativeOrbitAccount(
                 // Provider-specific by design: ClaudeSwap supplies this Claude row's usage and activation identity.
                 provider: .claude,
                 id: "\(account.id.source):\(account.id.opaqueID)",
@@ -386,6 +390,11 @@ extension UsageStore {
                 localUsage: localUsage?.usage,
                 usageLastKnownAt: localUsage?.lastKnownAt)
             // Ambient observations enter this owner bucket only through a verified accepted-publication bridge.
+            // claude-swap's own reports carry its source label where a plan goes; that names no plan.
+            let reportedPlan = snapshot?.loginMethod(for: .claude) == ClaudeSwapAccountProjection.sourceLabel
+                ? nil : row.plan
+            row.plan = reportedPlan ?? NativeClaudeSwapProfilePlan.plan(email: account.accountEmail)
+            return row
         }
         return Self.nativeOrbitOrdered(rows)
     }
@@ -440,14 +449,19 @@ extension UsageStore {
             now: Date(),
             localUsage: reports.local,
             quotaHistory: sourceHistory)
+        // Without an email, the name the service gives the login (a Kimi phone login's nickname).
+        let accountName = self.settings.hidePersonalInfo ? nil
+            : snapshot?.identity(for: provider.instanceID)?.accountName
         let accountLabel = presentation.model.email.isEmpty
-            ? self.metadata(for: provider).displayName
+            ? accountName ?? self.metadata(for: provider).displayName
             : presentation.model.email
         return NativeOrbitAccountPresentation(
             id: automatic ? "\(provider.rawValue):automatic"
                 : presentation.accountID ?? "\(provider.rawValue):automatic",
             label: automatic ? L("Automatic") : accountLabel,
             email: self.settings.hidePersonalInfo ? nil : presentation.model.email,
+            isNamed: automatic || !presentation.model.email.isEmpty || accountName != nil,
+            plan: presentation.model.planText,
             symbol: "person.crop.circle",
             isActive: false,
             canActivate: false,
@@ -583,6 +597,8 @@ extension UsageStore {
             id: id,
             label: label,
             email: self.settings.hidePersonalInfo ? nil : email,
+            isNamed: label != self.metadata(for: provider).displayName,
+            plan: model.planText,
             symbol: "person.crop.circle",
             isActive: isActive,
             canActivate: canActivate,

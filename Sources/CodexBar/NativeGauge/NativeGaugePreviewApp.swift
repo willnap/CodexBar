@@ -398,6 +398,8 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
         let initialID = CommandLine.arguments.contains("--preview-overview") ? NativeCombinedAccounts.overviewID : nil
         let showing = NativeCombinedShowing()
         let size = NativeCombinedPopupView.contentSize(pageCount: model.pages.count + 1)
+        toolbar
+            .layoutColumns = Int(NativeCombinedPopupView.visibleColumns(pageCount: model.pages.count + 1).rounded(.up))
         showing.begin(
             openingID: initialID ?? model.pages.first?.id ?? NativeCombinedAccounts.overviewID,
             pageOrder: model.pages.map(\.id),
@@ -416,6 +418,13 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
         window.orderFrontRegardless()
         NSApp.activate()
         window.makeKey()
+        if NativeCombinedRangeTiming.enabled {
+            showing.shown()
+            window.ignoresMouseEvents = true
+            let directory = URL(fileURLWithPath: ProcessInfo.processInfo.environment["CODEXBAR_RANGE_OUTPUT"]
+                ?? "/tmp/codexbar-combined-range")
+            Task { await NativeCombinedRangeProbe.run(view: host.view, toolbar: toolbar, directory: directory) }
+        }
         self.recordPreview(popover)
         self.exportCombinedRender(sources: sources, toolbar: toolbar, showing: showing, size: size)
         if CommandLine.arguments.contains("--preview-control-check"),
@@ -473,7 +482,8 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
                             pitch: 22,
                             symbolWidths: indicators.map {
                                 NativePageControlSymbol($0, configuration: .init()).size.width
-                            }))
+                            },
+                            groups: indicators.map { $0.expanded ? $0.group : nil }))
                 }
             }
         }
@@ -520,7 +530,8 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
                 selection: 2,
                 availableLength: 240,
                 pitch: 22,
-                symbolWidths: indicators.map { NativePageControlSymbol($0, configuration: .init()).size.width }),
+                symbolWidths: indicators.map { NativePageControlSymbol($0, configuration: .init()).size.width },
+                groups: indicators.map { $0.expanded ? $0.group : nil }),
             configuration: NativePageControlConfiguration(
                 indicatorTint: .black.opacity(0.3),
                 currentIndicatorTint: .black))
@@ -582,6 +593,7 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
             id: "fixture-\(index)",
             label: index == 0 ? "Personal · Preview" : "Work · Preview",
             email: nil,
+            plan: ["Pro 20x", "Claude Max 5x", "Plus"][index % 3],
             symbol: "person.crop.circle",
             isActive: active,
             canActivate: !active,

@@ -30,24 +30,72 @@ final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate
         let model = NativeCombinedAccounts(connections: sources.map {
             .init(provider: $0.provider, accounts: $0.state.accounts, hasSavedAccounts: true)
         }, now: Date())
-        let pageCount = model.pages.count + 1
+        self.pageCount = model.pages.count + 1
         self.preferredContentSize = NativeCombinedPopupView.contentSize(
-            pageCount: pageCount,
-            maximumWidth: (self.button?.window?.screen?.visibleFrame.width ?? 1200) - 40)
-        self.toolbar.layoutColumns = Int(NativeCombinedPopupView.visibleColumns(pageCount: pageCount).rounded(.up))
+            pageCount: self.pageCount,
+            maximumWidth: self.maximumWidth,
+            preferredWidth: Self.chosenWidth)
+        self.toolbar.layoutColumns = NativeCombinedPopupView.layoutColumns(width: self.preferredContentSize.width)
         self.toolbar.accounts = self.controllers.flatMap(\.orbitState.accounts)
+        let ids = [NativeCombinedAccounts.overviewID] + model.pages.map(\.id)
+        let resumed = self.showing.resumed(validIDs: ids, now: Date())
         self.showing.begin(
-            openingID: model.pages.first?.id ?? NativeCombinedAccounts.overviewID,
+            openingID: resumed?.selection ?? model.pages.first?.id ?? NativeCombinedAccounts.overviewID,
+            leadingID: resumed?.leading,
             pageOrder: model.pages.map(\.id),
             width: self.preferredContentSize.width)
     }
 
+    // MARK: Width
+
+    /// The width a person chose by dragging an edge, kept across launches.
+    static let widthDefaultsKey = "NativeCombinedPopupWidth"
+    private var pageCount = 1
+    weak var popover: NSPopover?
+
+    private static var chosenWidth: CGFloat? {
+        let width = UserDefaults.standard.double(forKey: Self.widthDefaultsKey)
+        return width > 0 ? width : nil
+    }
+
+    private var maximumWidth: CGFloat {
+        (self.button?.window?.screen?.visibleFrame.width ?? 1200) - 40
+    }
+
+    private var widthLimits: ClosedRange<CGFloat> {
+        NativeCombinedPopupView.minimumWidth...NativeCombinedPopupView.clampedWidth(
+            .infinity, pageCount: self.pageCount, maximumWidth: self.maximumWidth)
+    }
+
+    /// Follows an edge drag: the popup takes the width, within one page and every page side by side.
+    private func resize(to proposed: CGFloat) -> CGFloat {
+        let width = NativeCombinedPopupView.clampedWidth(
+            proposed, pageCount: self.pageCount, maximumWidth: self.maximumWidth)
+        guard width != self.showing.width else { return width }
+        self.showing.resize(width)
+        self.toolbar.layoutColumns = NativeCombinedPopupView.layoutColumns(width: width)
+        self.preferredContentSize = NSSize(width: width, height: NativeCombinedPopupView.stripHeight)
+        self.popover?.contentSize = self.preferredContentSize
+        return width
+    }
+
     override func loadView() {
-        self.view = NSHostingView(rootView: NativeCombinedPopupView(
+        let host = NSHostingView(rootView: NativeCombinedPopupView(
             sources: self.controllers.map { $0.combinedSource() },
             toolbar: self.toolbar,
             showing: self.showing))
-        self.view.frame = NSRect(origin: .zero, size: self.preferredContentSize)
+        let edges = NativePopoverEdgeResizer(frame: NSRect(origin: .zero, size: self.preferredContentSize))
+        edges.host(host)
+        edges.width = { [weak self] in self?.showing.width ?? 0 }
+        edges.limits = { [weak self] in self?.widthLimits ?? NativeCombinedPopupView.minimumWidth...10000 }
+        edges.resize = { [weak self] in self?.resize(to: $0) ?? $0 }
+        edges.began = { [weak self] in self?.popover?.animates = false }
+        edges.ended = { [weak self] width in
+            // A drag follows the pointer directly; the popover's own animation returns for opening and closing.
+            self?.popover?.animates = true
+            UserDefaults.standard.set(Double(width), forKey: Self.widthDefaultsKey)
+        }
+        self.view = edges
     }
 
     func popoverWillShow(_: Notification) {
@@ -128,7 +176,7 @@ extension StatusItemController {
             x += host.update(state: page.account.gauge, accountID: page.id, button: button, x: x) + 6
             labels.append([
                 self.store.metadata(for: page.provider).displayName,
-                page.account.label,
+                page.account.isNamed ? page.account.label : "",
                 page.account.gauge.usageSummary(at: .now),
             ].filter { !$0.isEmpty }.joined(separator: ", "))
         }
@@ -200,6 +248,7 @@ extension StatusItemController {
         popover.animates = true
         popover.contentViewController = controller
         popover.delegate = controller
+        controller.popover = popover
         self.nativeCombinedPopover = popover
         return (popover, controller)
     }
@@ -219,8 +268,13 @@ extension StatusItemController {
 @MainActor
 @Observable
 final class NativeCombinedShowing {
+    /// Closed for less than this, the pages reopen where they were left; after it, on the most recently used account.
+    static let resumeInterval: TimeInterval = 6 * 60 * 60
+
     private(set) var generation = 0
     private(set) var openingID = NativeCombinedAccounts.overviewID
+    /// The page at the leading edge as the showing opens; the opening page unless the pages resume where they were.
+    private(set) var openingLeadingID = NativeCombinedAccounts.overviewID
     private(set) var pageOrder: [String] = []
     private(set) var width = NativeCombinedPopupView.pageWidth
 
@@ -228,18 +282,37 @@ final class NativeCombinedShowing {
     private(set) var shownGeneration = 0
     private(set) var closedGeneration = 0
 
-    func begin(openingID: String, pageOrder: [String], width: CGFloat) {
+    /// Where the pages were left: the selected page and the page at the leading edge.
+    @ObservationIgnored var leftSelectionID: String?
+    @ObservationIgnored var leftLeadingID: String?
+    @ObservationIgnored private(set) var closedAt: Date?
+
+    func begin(openingID: String, leadingID: String? = nil, pageOrder: [String], width: CGFloat) {
         self.openingID = openingID
+        self.openingLeadingID = leadingID ?? openingID
         self.pageOrder = pageOrder
         self.width = width
         self.generation += 1
+    }
+
+    /// The pages where they were left, while they all still exist and the popup was closed only a while.
+    func resumed(validIDs: [String], now: Date) -> (selection: String, leading: String)? {
+        guard let closedAt, now.timeIntervalSince(closedAt) < Self.resumeInterval, now >= closedAt,
+              let leading = self.leftLeadingID, validIDs.contains(leading) else { return nil }
+        let selection = self.leftSelectionID.flatMap { validIDs.contains($0) ? $0 : nil } ?? leading
+        return (selection, leading)
+    }
+
+    func resize(_ width: CGFloat) {
+        if self.width != width { self.width = width }
     }
 
     func shown() {
         self.shownGeneration += 1
     }
 
-    func closed() {
+    func closed(at date: Date = Date()) {
+        self.closedAt = date
         self.closedGeneration += 1
     }
 }

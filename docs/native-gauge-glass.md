@@ -39,36 +39,42 @@ clear of edges. Rail arcs are split at fixed 15° stops so that overlapping piec
 
 ## Showcase renders
 
-`docs/screenshots/native-showcase/readme-header.jpg` is a README header: eight popovers from seven providers
-fanned out under their menu bar gauges, over the Golden Gate Sunset aerial. Every popover is the production view
-fed a month of generated usage for fictitious accounts (`NativeOrbitShowcaseScene`); nothing is drawn to imitate
-it. Each provider reports only the windows it really has, in its own brand accent, and each card shows a different
-situation:
+`docs/screenshots/native-showcase/readme-light.png` and `readme-dark.png` are the README screenshot: the combined
+window opened on its All page, six columns wide, under the combined menu bar item. Every page is the production view
+fed a month of generated usage for fictitious accounts (`NativeOrbitShowcaseScene`); nothing is drawn to imitate it.
+Each service reports only the windows it really has, in its own brand accent, and pages take the production order
+(most recently used first). Most accounts run with room to spare; four lamps cover different realms without any
+red:
 
-- Amp Free's daily meter on course to run out before it renews (amber fuel).
-- Codebuff credits beside its weekly window.
-- Codex weekly-only, with three banked resets and an idle personal account.
-- Claude in front, a light session with room to spare (green tortoise), extra usage and a second account.
-- StepFun running every session to its limit.
-- Bedrock spend against a monthly budget.
-- Kiro's monthly credits exhausted (red fuel) with a second account to switch to.
+- Claude Max 20x a little ahead of pace on its week (amber hare), with Sonnet's own allowance and extra usage.
+- Codex Pro with a saved reset just added (green) and three banked.
+- Kimi Code on pace across its session, week and monthly pool (no lamp).
+- GLM Coding Plan with half its week unused and under a day to go (green tortoise).
+- Gemini Code Assist during a provider incident (amber status lamp).
+- DeepSeek pay-as-you-go against a prepaid balance, the sixth page, counted on the All page.
 
-Past windows cost what the current one does for the same work, and inactive accounts stop where they were left,
-so each chart's history agrees with its projection. The clock is set so that "now" is always a weekday afternoon.
-To recreate it, take a still from the aerial (Wallpaper settings downloads it), build, and capture the scene window:
+Each account's quarter-hour request slices add up to its daily totals, so the All page's chart can split a day at
+any range start. Past windows cost what the current one does for the same work, and accounts stop where they were
+last used, so each chart's history agrees with its projection. The clock is set so that "now" is always a weekday
+afternoon.
+
+The window sits on nothing, so the capture keeps transparency and suits GitHub's light and dark pages. The scene's
+panel always reports itself key: glass draws its tint only in the key window, and macOS refuses focus to the scene
+while someone works in another app. Build, then capture the scene window in each appearance:
 
 ```sh
-ffmpeg -ss 30 -i ~/Library/Application\ Support/com.apple.wallpaper/aerials/videos/4207734D-74FE-4F92-B5E1-6EC8DEE24A15.mov \
-  -frames:v 1 -vf crop=3840:1606:0:0 -q:v 2 backdrop.jpg
-open -n --env CODEXBAR_PREVIEW_BACKDROP=$PWD/backdrop.jpg "$HOME/Applications/CodexBar Native.app" --args \
-  --native-preview --preview-scene --preview-light
-screencapture -x -o -l <window id> header.png
+open -n "$HOME/Applications/CodexBar Native.app" --args --native-preview --preview-scene --preview-light
+screencapture -x -o -l <window id> readme-light.png   # and again with --preview-dark
 ```
+
+`--preview-scene-services` instead fans out one popover per service, as the earlier header did, and
+`CODEXBAR_PREVIEW_BACKDROP` puts an image behind either scene. `CODEXBAR_PREVIEW_DAYS` sets the combined window's
+range (1, 7 or 30).
 
 For a single popup, `--native-preview --preview-orbit --preview-open --preview-window --preview-showcase
 --preview-provider claude --preview-light` draws it as a rounded card over the backdrop.
 
-Both panels blend their material within the window, so the capture shows only the backdrop behind the glass,
-never the screen. Use a window-only capture: the panel belongs to an inactive app, so a region capture of the
+Both panels blend their material within the window, so the capture shows only the backdrop (or transparency) behind
+the glass, never the screen. Use a window-only capture: the panel belongs to an inactive app, so a region capture of the
 screen shows whatever is in front of it. The panel takes key without activating the app. Don't make it ignore the
 mouse: that stops it taking key, and its glass goes flat.

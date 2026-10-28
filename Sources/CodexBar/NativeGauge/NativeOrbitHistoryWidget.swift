@@ -3,6 +3,11 @@ import Charts
 import CodexBarCore
 import SwiftUI
 
+extension EnvironmentValues {
+    /// Warmed account pages retain their charts, but only pages intersecting the viewport render new values.
+    @Entry var nativeOrbitPlotIsVisible = true
+}
+
 struct NativeOrbitHistoryWidget: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -1457,6 +1462,8 @@ private struct NativeOrbitStaticPlot: NSViewRepresentable, Equatable {
 
     func updateNSView(_ host: NSHostingView<AnyView>, context: Context) {
         guard context.coordinator.key != self.key else { return }
+        let timing = NativeCombinedRangeTiming.begin()
+        defer { NativeCombinedRangeTiming.end("account-plot", since: timing) }
         context.coordinator.key = self.key
         // Replacing NSHostingView.rootView discards Charts' previous presentation values. Update the retained
         // SwiftUI graph instead, so value animations can interpolate both recorded and projected marks.

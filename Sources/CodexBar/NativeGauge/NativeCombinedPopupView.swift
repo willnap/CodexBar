@@ -22,10 +22,12 @@ struct NativeCombinedPopupView: View {
     static let pageHeight = NativeOrbitPopupView.contentHeight(showsFooter: true) - NativeOrbitToolbar.height
     /// A page and the divider after it.
     static let pitch = Self.pageWidth + 1
-    /// How far the page control rises into the empty foot of each account's footer.
-    static let controlTuck: CGFloat = 6
-    /// Every page runs down behind the page control, so its area and tint reach the toolbar.
-    static let stripHeight = Self.pageHeight + Self.indicatorHeight - Self.controlTuck
+    /// Every page runs down behind the floating toolbar, so its area and tint fill the whole popup. No page control
+    /// sits above the pages: the columns themselves show where the strip is, and swipes, arrow keys and VoiceOver
+    /// move through it.
+    static let stripHeight = Self.pageHeight + NativeOrbitToolbar.height
+    /// The narrowest a person can make the popup: one whole page.
+    static let minimumWidth = Self.pageWidth
 
     /// Up to three pages show in full. More show two and a half, so the cut-off column says there is more to scroll.
     static func visibleColumns(pageCount: Int) -> Double {
@@ -40,9 +42,56 @@ struct NativeCombinedPopupView: View {
         return max(0, first)...max(0, first, last)
     }
 
-    static func contentSize(pageCount: Int, maximumWidth: CGFloat = .infinity) -> NSSize {
-        let width = (Self.visibleColumns(pageCount: pageCount) * Self.pitch - 1).rounded()
-        return NSSize(width: min(width, maximumWidth), height: Self.stripHeight + NativeOrbitToolbar.height)
+    /// Includes the partial columns at either edge, so their charts are current throughout a swipe.
+    static func intersectingColumns(leading: CGFloat, width: CGFloat) -> ClosedRange<Int> {
+        let start = max(0, leading)
+        let first = max(0, Int((start / Self.pitch).rounded(.down)))
+        let last = Int(((start + max(0, width) - 0.5) / Self.pitch).rounded(.down))
+        return first...max(first, last)
+    }
+
+    private struct Viewport: Equatable {
+        let whole: ClosedRange<Int>
+        let intersecting: ClosedRange<Int>
+    }
+
+    /// How much of each page is in the window, in twentieths so a swipe updates the marks only as that changes.
+    static func visibility(leading: CGFloat, width: CGFloat, count: Int) -> [Double] {
+        (0..<max(0, count)).map { index in
+            let start = CGFloat(index) * Self.pitch
+            let shown = min(start + Self.pageWidth, leading + width) - max(start, leading)
+            return (Double(min(1, max(0, shown / Self.pageWidth))) * 20).rounded() / 20
+        }
+    }
+
+    static func providersInView(
+        _ pages: [NativeCombinedAccounts.Page],
+        columns: ClosedRange<Int>) -> Set<UsageProvider>
+    {
+        Set(pages.enumerated().compactMap { columns.contains($0.offset + 1) ? $0.element.provider : nil })
+    }
+
+    static func contentSize(pageCount: Int, maximumWidth: CGFloat = .infinity, preferredWidth: CGFloat? = nil)
+        -> NSSize
+    {
+        let natural = CGFloat(Self.visibleColumns(pageCount: pageCount)) * Self.pitch - 1
+        let width: CGFloat = if let preferredWidth {
+            Self.clampedWidth(preferredWidth, pageCount: pageCount, maximumWidth: maximumWidth)
+        } else {
+            min(natural.rounded(), maximumWidth)
+        }
+        return NSSize(width: width, height: Self.stripHeight)
+    }
+
+    /// A chosen width stays between one page and every page side by side, and within the screen.
+    static func clampedWidth(_ width: CGFloat, pageCount: Int, maximumWidth: CGFloat = .infinity) -> CGFloat {
+        let widest = max(Self.minimumWidth, CGFloat(max(1, pageCount)) * Self.pitch - 1)
+        return max(Self.minimumWidth, min(width.rounded(), widest, max(Self.minimumWidth, maximumWidth)))
+    }
+
+    /// The columns a toolbar of this width spans, for its compact or full labels.
+    static func layoutColumns(width: CGFloat) -> Int {
+        max(1, Int((width / self.pitch).rounded(.up)))
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -59,6 +108,8 @@ struct NativeCombinedPopupView: View {
     /// pages on screen, the others follow once the popup has appeared, and built pages stay while it is open, so
     /// scrolling never builds a page.
     @State private var livePages: Set<String>
+    @State private var renderedColumns: ClosedRange<Int>
+    @State private var modelMemo = NativeCombinedAccountsMemo()
 
     private var selection: String {
         self.navigation.selectionID
@@ -74,21 +125,31 @@ struct NativeCombinedPopupView: View {
         self.showing = showing
         self._navigation = State(initialValue: NativePageControlNavigation(selectionID: showing.openingID))
         self._scrollID = State(initialValue: showing.openingID)
+        let ids = [NativeCombinedAccounts.overviewID] + showing.pageOrder
         self._livePages = State(initialValue: Self.pagesInView(
-            [NativeCombinedAccounts.overviewID] + showing.pageOrder,
-            leadingID: showing.openingID))
+            ids, leadingID: showing.openingLeadingID, width: showing.width))
+        self._renderedColumns = State(initialValue: Self.openingColumns(
+            ids, leadingID: showing.openingLeadingID, width: showing.width))
     }
 
-    /// The pages on screen with `leadingID` at the leading edge; the scroll view stops at the last page.
-    static func pagesInView(_ ids: [String], leadingID: String) -> Set<String> {
-        let columns = Int(Self.visibleColumns(pageCount: ids.count).rounded(.up))
+    /// The pages on screen with `leadingID` at the leading edge; the scroll view stops at the last page. The overview
+    /// always stays built, so its chart keeps what it drew instead of rebuilding from nothing at each opening.
+    static func pagesInView(_ ids: [String], leadingID: String, width: CGFloat? = nil) -> Set<String> {
+        Set(self.openingColumns(ids, leadingID: leadingID, width: width)
+            .compactMap { ids.indices.contains($0) ? ids[$0] : nil })
+            .union([NativeCombinedAccounts.overviewID])
+    }
+
+    private static func openingColumns(_ ids: [String], leadingID: String, width: CGFloat? = nil) -> ClosedRange<Int> {
+        let columns = width.map { Self.layoutColumns(width: $0) }
+            ?? Int(Self.visibleColumns(pageCount: ids.count).rounded(.up))
         let index = ids.firstIndex(of: leadingID) ?? 0
         let start = max(0, min(index, ids.count - columns))
-        return Set(ids[start..<min(ids.count, start + columns)])
+        return start...max(start, min(ids.count, start + columns) - 1)
     }
 
     private var model: NativeCombinedAccounts {
-        NativeCombinedAccounts(
+        self.modelMemo.value(
             connections: self.sources.map {
                 .init(provider: $0.provider, accounts: $0.state.accounts, hasSavedAccounts: true)
             },
@@ -96,70 +157,69 @@ struct NativeCombinedPopupView: View {
             preservingOrder: self.showing.pageOrder)
     }
 
-    private var badges: [String: String] {
-        var result: [String: String] = [:]
-        for source in self.sources {
-            for (id, symbol) in source.state.badges {
-                result[NativeCombinedAccounts.Page.id(provider: source.provider, accountID: id)] = symbol
-            }
-        }
-        return result
-    }
-
     var body: some View {
         let model = self.model
-        VStack(spacing: 0) {
-            let ids = [NativeCombinedAccounts.overviewID] + model.pages.map(\.id)
-            ZStack(alignment: .bottom) {
-                self.strip(ids: ids, model: model)
-                self.indicators(model)
-                    .frame(width: Self.pageWidth)
-            }
-            NativeOrbitToolbar(
-                state: self.toolbar,
-                refresh: { for source in self.sources {
-                    source.refresh()
-                } },
-                settings: {
-                    (self.sources.first { source in
-                        model.pages.contains { $0.id == self.selection && $0.provider == source.provider }
-                    } ?? self.sources.first)?.settings()
-                })
-        }
-        .frame(width: self.showing.width)
-        .onChange(of: self.scrollID) {
-            self.navigation.observe(
-                self.scrollID,
-                validIDs: [NativeCombinedAccounts.overviewID] + model.pages.map(\.id))
-        }
-        .onChange(of: self.toolbar.days, initial: true) {
-            self.toolbar.inspectionDate = nil
-            for source in self.sources {
-                source.state.finishStartup()
-                source.state.days = self.toolbar.days
-                source.state.inspectionDate = nil
-            }
-        }
-        .onChange(of: model.pages.map(\.id)) {
-            let ids = [NativeCombinedAccounts.overviewID] + model.pages.map(\.id)
-            self.navigation.inventoryChanged(
-                validIDs: ids,
-                fallbackID: model.pages.first?.id ?? NativeCombinedAccounts.overviewID)
-        }
-        .onChange(of: self.sources.map(\.state.now), initial: true) {
-            self.synchronizeToolbar(model)
-        }
-        .onChange(of: self.sources.map { $0.state.accounts.map(\.updatedAt) }) {
-            self.synchronizeToolbar(model)
-        }
-        .onChange(of: self.sources.map(\.state.isRefreshing), initial: true) {
-            self.toolbar.isRefreshing = self.sources.contains { $0.state.isRefreshing }
-        }
-        .onChange(of: self.sources.map { $0.state.refreshIssue?.detail }, initial: true) {
-            let issues = self.sources.compactMap(\.state.refreshIssue)
-            self.toolbar.refreshIssue = issues.isEmpty ? nil : .init(
-                kind: .failed,
-                detail: issues.map(\.detail).joined(separator: "\n"))
+        let ids = [NativeCombinedAccounts.overviewID] + model.pages.map(\.id)
+        self.strip(ids: ids, model: model)
+            // The toolbar's glass floats over the pages, whose tints run on underneath it.
+                .overlay(alignment: .bottom) {
+                    NativeOrbitToolbar(
+                        state: self.toolbar,
+                        refresh: { for source in self.sources {
+                            source.refresh()
+                        } },
+                        settings: {
+                            (self.sources.first { source in
+                                model.pages.contains { $0.id == self.selection && $0.provider == source.provider }
+                            } ?? self.sources.first)?.settings()
+                        },
+                        rangeChanged: { self.synchronizeRange($0) })
+                }
+                .frame(width: self.showing.width, height: Self.stripHeight)
+                .onChange(of: self.scrollID) {
+                    self.navigation.observe(
+                        self.scrollID,
+                        validIDs: [NativeCombinedAccounts.overviewID] + model.pages.map(\.id))
+                }
+                .onChange(of: self.selection, initial: true) { self.showing.leftSelectionID = self.selection }
+                .onChange(of: self.toolbar.days, initial: true) {
+                    self.synchronizeRange(self.toolbar.days)
+                }
+                .onChange(of: model.pages.map(\.id)) {
+                    let ids = [NativeCombinedAccounts.overviewID] + model.pages.map(\.id)
+                    self.navigation.inventoryChanged(
+                        validIDs: ids,
+                        fallbackID: model.pages.first?.id ?? NativeCombinedAccounts.overviewID)
+                    self.synchronizeRange(self.toolbar.days)
+                }
+                .onChange(of: self.sources.map(\.state.now), initial: true) {
+                    self.synchronizeToolbar(model)
+                }
+                .onChange(of: self.sources.map { $0.state.accounts.map(\.updatedAt) }) {
+                    self.synchronizeToolbar(model)
+                }
+                .onChange(of: self.sources.map(\.state.isRefreshing), initial: true) {
+                    self.toolbar.isRefreshing = self.sources.contains { $0.state.isRefreshing }
+                }
+                .onChange(of: self.sources.map { $0.state.refreshIssue?.detail }, initial: true) {
+                    let issues = self.sources.compactMap(\.state.refreshIssue)
+                    self.toolbar.refreshIssue = issues.isEmpty ? nil : .init(
+                        kind: .failed,
+                        detail: issues.map(\.detail).joined(separator: "\n"))
+                }
+    }
+
+    private func synchronizeRange(_ days: Int) {
+        let timing = NativeCombinedRangeTiming.begin()
+        defer { NativeCombinedRangeTiming.end("source-range", since: timing) }
+        if self.toolbar.inspectionDate != nil { self.toolbar.inspectionDate = nil }
+        let providers = Self.providersInView(self.model.pages, columns: self.renderedColumns)
+        for source in self.sources {
+            source.state.finishStartup()
+            if source.state.inspectionDate != nil { source.state.inspectionDate = nil }
+            // A provider's shared state also drives its warmed gauges and predictions. Keep hidden providers
+            // dormant instead of rebuilding all of those views before the visible charts get their first frame.
+            if providers.contains(source.provider), source.state.days != days { source.state.days = days }
         }
     }
 
@@ -188,6 +248,7 @@ struct NativeCombinedPopupView: View {
             HStack(alignment: .top, spacing: 0) {
                 if self.livePages.contains(id) {
                     self.page(id, model: model)
+                        .environment(\.nativeOrbitPlotIsVisible, self.renderedColumns.contains(index))
                         .onAppear { NativeCombinedScrollProbe.shared?.pageAppeared() }
                 } else {
                     self.placeholder(id, model: model)
@@ -225,11 +286,25 @@ struct NativeCombinedPopupView: View {
             }
             .scrollIndicators(.hidden)
             .scrollTargetBehavior(.viewAligned)
-            .onScrollGeometryChange(for: ClosedRange<Int>.self) { geometry in
+            .onScrollGeometryChange(for: Viewport.self) { geometry in
                 let leading = self.layoutDirection == .rightToLeft
                     ? geometry.contentSize.width - geometry.visibleRect.maxX : geometry.visibleRect.minX
-                return Self.wholeColumns(leading: leading, width: geometry.visibleRect.width)
-            } action: { _, columns in
+                return Viewport(
+                    whole: Self.wholeColumns(leading: leading, width: geometry.visibleRect.width),
+                    intersecting: Self.intersectingColumns(leading: leading, width: geometry.visibleRect.width))
+            } action: { _, viewport in
+                if ids.indices.contains(viewport.whole.lowerBound) {
+                    self.showing.leftLeadingID = ids[viewport.whole.lowerBound]
+                }
+                if self.renderedColumns != viewport.intersecting {
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        self.renderedColumns = viewport.intersecting
+                        self.synchronizeRange(self.toolbar.days)
+                    }
+                }
+                let columns = viewport.whole
                 // The selection holds while wholly in view; otherwise the nearest whole page takes over.
                 let selected = ids.firstIndex(of: self.selection) ?? columns.lowerBound
                 let index = min(max(selected, columns.lowerBound), columns.upperBound)
@@ -278,13 +353,20 @@ struct NativeCombinedPopupView: View {
             return .handled
         }
         .onChange(of: self.showing.generation, initial: true) {
-            self.livePages.formUnion(Self.pagesInView(ids, leadingID: self.showing.openingID))
-            self.select(self.showing.openingID, interaction: .continuous)
+            let leading = self.showing.openingLeadingID
+            self.renderedColumns = Self.openingColumns(ids, leadingID: leading, width: self.showing.width)
+            self.synchronizeRange(self.toolbar.days)
+            self.livePages.formUnion(Self.pagesInView(ids, leadingID: leading, width: self.showing.width))
+            self.clearInspection()
+            self.navigation.resume(selectionID: self.showing.openingID, leadingID: leading)
         }
         .task(id: self.showing.shownGeneration) { await self.buildRemainingPages(ids) }
         .onChange(of: self.showing.closedGeneration) {
-            // The next opening returns to the opening page, so only its pages stay built.
-            self.livePages = Self.pagesInView(ids, leadingID: self.showing.openingID)
+            // The next opening most likely resumes here, so only these pages stay built.
+            self.livePages = Self.pagesInView(
+                ids,
+                leadingID: self.showing.leftLeadingID ?? self.showing.openingLeadingID,
+                width: self.showing.width)
         }
     }
 
@@ -331,31 +413,20 @@ struct NativeCombinedPopupView: View {
         self.toolbar.now = max(Date(), self.sources.map(\.state.now).max() ?? self.toolbar.now)
     }
 
-    private func indicators(_ model: NativeCombinedAccounts) -> some View {
-        NativeCombinedPageIndicators(
-            indicators: model.indicators(selectedID: self.selection, badges: self.badges),
-            pages: [.init(id: NativeCombinedAccounts.overviewID, label: L("All accounts"))] + model.pages.map {
-                .init(
-                    id: $0.id,
-                    label: ProviderDescriptorRegistry.descriptor(for: $0.provider).metadata.displayName
-                        + ", " + $0.account.label)
-            },
-            selectionID: self.selection,
-            select: self.select)
-    }
-
     private func selectionLabel(_ model: NativeCombinedAccounts) -> String {
-        model.pages.first { $0.id == self.selection }.map {
-            ProviderDescriptorRegistry.descriptor(for: $0.provider).metadata.displayName + ", " + $0.account.label
-        } ?? L("All accounts")
+        model.pages.first { $0.id == self.selection }?.title ?? L("All accounts")
     }
 
     private func select(_ id: String, interaction: NativePageControlInteraction = .discrete) {
+        self.clearInspection()
+        self.navigation.select(id, interaction: interaction)
+    }
+
+    private func clearInspection() {
         self.toolbar.inspectionDate = nil
         for source in self.sources {
             source.state.inspectionDate = nil
         }
-        self.navigation.select(id, interaction: interaction)
     }
 
     private func move(_ delta: Int, model: NativeCombinedAccounts) {

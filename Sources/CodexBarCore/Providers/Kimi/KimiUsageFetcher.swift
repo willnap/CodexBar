@@ -20,6 +20,7 @@ public struct KimiUsageFetcher: Sendable {
         identityHeaders: [String: String] = [:],
         webAuthToken: String? = nil,
         now: Date = Date(),
+        readsProfile: Bool = false,
         transport: any ProviderHTTPTransport = ProviderHTTPClient.shared) async throws -> KimiUsageSnapshot
     {
         guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -57,6 +58,14 @@ public struct KimiUsageFetcher: Sendable {
                 region: region,
                 now: now,
                 transport: transport)
+        }
+        // Best effort: the profile names the login and its plan, and never holds up or fails the usage reading.
+        if readsProfile, let profile = await self.fetchCodeProfile(
+            usageEndpoint: endpoint, apiKey: apiKey, identityHeaders: identityHeaders, transport: transport)
+        {
+            snapshot.accountEmail = profile.email
+            snapshot.accountName = profile.name
+            if snapshot.planName == nil { snapshot.planName = profile.plan }
         }
         snapshot.historyOwnerID = self.historyOwnerID(
             endpoint: endpoint, credential: apiKey, enrichmentCredential: webAuthToken)
@@ -243,6 +252,43 @@ public struct KimiUsageFetcher: Sendable {
                 debugDescription: "No supported quota windows in Code usage response"))
         }
         return snapshot
+    }
+
+    struct CodeProfile: Equatable {
+        let email: String?
+        let name: String?
+        let plan: String?
+    }
+
+    /// Kimi Code's own profile (`/me`, beside `/usages`), as its CLI reads it. A phone login has no email; its
+    /// nickname is the name the CLI shows.
+    static func parseCodeProfile(_ data: Data) -> CodeProfile? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["user_id"] is String else { return nil }
+        func text(_ key: String) -> String? {
+            (object[key] as? String).flatMap { SettingsValue.cleaned($0) }
+        }
+        return CodeProfile(email: text("email"), name: text("nickname"), plan: text("user_level_name"))
+    }
+
+    private static func fetchCodeProfile(
+        usageEndpoint: URL,
+        apiKey: String,
+        identityHeaders: [String: String],
+        transport: any ProviderHTTPTransport) async -> CodeProfile?
+    {
+        var request = URLRequest(url: usageEndpoint.deletingLastPathComponent().appendingPathComponent("me"))
+        request.httpMethod = "GET"
+        request.timeoutInterval = self.subscriptionGraceSeconds
+        for (name, value) in identityHeaders {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        guard let response = try? await transport.response(for: request), response.statusCode == 200 else {
+            return nil
+        }
+        return self.parseCodeProfile(response.data)
     }
 
     static func codeAPIUsageEndpoint(baseURL: URL) -> URL {

@@ -14,6 +14,43 @@ enum NativeOrbitPalette {
 
     @MainActor private static var colors: [Key: Color] = [:]
 
+    /// Charts can resolve a tint once per vertex while laying out a range transition. Convert its pigment only
+    /// once per appearance, retaining dynamic appearance and system accent changes without repeated ColorSync work.
+    private final class Variants: @unchecked Sendable {
+        private let lock = NSLock()
+        private var values: [NSAppearance.Name: NSColor] = [:]
+        private var generation = 0
+        private var observer: NSObjectProtocol?
+
+        init() {
+            self.observer = NotificationCenter.default.addObserver(
+                forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: nil)
+            { [weak self] _ in
+                guard let self else { return }
+                self.lock.withLock {
+                    self.generation &+= 1
+                    self.values.removeAll(keepingCapacity: true)
+                }
+            }
+        }
+
+        deinit {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+        }
+
+        func value(for appearance: NSAppearance, build: () -> NSColor) -> NSColor {
+            let (cached, generation) = self.lock.withLock { (self.values[appearance.name], self.generation) }
+            if let cached { return cached }
+            // AppKit and a dynamic accent can synchronously notify a color change. Never call them under the
+            // cache lock, or publish a value across an invalidation which occurred while resolving that accent.
+            let value = build()
+            self.lock.withLock {
+                if self.generation == generation { self.values[appearance.name] = value }
+            }
+            return value
+        }
+    }
+
     @MainActor
     static func color(accent: Color, id: String, period: TimeInterval) -> Color {
         let tone = Self.tone(id: id, period: period)
@@ -21,13 +58,16 @@ enum NativeOrbitPalette {
         if let color = self.colors[key] { return color }
         let neutral = accent == .gray
         let base = NSColor(accent)
+        let variants = Variants()
         let color = Color(nsColor: NSColor(name: nil) { appearance in
-            var resolved = base
-            appearance.performAsCurrentDrawingAppearance {
-                let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-                resolved = Self.variant(base, tone: tone, neutral: neutral, dark: dark)
+            variants.value(for: appearance) {
+                var resolved = base
+                appearance.performAsCurrentDrawingAppearance {
+                    let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                    resolved = Self.variant(base, tone: tone, neutral: neutral, dark: dark)
+                }
+                return resolved
             }
-            return resolved
         })
         // A fresh dynamic color has a new identity. Retain it so unchanged glass tints survive pointer updates.
         if self.colors.count >= 512 { self.colors.removeAll(keepingCapacity: true) }
@@ -84,7 +124,7 @@ enum NativeOrbitPalette {
             max(
                 (dark ? self.darkFloor : self.lightFloor) + self.deepestStep * scale,
                 rgb.brightnessComponent + (dark ? self.darkLift : 0)))
-        if tone == .weekly, !neutral, !dark, level == rgb.brightnessComponent { return base }
+        if tone == .weekly, !neutral, !dark, level == rgb.brightnessComponent { return rgb }
         let brightness = level + shade.brightness * scale
         let saturation = rgb.saturationComponent
         if neutral || saturation < 0.02 {

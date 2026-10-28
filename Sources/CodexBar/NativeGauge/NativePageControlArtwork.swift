@@ -2,6 +2,9 @@ import AppKit
 import SwiftUI
 
 struct NativePageControlConfiguration {
+    /// A lit mark's ink: its page is in the window.
+    static let litAlpha: CGFloat = 0.85
+
     var direction = NativePageControlDirection.natural
     var backgroundStyle = NativePageControlBackgroundStyle.automatic
     var allowsContinuousInteraction = true
@@ -16,10 +19,13 @@ struct NativePageControlConfiguration {
         var result: (indicator: CGColor, current: CGColor)!
         appearance.performAsCurrentDrawingAppearance {
             let ink = showsBackground ? NSColor.white : NSColor.labelColor
-            let alpha: CGFloat = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-                ? 0.7 : showsBackground ? 0.45 : 0.55
+            // Resting marks keep 3:1 contrast with the popup; lit ones stay a little translucent, a guide above the
+            // dials rather than a headline.
+            let contrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            let alpha: CGFloat = contrast ? 0.7 : showsBackground ? 0.45 : 0.55
             let indicator = self.indicatorTint.map(NSColor.init) ?? ink.withAlphaComponent(alpha)
-            let current = self.currentIndicatorTint.map(NSColor.init) ?? ink.withAlphaComponent(1)
+            let current = self.currentIndicatorTint.map(NSColor.init)
+                ?? ink.withAlphaComponent(contrast || showsBackground ? 1 : Self.litAlpha)
             result = (
                 (indicator.usingColorSpace(.sRGB) ?? indicator).cgColor,
                 (current.usingColorSpace(.sRGB) ?? current).cgColor)
@@ -106,17 +112,29 @@ struct NativePageControlArtwork: View {
                     .position(x: self.controlFrame.midX, y: self.controlFrame.midY)
                     .transition(.opacity)
             }
+            ForEach(self.layout.groups, id: \.id) { group in
+                let thickness = NativePageControlLayout.platterThickness
+                Capsule()
+                    .fill(self.showsBackground ? Color.white.opacity(0.45 * 0.22) : Color.primary.opacity(0.55 * 0.22))
+                    .frame(
+                        width: self.vertical ? thickness : group.upper - group.lower,
+                        height: self.vertical ? group.upper - group.lower : thickness)
+                    .position(
+                        x: self.vertical ? 18 : (group.lower + group.upper) / 2,
+                        y: self.vertical ? (group.lower + group.upper) / 2 : 18)
+            }
             ForEach(self.visibleMarks) { mark in
                 let selected = mark.geometry.index == self.layout.selection
+                let lit = selected ? 1 : mark.indicator.visibility
+                let shift = NativePageControlSymbol(mark.indicator, configuration: self.configuration).inkOffset
                 self.glyph(mark.indicator, selected: selected)
-                    .foregroundStyle(selected
-                        ? self.configuration.currentIndicatorTint ?? (self.showsBackground ? .white : .primary)
-                        : self.configuration.indicatorTint
-                        ?? (self.showsBackground ? .white.opacity(0.45) : .primary.opacity(0.55)))
+                    .foregroundStyle(self.showsBackground ? Color.white : Color.primary)
+                    .opacity(self.showsBackground ? 0.45 + 0.55 * lit
+                        : 0.55 + (NativePageControlConfiguration.litAlpha - 0.55) * lit)
                     .scaleEffect(mark.geometry.scale)
                     .position(
-                        x: self.vertical ? 18 : mark.geometry.position,
-                        y: self.vertical ? mark.geometry.position : 18)
+                        x: (self.vertical ? 18 : mark.geometry.position) - shift.width * mark.geometry.scale,
+                        y: (self.vertical ? mark.geometry.position : 18) - shift.height * mark.geometry.scale)
             }
         }
         .frame(width: self.size.width, height: self.size.height)

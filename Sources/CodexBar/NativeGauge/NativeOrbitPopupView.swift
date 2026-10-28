@@ -487,7 +487,8 @@ struct NativeOrbitPopupView: View {
                             if index > 0 {
                                 Divider().frame(width: 1, height: 464).padding(.top, 12)
                                     .frame(
-                                        height: Self.contentHeight(showsFooter: true) - NativeOrbitToolbar.height,
+                                        height: Self.contentHeight(showsFooter: true)
+                                            - (self.showsToolbar ? 0 : NativeOrbitToolbar.height),
                                         alignment: .top)
                                     .background {
                                         let previous = self.state.accounts[index - 1]
@@ -507,6 +508,9 @@ struct NativeOrbitPopupView: View {
                 }
                 .scrollIndicators(.hidden)
             }
+        }
+        // The toolbar's glass floats over the foot of the columns, which run on underneath it.
+        .overlay(alignment: .bottom) {
             if self.showsToolbar {
                 NativeOrbitToolbar(state: self.state, refresh: self.refresh, settings: self.settings)
             }
@@ -624,6 +628,7 @@ struct NativeOrbitPopupView: View {
             }
         }
         .padding(.horizontal, 8)
+        .padding(.bottom, self.showsToolbar ? NativeOrbitToolbar.height : 0)
         .background {
             if self.drawsColumnBackground, account.isActive, self.state.accounts.count > 1 {
                 Self.activeColumnTint(self.state.accent)
@@ -676,7 +681,13 @@ struct NativeOrbitPopupView: View {
     private func footer(_ account: NativeOrbitAccountPresentation) -> some View {
         HStack(spacing: 8) {
             if self.displayedAccountID != nil || self.state.accounts.count > 1 {
-                self.accountName(account)
+                HStack(spacing: 5) {
+                    // A login nothing identifies shows no name, rather than its service's.
+                    if account.isNamed { self.accountName(account).layoutPriority(1) }
+                    self.planBadge(account)
+                }
+                // The name takes the room it needs before anything gives; it shortens only when nothing else can.
+                .layoutPriority(1)
                 Spacer(minLength: 0)
                 self.accountStatus(account)
             } else if let signIn = self.signIn, account.updatedAt == nil {
@@ -688,6 +699,17 @@ struct NativeOrbitPopupView: View {
         .frame(height: 26)
         .padding(.horizontal, 6)
         .padding(.vertical, 6)
+    }
+
+    @ViewBuilder
+    private func planBadge(_ account: NativeOrbitAccountPresentation) -> some View {
+        if let plan = account.plan, let text = NativeOrbitPlanBadge.text(
+            plan: plan,
+            service: UsageProvider(rawValue: account.gauge.provider)
+                .map { ProviderDescriptorRegistry.descriptor(for: $0).metadata.displayName } ?? "")
+        {
+            NativeOrbitPlanBadge(text: text, plan: plan, accent: self.state.accent)
+        }
     }
 
     /// The name, or in its place why the last switch to this account failed (in full on hover).

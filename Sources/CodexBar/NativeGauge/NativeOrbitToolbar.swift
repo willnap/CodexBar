@@ -8,41 +8,42 @@ struct NativeOrbitToolbar: View {
     let state: NativeOrbitPopupState
     let refresh: () -> Void
     let settings: () -> Void
+    /// Combined account ranges join this same input transaction, before SwiftUI starts updating either chart.
+    var rangeChanged: (Int) -> Void = { _ in }
 
     /// The columns' content inset (8 pt column padding plus the footer's 6 pt), so the leading refresh glyph and the
     /// trailing gear line up with the account rows and dial corners above them.
     static let contentInset: CGFloat = 14
+    /// The settings glass reaches this far past its gear.
+    static let glassPadding: CGFloat = 6
     static let glyphSpacing: CGFloat = 4
+    /// The refresh arrow's ink is 11.5 × 13 pt at its 13 pt size. The capsule's glass reaches as far past the ink of
+    /// the arrow and the age on each side as above and below them; the arrow's frame starts half a point before its
+    /// ink, and the age's ends a point past its own.
+    static let refreshGlyphWidth: CGFloat = 12
+    static let refreshInset: CGFloat = (Self.rowHeight - 13) / 2
+    static let refreshLeading = Self.refreshInset - 0.5
+    static let refreshTrailing = Self.refreshInset - 1
     static let rowHeight: CGFloat = 30
+    /// Below the controls, to the popup's edge; above them, to the footer, which already ends in 6 pt of its own, so
+    /// the controls sit as far from the content above as from the edge below.
     static let verticalPadding: CGFloat = 9
-    static let bottomInset: CGFloat = 0
-    static let height = Self.rowHeight + Self.verticalPadding * 2 + Self.bottomInset
+    static let topPadding: CGFloat = 3
+    static let height = Self.topPadding + Self.rowHeight + Self.verticalPadding
     /// The arrow makes one quick turn on the click (about half a second at double speed); the spinner takes over
     /// only if loading outlasts that turn.
     static let spinnerDelay: Duration = .milliseconds(500)
 
+    /// No bar of its own: like a Liquid Glass toolbar, its controls float as glass over the columns, whose tints run on
+    /// underneath them.
     var body: some View {
-        NativeOrbitToolbarLayout(spacing: 8) {
-            self.refreshInfo
-            NativeOrbitRangeControl(
-                days: Binding(get: { self.state.days }, set: { self.state.days = $0 }),
-                accent: self.state.accent,
-                fullWords: self.state.layoutColumns > 1)
-                // Words where columns leave room; three even letter segments in a single 240 pt column.
-                    .frame(width: self.state.layoutColumns > 1 ? 180 : 102, height: Self.rowHeight)
-                    .help(L("native_orbit_range_help"))
-            self.settingsButton
+        GlassEffectContainer(spacing: 8) {
+            self.controls
         }
-        .frame(height: Self.rowHeight)
-        .font(.system(size: 12, weight: .medium))
-        .foregroundStyle(Color.secondary)
-        .buttonStyle(.plain)
-        .controlSize(.regular)
-        .tint(self.state.accent)
-        .padding(.horizontal, Self.contentInset)
-        .padding(.vertical, Self.verticalPadding)
+        .padding(.horizontal, Self.contentInset - Self.glassPadding)
+        .padding(.top, Self.topPadding)
+        .padding(.bottom, Self.verticalPadding)
         .frame(maxWidth: .infinity)
-        .glassEffect(.regular, in: ConcentricRectangle())
         .task(id: self.state.isRefreshing) {
             guard self.state.isRefreshing else {
                 withAnimation(self.reduceMotion ? nil : .smooth(duration: 0.25)) { self.showingSpinner = false }
@@ -57,55 +58,87 @@ struct NativeOrbitToolbar: View {
         }
     }
 
+    private var controls: some View {
+        NativeOrbitToolbarLayout(spacing: 8) {
+            self.refreshInfo
+            NativeOrbitRangeControl(
+                days: Binding(get: { self.state.days }, set: {
+                    self.state.days = $0
+                    self.rangeChanged($0)
+                }),
+                accent: self.state.accent,
+                fullWords: self.state.layoutColumns > 1)
+                // Words where columns leave room; three even letter segments in a single 240 pt column.
+                    .frame(width: self.state.layoutColumns > 1 ? 180 : 102, height: Self.rowHeight)
+                    .help(L("native_orbit_range_help"))
+            self.settingsButton
+        }
+        .frame(height: Self.rowHeight)
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(Color.secondary)
+        .buttonStyle(.plain)
+        .controlSize(.regular)
+        .tint(self.state.accent)
+    }
+
     // MARK: Refresh
 
+    /// The arrow and the age share one glass capsule, all of it the refresh button.
     private var refreshInfo: some View {
-        HStack(spacing: Self.glyphSpacing) {
-            self.refreshButton
-            TimelineView(.periodic(from: .now, by: 1)) { timeline in
-                let now = max(timeline.date, self.state.now)
-                // Wide columns read "5m ago"; a single column drops "ago" (or the whole label) before it would
-                // crowd the centered range control. A refresh issue adds its one word ("5m ago · Stale"), which
-                // outlasts the age when room runs out.
-                ViewThatFits(in: .horizontal) {
-                    self.ageLabel(self.refreshText(at: now, compact: false), now: now)
-                    self.ageLabel(self.refreshText(at: now, compact: true), now: now)
-                    if self.issue != nil { self.ageLabel(nil, now: now) }
-                    Color.clear.frame(width: 0, height: 0)
-                }
-                .animation(self.reduceMotion ? nil : .smooth(duration: 0.3), value: self.issue)
-                // The age appears with the columns it describes.
-                .opacity(self.state.isReady ? 1 : 0)
-                .animation(self.reduceMotion ? nil : .smooth(duration: 0.35), value: self.state.isReady)
+        Button(action: self.pressRefresh) {
+            HStack(spacing: Self.glyphSpacing) {
+                self.refreshGlyph
+                self.ageReadout
             }
+            .padding(.leading, Self.refreshLeading)
+            .padding(.trailing, Self.refreshTrailing)
+            .frame(height: Self.rowHeight)
+            .contentShape(Capsule())
+        }
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .help(self.issue?.detail ?? self.refreshHelp)
+        .accessibilityLabel(L("Refresh"))
+        .accessibilityValue(self.issue.map { "\($0.label). \($0.detail)" } ?? "")
+    }
+
+    private var ageReadout: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { timeline in
+            let now = max(timeline.date, self.state.now)
+            // Wide columns read "5m ago"; a single column drops "ago" (or the whole label) before it would
+            // crowd the centered range control. A refresh issue adds its one word ("5m ago · Stale"), which
+            // outlasts the age when room runs out.
+            ViewThatFits(in: .horizontal) {
+                self.ageLabel(self.refreshText(at: now, compact: false), now: now)
+                self.ageLabel(self.refreshText(at: now, compact: true), now: now)
+                if self.issue != nil { self.ageLabel(nil, now: now) }
+                Color.clear.frame(width: 0, height: 0)
+            }
+            .animation(self.reduceMotion ? nil : .smooth(duration: 0.3), value: self.issue)
+            // The age appears with the columns it describes.
+            .opacity(self.state.isReady ? 1 : 0)
+            .animation(self.reduceMotion ? nil : .smooth(duration: 0.35), value: self.state.isReady)
         }
     }
 
-    private var refreshButton: some View {
-        Button(action: self.pressRefresh) {
-            Image(systemName: self.issue == nil
-                ? "arrow.clockwise" : "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(self.issue == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange))
-                .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.rotate.clockwise, options: .nonRepeating.speed(2), value: self.refreshPresses)
-                .opacity(self.showingSpinner ? 0 : 1)
-                .scaleEffect(self.showingSpinner ? 0.5 : 1)
-                .blur(radius: self.showingSpinner ? 2 : 0)
-                // The spinner sits on the arrow's center without widening the label, so the glyph keeps the
-                // columns' inset and the age text never shifts.
-                .overlay {
-                    ProgressView()
-                        .controlSize(.small)
-                        .opacity(self.showingSpinner ? 1 : 0)
-                        .scaleEffect(self.showingSpinner ? 0.8 : 0.4)
-                }
-                .frame(width: 18, height: Self.rowHeight)
-                .contentShape(Rectangle())
-        }
-        .help(self.issue?.detail ?? L("Refresh"))
-        .accessibilityLabel(L("Refresh"))
-        .accessibilityValue(self.issue.map { "\($0.label). \($0.detail)" } ?? "")
+    private var refreshGlyph: some View {
+        Image(systemName: self.issue == nil
+            ? "arrow.clockwise" : "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(self.issue == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange))
+            .contentTransition(.symbolEffect(.replace))
+            .symbolEffect(.rotate.clockwise, options: .nonRepeating.speed(2), value: self.refreshPresses)
+            .opacity(self.showingSpinner ? 0 : 1)
+            .scaleEffect(self.showingSpinner ? 0.5 : 1)
+            .blur(radius: self.showingSpinner ? 2 : 0)
+            // The spinner sits on the arrow's center without widening the label, so the glyph keeps the
+            // columns' inset and the age text never shifts.
+            .overlay {
+                ProgressView()
+                    .controlSize(.small)
+                    .opacity(self.showingSpinner ? 1 : 0)
+                    .scaleEffect(self.showingSpinner ? 0.8 : 0.4)
+            }
+            .frame(width: Self.refreshGlyphWidth, height: Self.rowHeight)
     }
 
     /// The last press's issue, once its spinner has stopped.
@@ -130,7 +163,6 @@ struct NativeOrbitToolbar: View {
         }
         .lineLimit(1)
         .fixedSize()
-        .help(self.issue?.detail ?? self.refreshHelp)
     }
 
     private func pressRefresh() {
@@ -165,8 +197,10 @@ struct NativeOrbitToolbar: View {
                 // The gear's native bounds are larger: 12pt gear and 13pt arrow have matching visible heights.
                 .font(.system(size: 12, weight: .medium))
                 .frame(width: 18, height: Self.rowHeight)
-                .contentShape(Rectangle())
+                .padding(.horizontal, Self.glassPadding)
+                .contentShape(Circle())
         }
+        .glassEffect(.regular.interactive(), in: Circle())
         .help(L("Settings"))
         .accessibilityLabel(L("Settings"))
     }

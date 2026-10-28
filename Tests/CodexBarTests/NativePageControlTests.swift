@@ -3,6 +3,56 @@ import Testing
 @testable import CodexBar
 
 struct NativePageControlTests {
+    @Test func `resuming brings the left page to the leading edge and keeps the selection beside it`() {
+        let ids = ["overview", "a", "b", "c"]
+        var navigation = NativePageControlNavigation(selectionID: "a")
+        navigation.resume(selectionID: "c", leadingID: "b")
+        #expect(navigation.selectionID == "c")
+        #expect(navigation.request?.id == "b")
+        // The viewport reports the selection while it stays in view; that settles the resumed request.
+        navigation.observe("c", validIDs: ids)
+        #expect(navigation.selectionID == "c")
+        navigation.settle(at: "c", validIDs: ids)
+        #expect(navigation.request == nil)
+        #expect(navigation.selectionID == "c")
+    }
+
+    @Test func `an expanded provider's marks sit closer together and share one platter`() {
+        let groups: [String?] = [nil, "provider:codex", "provider:codex", "provider:codex", nil]
+        let layout = NativePageControlLayout(
+            count: 5,
+            selection: 2,
+            availableLength: 400,
+            pitch: 22,
+            symbolWidths: [11, 11, 11, 11, 11],
+            groups: groups)
+        let positions = (0..<5).map(layout.position(of:))
+        #expect(positions[2] - positions[1] == 11 + NativePageControlLayout.groupGap)
+        #expect(positions[1] - positions[0] == 11 + NativePageControlLayout.groupMargin)
+        #expect(positions[4] - positions[3] == 11 + NativePageControlLayout.groupMargin)
+        #expect(layout.groups.count == 1)
+        let platter = layout.groups.first
+        #expect(platter?.id == "provider:codex")
+        #expect(platter?.lower == positions[1] - 5.5 - NativePageControlLayout.platterPadding)
+        #expect(platter?.upper == positions[3] + 5.5 + NativePageControlLayout.platterPadding)
+        // Without groups the spacing is the plain eight point gap and there is no platter.
+        let plain = NativePageControlLayout(
+            count: 5, selection: 2, availableLength: 400, pitch: 22, symbolWidths: [11, 11, 11, 11, 11])
+        #expect(plain.position(of: 1) - plain.position(of: 0) == 19)
+        #expect(plain.groups.isEmpty)
+    }
+
+    @Test func `custom art is scaled to a system symbol's ink area without passing the widest one`() {
+        // A square mark matches a system circle's 11 pt; a wide one keeps its area and stops at 14 pt across.
+        #expect(abs(NativePageControlSymbol.opticalScale(CGSize(width: 10, height: 10)) - 1.1) < 0.0001)
+        let wide = CGSize(width: 10, height: 7)
+        let scale = NativePageControlSymbol.opticalScale(wide)
+        #expect(abs((wide.width * scale) * (wide.height * scale) - 121) < 0.01)
+        let wider = CGSize(width: 10, height: 5)
+        #expect(abs(wider.width * NativePageControlSymbol.opticalScale(wider) - 14) < 0.0001)
+        #expect(NativePageControlSymbol.opticalScale(.zero) == 1)
+    }
+
     @Test func `inserting an earlier account repositions the selected stable identity`() {
         var navigation = NativePageControlNavigation(selectionID: "later-provider:account")
         navigation.inventoryChanged(

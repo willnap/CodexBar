@@ -8,6 +8,42 @@ import Testing
 struct NativeCombinedAccountsTests {
     private let now = Date(timeIntervalSince1970: 1_800_014_400)
 
+    @Test func `range returns reuse live overview readings while historical inspection remains independent`() {
+        var account = self.account(.codex, id: "first")
+        account.metrics = self.metrics(tokens: 100, scope: .account, attributed: true)
+        let model = NativeCombinedAccounts(connections: [
+            .init(provider: .codex, accounts: [account]),
+        ], now: self.now)
+        let day = model.readings(days: 1, now: self.now)
+        let month = model.readings(days: 30, now: self.now)
+        #expect(Self.sameStorage(day, model.readings(days: 1, now: self.now)))
+        #expect(Self.sameStorage(month, model.readings(days: 30, now: self.now)))
+        let past = model.readings(days: 1, now: self.now.addingTimeInterval(-86400))
+        #expect(past.first?.reading.tokens != day.first?.reading.tokens)
+        #expect(Self.sameStorage(day, model.readings(days: 1, now: self.now)))
+    }
+
+    @Test func `combined model reuse follows account data clock and frozen page order`() {
+        let memo = NativeCombinedAccountsMemo()
+        var account = self.account(.codex, id: "first")
+        account.metrics = self.metrics(tokens: 100, scope: .account, attributed: true)
+        func model(at now: Date) -> NativeCombinedAccounts {
+            memo.value(connections: [.init(provider: .codex, accounts: [account])], now: now, preservingOrder: [])
+        }
+        let first = model(at: self.now).readings(days: 1, now: self.now)
+        #expect(Self.sameStorage(first, model(at: self.now).readings(days: 1, now: self.now)))
+        account.metrics = self.metrics(tokens: 200, scope: .account, attributed: true)
+        let corrected = model(at: self.now).readings(days: 1, now: self.now)
+        #expect(corrected.first?.reading.tokens == 200)
+        #expect(!Self.sameStorage(first, corrected))
+        let later = self.now.addingTimeInterval(60)
+        #expect(!Self.sameStorage(corrected, model(at: later).readings(days: 1, now: later)))
+        let connections = [self.connection(.codex), self.connection(.claude)]
+        let initial = memo.value(connections: connections, now: self.now, preservingOrder: [])
+        let order = initial.pages.map(\.id).reversed().map(\.self)
+        #expect(memo.value(connections: connections, now: self.now, preservingOrder: order).pages.map(\.id) == order)
+    }
+
     @Test func `only more than three meaningfully connected platforms collapse`() {
         let providers: [UsageProvider] = [.codex, .claude, .gemini, .cursor]
         let three = providers.prefix(3).map { self.connection($0) }
@@ -45,14 +81,149 @@ struct NativeCombinedAccountsTests {
         #expect(NativeCombinedPopupView.wholeColumns(leading: 0, width: 722) == 0...2)
     }
 
-    @Test func `an opening builds only the pages on screen at its opening page`() {
-        let six = ["all", "a", "b", "c", "d", "e"]
-        // Two and a half columns: the opening page, the next, and the one cut off after it.
-        #expect(NativeCombinedPopupView.pagesInView(six, leadingID: "a") == ["a", "b", "c"])
-        #expect(NativeCombinedPopupView.pagesInView(six, leadingID: "all") == ["all", "a", "b"])
+    @Test func `an opening builds only the pages on screen at its opening page and keeps the overview`() {
+        let six = [NativeCombinedAccounts.overviewID, "a", "b", "c", "d", "e"]
+        let all = NativeCombinedAccounts.overviewID
+        // Two and a half columns: the opening page, the next, and the one cut off after it. The overview stays
+        // built, so its chart never rebuilds from nothing at an opening.
+        #expect(NativeCombinedPopupView.pagesInView(six, leadingID: "a") == [all, "a", "b", "c"])
+        #expect(NativeCombinedPopupView.pagesInView(six, leadingID: all) == [all, "a", "b"])
         // The strip stops at its last page.
-        #expect(NativeCombinedPopupView.pagesInView(six, leadingID: "e") == ["c", "d", "e"])
-        #expect(NativeCombinedPopupView.pagesInView(["all", "a"], leadingID: "a") == ["all", "a"])
+        #expect(NativeCombinedPopupView.pagesInView(six, leadingID: "e") == [all, "c", "d", "e"])
+        #expect(NativeCombinedPopupView.pagesInView([all, "a"], leadingID: "a") == [all, "a"])
+        // A popup widened to four columns builds four.
+        #expect(NativeCombinedPopupView.pagesInView(six, leadingID: "a", width: 4 * 241 - 1)
+            == [all, "a", "b", "c", "d"])
+    }
+
+    @Test func `marks light by how much of their page is in the window`() {
+        // Two and a half columns from the start: two pages whole, the third half in, the rest out.
+        #expect(NativeCombinedPopupView.visibility(leading: 0, width: 602, count: 4) == [1, 1, 0.5, 0])
+        #expect(NativeCombinedPopupView.visibility(leading: 120.5, width: 241, count: 3) == [0.5, 0.5, 0])
+        let model = NativeCombinedAccounts(connections: [
+            .init(provider: .codex, accounts: [self.account(.codex, id: "a"), self.account(.codex, id: "b")]),
+        ], now: self.now)
+        let marks = model.indicators(selectedID: nil, visibility: ["codex:a": 0.25, "codex:b": 0.75])
+        // A collapsed provider logo takes its most visible page.
+        #expect(marks.first { $0.id == "provider:codex" }?.visibility == 0.75)
+    }
+
+    @Test func `a chosen width stays between one page and every page within the screen`() {
+        #expect(NativeCombinedPopupView.clampedWidth(100, pageCount: 6) == NativeCombinedPopupView.minimumWidth)
+        #expect(NativeCombinedPopupView.clampedWidth(900, pageCount: 6) == 900)
+        #expect(NativeCombinedPopupView.clampedWidth(5000, pageCount: 6) == CGFloat(6 * 241 - 1))
+        #expect(NativeCombinedPopupView.clampedWidth(5000, pageCount: 6, maximumWidth: 1000) == 1000)
+        #expect(NativeCombinedPopupView.contentSize(pageCount: 6, preferredWidth: 700).width == 700)
+        #expect(NativeCombinedPopupView.contentSize(pageCount: 6).width == (2.5 * 241 - 1).rounded())
+        #expect(NativeCombinedPopupView.layoutColumns(width: 240) == 1)
+        #expect(NativeCombinedPopupView.layoutColumns(width: 602) == 3)
+    }
+
+    @Test func `pages resume where they were left until the popup has been closed for hours`() {
+        let showing = NativeCombinedShowing()
+        let ids = [NativeCombinedAccounts.overviewID, "a", "b", "c"]
+        showing.leftLeadingID = "b"
+        showing.leftSelectionID = "c"
+        #expect(showing.resumed(validIDs: ids, now: self.now) == nil)
+        showing.closed(at: self.now)
+        #expect(showing.resumed(validIDs: ids, now: self.now.addingTimeInterval(600))?.leading == "b")
+        #expect(showing.resumed(validIDs: ids, now: self.now.addingTimeInterval(600))?.selection == "c")
+        // A page that has gone leaves the selection at the leading page; a leading page that has gone resumes
+        // nothing.
+        #expect(showing.resumed(validIDs: ["b"], now: self.now.addingTimeInterval(600))?.selection == "b")
+        #expect(showing.resumed(validIDs: ["a", "c"], now: self.now.addingTimeInterval(600)) == nil)
+        #expect(showing.resumed(
+            validIDs: ids, now: self.now.addingTimeInterval(NativeCombinedShowing.resumeInterval + 1)) == nil)
+        showing.begin(openingID: "c", leadingID: "b", pageOrder: ["a", "b", "c"], width: 602)
+        #expect(showing.openingID == "c")
+        #expect(showing.openingLeadingID == "b")
+        showing.begin(openingID: "a", pageOrder: ["a", "b", "c"], width: 602)
+        #expect(showing.openingLeadingID == "a")
+    }
+
+    @Test func `drained accounts sort to the back while accounts with usage left stay together`() {
+        let full = self.account(.claude, id: "full", activity: -600, left: 90)
+        let drained = self.account(.claude, id: "drained", activity: -10, left: 2)
+        let codex = self.account(.codex, id: "codex", activity: -60, left: 50)
+        let kimi = self.account(.kimi, id: "kimi", activity: -900)
+        let model = NativeCombinedAccounts(connections: [
+            .init(provider: .claude, accounts: [full, drained]),
+            .init(provider: .codex, accounts: [codex]),
+            .init(provider: .kimi, accounts: [kimi]),
+        ], now: self.now)
+        // Recency orders those with usage left; the drained account, though used last, goes to the back alone.
+        #expect(model.pages.map(\.account.id) == ["codex", "full", "kimi", "drained"])
+        // The drained account's provider shows a mark of its own there, in page order.
+        let indicators = model.indicators(selectedID: model.pages.last?.id)
+        #expect(indicators.map(\.id) == [
+            NativeCombinedAccounts.overviewID, "provider:codex", "provider:claude", "provider:kimi",
+            "provider:claude:claude:drained",
+        ])
+        #expect(indicators.last?.selected == true)
+        #expect(indicators.allSatisfy { !$0.expanded })
+    }
+
+    @Test func `accounts of one provider that both have usage left stay side by side`() {
+        let first = self.account(.codex, id: "first", activity: -10, left: 60)
+        let second = self.account(.codex, id: "second", activity: -900, left: 40)
+        let claude = self.account(.claude, id: "claude", activity: -60, left: 80)
+        let model = NativeCombinedAccounts(connections: [
+            .init(provider: .codex, accounts: [first, second]),
+            .init(provider: .claude, accounts: [claude]),
+        ], now: self.now)
+        #expect(model.pages.map(\.account.id) == ["first", "second", "claude"])
+        let indicators = model.indicators(selectedID: model.pages.first?.id)
+        #expect(indicators.filter(\.expanded).map(\.id) == ["provider:codex", "codex:first", "codex:second"])
+        #expect(indicators.filter(\.expanded).allSatisfy { $0.group == "provider:codex" })
+    }
+
+    @Test func `usage left follows the fuel reserve and a passed reset refills the window`() {
+        let low = self.account(.codex, id: "low", left: 4)
+        // The standard reserve is the lowest default quota warning, 20% left.
+        let reserve = self.account(.codex, id: "reserve", left: 20)
+        let plenty = self.account(.codex, id: "plenty", left: 21)
+        let unknown = self.account(.codex, id: "unknown")
+        var refilled = self.account(.codex, id: "refilled", left: 0)
+        refilled.quotaWindows = refilled.quotaWindows.mapValues {
+            RateWindow(
+                usedPercent: $0.usedPercent,
+                windowMinutes: 10080,
+                resetsAt: self.now.addingTimeInterval(-60),
+                resetDescription: nil)
+        }
+        #expect(!NativeCombinedAccounts.hasUsageLeft(low, now: self.now))
+        #expect(!NativeCombinedAccounts.hasUsageLeft(reserve, now: self.now))
+        #expect(NativeCombinedAccounts.hasUsageLeft(plenty, now: self.now))
+        #expect(NativeCombinedAccounts.hasUsageLeft(unknown, now: self.now))
+        #expect(NativeCombinedAccounts.hasUsageLeft(refilled, now: self.now))
+        #expect(NativeCombinedAccounts.usageLeft(low, now: self.now) == 4)
+        #expect(NativeCombinedAccounts.usageLeft(refilled, now: self.now) == nil)
+    }
+
+    @Test func `rendering includes partial columns as the viewport crosses page boundaries`() {
+        #expect(NativeCombinedPopupView.intersectingColumns(leading: 0, width: 602) == 0...2)
+        #expect(NativeCombinedPopupView.intersectingColumns(leading: 120, width: 602) == 0...2)
+        #expect(NativeCombinedPopupView.intersectingColumns(leading: 121, width: 602) == 0...2)
+        #expect(NativeCombinedPopupView.intersectingColumns(leading: 122, width: 602) == 0...3)
+        #expect(NativeCombinedPopupView.intersectingColumns(leading: 241, width: 602) == 1...3)
+        #expect(NativeCombinedPopupView.intersectingColumns(leading: 1566, width: 602) == 6...8)
+        #expect(NativeCombinedPopupView.intersectingColumns(leading: 0, width: 722) == 0...2)
+    }
+
+    @Test func `range propagation includes partial accounts and leaves hidden providers dormant`() {
+        let pages: [NativeCombinedAccounts.Page] = [
+            .init(provider: .codex, account: self.account(.codex, id: "first")),
+            .init(provider: .codex, account: self.account(.codex, id: "second")),
+            .init(provider: .claude, account: self.account(.claude, id: "third")),
+            .init(provider: .kimi, account: self.account(.kimi, id: "fourth")),
+        ]
+        #expect(NativeCombinedPopupView.providersInView(pages, columns: 0...0).isEmpty)
+        #expect(NativeCombinedPopupView.providersInView(pages, columns: 0...2) == [.codex])
+        #expect(NativeCombinedPopupView.providersInView(pages, columns: 2...3) == [.codex, .claude])
+        #expect(NativeCombinedPopupView.providersInView(pages, columns: 3...4) == [.claude, .kimi])
+        #expect(NativeCombinedPopupView.providersInView(pages, columns: 4...8) == [.kimi])
+        // Removing preceding accounts changes the provider at the same visible index immediately.
+        #expect(NativeCombinedPopupView.providersInView(Array(pages.dropFirst(2)), columns: 1...1) == [.claude])
     }
 
     @Test func `saved accounts remain connected when their usage is unavailable`() {
@@ -74,7 +245,7 @@ struct NativeCombinedAccountsTests {
         #expect(model.pages.first?.id == model.recentAccounts.first?.id)
     }
 
-    @Test func `page identities are provider scoped and account groups stay contiguous`() {
+    @Test func `page identities are provider scoped and accounts with usage left stay contiguous`() {
         let model = NativeCombinedAccounts(connections: [
             .init(provider: .codex, accounts: [self.account(.codex, id: "same"), self.account(.codex, id: "other")]),
             .init(provider: .claude, accounts: [self.account(.claude, id: "same", activity: -10)]),
@@ -167,7 +338,7 @@ struct NativeCombinedAccountsTests {
         #expect(model.tokenShares(days: 30, now: self.now).map(\.tokens) == [9000])
     }
 
-    @Test func `incoming accounts preserve provider grouping and the visible page identity`() {
+    @Test func `incoming accounts join a frozen order at its end and keep the visible page identity`() {
         let first = self.account(.codex, id: "one", activity: -60)
         let other = self.account(.claude, id: "other", activity: -30)
         let original = NativeCombinedAccounts(connections: [
@@ -181,7 +352,7 @@ struct NativeCombinedAccountsTests {
             ],
             now: self.now,
             preservingOrder: original.pages.map(\.id))
-        #expect(updated.pages.map(\.provider) == [.claude, .codex, .codex])
+        #expect(updated.pages.map(\.account.id) == ["other", "one", "new"])
         #expect(updated.pages.first?.id == original.pages.first?.id)
     }
 
@@ -271,6 +442,10 @@ struct NativeCombinedAccountsTests {
         }
     }
 
+    private static func sameStorage<Element>(_ lhs: [Element], _ rhs: [Element]) -> Bool {
+        lhs.withUnsafeBufferPointer { left in rhs.withUnsafeBufferPointer { left.baseAddress == $0.baseAddress } }
+    }
+
     private func metrics(
         tokens: Int, scope: NativeOrbitUsageScope, attributed: Bool, dayOffset: Int = 0) -> NativeOrbitAccountMetrics
     {
@@ -312,7 +487,8 @@ struct NativeCombinedAccountsTests {
         _ provider: UsageProvider,
         id: String,
         measured: Bool = true,
-        activity: TimeInterval? = nil) -> NativeOrbitAccountPresentation
+        activity: TimeInterval? = nil,
+        left: Double? = nil) -> NativeOrbitAccountPresentation
     {
         var gauge = ComputeGauge.State()
         gauge.provider = provider.rawValue
@@ -332,6 +508,13 @@ struct NativeCombinedAccountsTests {
             odometerHelp: nil,
             statusText: nil,
             selection: .none,
-            metrics: metrics)
+            metrics: metrics,
+            quotaWindows: left.map { left in
+                ["nativeQuota:weekly": RateWindow(
+                    usedPercent: 100 - left,
+                    windowMinutes: 10080,
+                    resetsAt: self.now.addingTimeInterval(86400),
+                    resetDescription: nil)]
+            } ?? [:])
     }
 }

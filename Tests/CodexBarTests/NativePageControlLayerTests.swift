@@ -76,7 +76,7 @@ struct NativePageControlLayerTests {
         #expect(changed.count == 3)
         #expect(changed[1] === original[1])
         #expect(changed[1].mask === mask)
-        #expect(changed[1].backgroundColor?.alpha == 1)
+        #expect(changed[1].backgroundColor?.alpha == NativePageControlConfiguration.litAlpha)
         #expect((changed[0].backgroundColor?.alpha ?? 0) > 0.4)
         #expect((changed[0].backgroundColor?.alpha ?? 1) < (changed[1].backgroundColor?.alpha ?? 0))
     }
@@ -105,7 +105,10 @@ struct NativePageControlLayerTests {
         #expect(marks.count == 1)
         #expect(marks[0].animationKeys()?.isEmpty != false)
         #expect(marks[0].opacity == 1)
-        #expect(marks[0].position == CGPoint(x: 120.5, y: 18))
+        // Marks sit by their ink: the layout position less the symbol's ink offset.
+        let shift = NativePageControlSymbol(self.artwork(selected: 0, count: 1).indicators[0], configuration: .init())
+            .inkOffset
+        #expect(marks[0].position == CGPoint(x: 120.5 - shift.width, y: 18 - shift.height))
         #expect(view.hitTest(CGPoint(x: 120, y: 18)) == nil)
     }
 

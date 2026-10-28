@@ -4,7 +4,7 @@ public struct KimiUsageSnapshot: Sendable {
     public let weekly: KimiUsageDetail?
     public let rateLimit: KimiUsageDetail?
     public let updatedAt: Date
-    public let planName: String?
+    public internal(set) var planName: String?
     public let subscriptionStatus: String?
     public let subscriptionIsActive: Bool?
     let rateLimitWindow: KimiWindow?
@@ -14,6 +14,9 @@ public struct KimiUsageSnapshot: Sendable {
     let boosterCost: ProviderCostSnapshot?
     /// Opaque successful-request credential scope; rotation starts a separate history owner.
     var historyOwnerID: String?
+    /// From the Kimi Code profile (`/me`): display only, never part of the history owner.
+    var accountEmail: String?
+    var accountName: String?
     var historyOwnerAliases: [String]?
 
     public init(weekly: KimiUsageDetail?, rateLimit: KimiUsageDetail?, updatedAt: Date) {
@@ -222,11 +225,12 @@ extension KimiUsageSnapshot {
             updatedAt: self.updatedAt,
             identity: ProviderIdentitySnapshot(
                 providerID: .kimi,
-                accountEmail: nil,
+                accountEmail: self.accountEmail,
                 accountOrganization: nil,
                 loginMethod: self.planName,
                 accountID: self.historyOwnerID,
-                historyOwnerAliases: self.historyOwnerAliases))
+                historyOwnerAliases: self.historyOwnerAliases,
+                accountName: self.accountName))
     }
 
     private static func isEquivalentToWeeklyWindow(_ window: RateWindow, weeklyWindow: RateWindow?) -> Bool {

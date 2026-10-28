@@ -10,6 +10,7 @@ import Testing
 struct NativeOrbitProgressiveBlurTests {
     @Observable final class Position {
         var value = 0.0
+        var plotVisible = true
     }
 
     private struct PlotPoint {
@@ -91,7 +92,46 @@ struct NativeOrbitProgressiveBlurTests {
                 }
             }
             .environment(\.colorScheme, .light)
+            .environment(\.nativeOrbitPlotIsVisible, self.position.plotVisible)
         }
+    }
+
+    @Test
+    func `offscreen plots defer range rendering and catch up when revealed`() async throws {
+        let position = Position()
+        let host = NSHostingView(rootView: ForecastFixture(
+            position: position, nativeHost: true, changesRange: true))
+        let window = NSWindow(
+            contentRect: CGRect(x: -10000, y: -10000, width: 224, height: 224),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false)
+        window.contentView = host
+        window.orderFront(nil)
+        defer { window.orderOut(nil) }
+        try await Task.sleep(for: .milliseconds(300))
+        func innermostPlot(_ view: NSView) -> NSHostingView<AnyView>? {
+            view.subviews.compactMap { innermostPlot($0) }.last ?? (view as? NSHostingView<AnyView>)
+        }
+        let target = try #require(innermostPlot(host))
+        func pixels() throws -> [UInt8] {
+            let bitmap = try #require(target.bitmapImageRepForCachingDisplay(in: target.bounds))
+            target.cacheDisplay(in: target.bounds, to: bitmap)
+            let bytes = try #require(bitmap.bitmapData)
+            return Array(UnsafeBufferPointer(start: bytes, count: bitmap.bytesPerRow * bitmap.pixelsHigh))
+        }
+        let before = try pixels()
+        position.plotVisible = false
+        position.value = 1
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(try pixels() == before)
+        position.plotVisible = true
+        try await Task.sleep(for: .milliseconds(100))
+        let revealed = try pixels()
+        #expect(revealed != before)
+        try await Task.sleep(for: .milliseconds(400))
+        #expect(try pixels() == revealed)
+        #expect(innermostPlot(host) === target)
     }
 
     @Test(arguments: [false, true])

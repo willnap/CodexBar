@@ -14,7 +14,7 @@ final class NativePageControlLayerView: NSView {
 
     private struct SymbolLayer {
         let layer: CALayer
-        let provider: String?
+        let group: String?
         let image: NSImage
     }
 
@@ -28,6 +28,9 @@ final class NativePageControlLayerView: NSView {
     private var currentTintAlpha: CGFloat = 1
     private var animationsStarted = 0
     private let symbols = CALayer()
+    /// A provider's expanded accounts sit with its mark on one platter, below the marks.
+    private let platters = CALayer()
+    private var platterLayers: [String: CALayer] = [:]
     private let background = NSVisualEffectView()
     private let canvas = SymbolCanvas()
     private var marks: [String: SymbolLayer] = [:]
@@ -62,6 +65,8 @@ final class NativePageControlLayerView: NSView {
         self.canvas.wantsLayer = true
         self.addSubview(self.canvas)
         self.symbols.name = "CodexBar.PageControl.Symbols"
+        self.platters.name = "CodexBar.PageControl.Platters"
+        self.canvas.layer?.addSublayer(self.platters)
         self.canvas.layer?.addSublayer(self.symbols)
         self.setAccessibilityElement(false)
     }
@@ -82,6 +87,7 @@ final class NativePageControlLayerView: NSView {
         CATransaction.setDisableActions(true)
         self.canvas.frame = self.bounds
         self.symbols.frame = self.canvas.bounds
+        self.platters.frame = self.canvas.bounds
         CATransaction.commit()
     }
 
@@ -145,7 +151,9 @@ final class NativePageControlLayerView: NSView {
         CATransaction.setDisableActions(true)
         self.canvas.frame = self.bounds
         self.symbols.frame = self.canvas.bounds
+        self.platters.frame = self.canvas.bounds
         self.symbols.opacity = enabled ? 1 : 0.45
+        self.platters.opacity = enabled ? 1 : 0.45
         let showBackground = configuration.backgroundStyle == .prominent
             || (configuration.backgroundStyle == .automatic && expanded)
         let palette = configuration.resolvedTints(appearance: self.effectiveAppearance, showsBackground: showBackground)
@@ -186,10 +194,13 @@ final class NativePageControlLayerView: NSView {
         for geometry in layout.marks {
             let indicator = indicators[geometry.index]
             let symbol = NativePageControlSymbol(indicator, configuration: configuration)
-            let provider = indicator.provider?.rawValue
+            // Placed by its ink, so unevenly padded art lines up with the rest at any edge scale.
+            let shift = symbol.inkOffset
             let position = CGPoint(
-                x: configuration.direction.isVertical ? 18 : geometry.position,
-                y: configuration.direction.isVertical ? geometry.position : 18)
+                x: (configuration.direction.isVertical ? 18 : geometry.position) - shift.width * geometry.scale,
+                y: (configuration.direction.isVertical ? geometry.position : 18) - shift.height * geometry.scale)
+            // Pages in the window light their marks, a page part in by as much of it as shows.
+            let ink = Self.mix(tint, selectedTint, indicator.selected ? 1 : indicator.visibility)
             let mark: SymbolLayer
             let reusable = self.marks[indicator.id] ?? self.retiring[indicator.id]?.mark
             if let existing = reusable, existing.image === symbol.image {
@@ -207,14 +218,14 @@ final class NativePageControlLayerView: NSView {
                 mask.contentsScale = glyph.contentsScale
                 mask.contentsGravity = .resize
                 glyph.mask = mask
-                glyph.backgroundColor = indicator.selected ? selectedTint : tint
+                glyph.backgroundColor = ink
                 // Accounts emerge from their provider logo, rather than popping into their final positions.
-                let anchor = old["provider:\(provider ?? "")"]?.layer
+                let anchor = old[indicator.group ?? ""]?.layer
                 glyph.position = anchor?.presentation()?.position ?? anchor?.position ?? position
                 glyph.transform = CATransform3DMakeScale(0.001, 0.001, 1)
                 glyph.opacity = 0
                 self.symbols.addSublayer(glyph)
-                mark = SymbolLayer(layer: glyph, provider: provider, image: symbol.image)
+                mark = SymbolLayer(layer: glyph, group: indicator.group, image: symbol.image)
                 if let replaced = self.marks[indicator.id] {
                     self.retire(replaced, id: UUID().uuidString, at: position, animate: animate)
                 }
@@ -235,17 +246,80 @@ final class NativePageControlLayerView: NSView {
             self.animate(
                 mark.layer,
                 key: "backgroundColor",
-                to: indicator.selected ? selectedTint : tint,
+                to: ink,
                 duration: tintDuration)
         }
         for (id, mark) in old where !ids.contains(id) {
-            let anchor = self.marks["provider:\(mark.provider ?? "")"]?.layer.position ?? mark.layer.position
+            let anchor = mark.group.flatMap { self.marks[$0]?.layer.position } ?? mark.layer.position
             self.retire(mark, id: id, at: anchor, animate: animate)
             self.marks.removeValue(forKey: id)
         }
+        self.updatePlatters(
+            layout.groups,
+            vertical: configuration.direction.isVertical,
+            tint: tint,
+            tintDuration: tintDuration,
+            animate: animate)
         CATransaction.commit()
         self.initialized = true
         if self.animationsStarted > animationCount { self.activeUntil = CACurrentMediaTime() + duration }
+    }
+
+    /// A platter grows out of its provider mark as the accounts emerge, and shrinks back into it as they collapse.
+    private func updatePlatters(
+        _ groups: [NativePageControlLayout.Group],
+        vertical: Bool,
+        tint: CGColor,
+        tintDuration: Double,
+        animate: Bool)
+    {
+        let thickness = NativePageControlLayout.platterThickness
+        let fill = tint.copy(alpha: tint.alpha * 0.22) ?? tint
+        let collapsed = CGRect(x: 0, y: 0, width: thickness, height: thickness)
+        let duration = animate ? 0.25 : 0
+        var live = Set<String>()
+        for group in groups {
+            live.insert(group.id)
+            let span = group.upper - group.lower
+            let center = (group.lower + group.upper) / 2
+            let position = vertical ? CGPoint(x: 18, y: center) : CGPoint(x: center, y: 18)
+            let bounds = vertical
+                ? CGRect(x: 0, y: 0, width: thickness, height: span)
+                : CGRect(x: 0, y: 0, width: span, height: thickness)
+            let platter: CALayer
+            if let existing = self.platterLayers[group.id] {
+                platter = existing
+            } else {
+                platter = CALayer()
+                platter.name = "platter:\(group.id)"
+                platter.cornerRadius = thickness / 2
+                platter.cornerCurve = .continuous
+                platter.backgroundColor = fill
+                let anchor = self.marks[group.id]?.layer
+                platter.position = anchor?.presentation()?.position ?? anchor?.position ?? position
+                platter.bounds = collapsed
+                platter.opacity = 0
+                self.platters.addSublayer(platter)
+                self.platterLayers[group.id] = platter
+            }
+            self.animate(platter, key: "position", to: position, duration: duration)
+            self.animate(platter, key: "bounds", to: bounds, duration: duration)
+            self.animate(platter, key: "opacity", to: Float(1), duration: duration)
+            self.animate(platter, key: "backgroundColor", to: fill, duration: tintDuration)
+        }
+        for (id, platter) in self.platterLayers where !live.contains(id) {
+            self.platterLayers.removeValue(forKey: id)
+            let anchor = self.marks[id]?.layer.position ?? platter.position
+            self.animate(platter, key: "position", to: anchor, duration: duration)
+            self.animate(platter, key: "bounds", to: collapsed, duration: duration)
+            self.animate(platter, key: "opacity", to: Float(0), duration: duration)
+            guard animate else { platter.removeFromSuperlayer(); continue }
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(260))
+                // Expanding again meanwhile makes a fresh platter; this one only finishes leaving.
+                if self?.platterLayers[id] !== platter { platter.removeFromSuperlayer() }
+            }
+        }
     }
 
     private func retire(_ mark: SymbolLayer, id: String, at position: CGPoint, animate: Bool) {
@@ -285,6 +359,16 @@ final class NativePageControlLayerView: NSView {
         animation.timingFunction = CAMediaTimingFunction(name: .easeOut)
         layer.add(animation, forKey: key)
         self.animationsStarted += 1
+    }
+
+    /// Both tints are sRGB (`resolvedTints`); a fraction between them blends every component.
+    static func mix(_ from: CGColor, _ to: CGColor, _ fraction: Double) -> CGColor {
+        let amount = CGFloat(min(1, max(0, fraction)))
+        guard amount > 0 else { return from }
+        guard amount < 1, let lhs = from.components, let rhs = to.components, lhs.count == rhs.count,
+              let space = from.colorSpace else { return amount >= 1 ? to : from }
+        let components = zip(lhs, rhs).map { $0 + ($1 - $0) * amount }
+        return CGColor(colorSpace: space, components: components) ?? to
     }
 
     private func inkChanged(from previous: CGColor?, to next: CGColor) -> Bool {

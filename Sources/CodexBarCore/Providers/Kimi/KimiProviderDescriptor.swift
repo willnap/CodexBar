@@ -168,14 +168,18 @@ struct KimiAPIFetchStrategy: ProviderFetchStrategy {
     let kind: ProviderFetchKind = .apiToken
     private let transport: any ProviderHTTPTransport
     private let resolveWebAuthToken: @Sendable (ProviderFetchContext) -> String?
+    /// The profile is a best-effort extra read; scripted fixture transports leave it out unless they ask for it.
+    private let readsProfile: Bool
 
     init(
         transport: any ProviderHTTPTransport = ProviderHTTPClient.shared,
         resolveWebAuthToken: @escaping @Sendable (ProviderFetchContext) -> String? =
-            KimiWebEnrichmentTokenResolver.resolve)
+            KimiWebEnrichmentTokenResolver.resolve,
+        readsProfile: Bool? = nil)
     {
         self.transport = transport
         self.resolveWebAuthToken = resolveWebAuthToken
+        self.readsProfile = readsProfile ?? (transport is ProviderHTTPClient)
     }
 
     func isAvailable(_ context: ProviderFetchContext) async -> Bool {
@@ -194,6 +198,7 @@ struct KimiAPIFetchStrategy: ProviderFetchStrategy {
             region: context.settings?.kimi?.region ?? .china,
             baseURL: baseURL,
             webAuthToken: self.enrichmentToken(context),
+            readsProfile: self.readsProfile,
             transport: self.transport)
         return self.makeResult(
             usage: snapshot.toUsageSnapshot(),
@@ -215,14 +220,18 @@ struct KimiCLICredentialFetchStrategy: ProviderFetchStrategy {
     let kind: ProviderFetchKind = .oauth
     private let transport: any ProviderHTTPTransport
     private let resolveWebAuthToken: @Sendable (ProviderFetchContext) -> String?
+    /// The profile is a best-effort extra read; scripted fixture transports leave it out unless they ask for it.
+    private let readsProfile: Bool
 
     init(
         transport: any ProviderHTTPTransport = ProviderHTTPClient.shared,
         resolveWebAuthToken: @escaping @Sendable (ProviderFetchContext) -> String? =
-            KimiWebEnrichmentTokenResolver.resolve)
+            KimiWebEnrichmentTokenResolver.resolve,
+        readsProfile: Bool? = nil)
     {
         self.transport = transport
         self.resolveWebAuthToken = resolveWebAuthToken
+        self.readsProfile = readsProfile ?? (transport is ProviderHTTPClient)
     }
 
     func isAvailable(_ context: ProviderFetchContext) async -> Bool {
@@ -283,6 +292,7 @@ struct KimiCLICredentialFetchStrategy: ProviderFetchStrategy {
             baseURL: baseURL,
             identityHeaders: identityHeaders,
             webAuthToken: webToken,
+            readsProfile: self.readsProfile,
             transport: self.transport)
     }
 

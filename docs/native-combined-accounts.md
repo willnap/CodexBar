@@ -22,24 +22,68 @@ timestamp does not count as activity. Ties use active login status and stable ac
 
 The popup lays its pages side by side, 240 points each with a divider between them, like a service's own account
 columns. Up to three pages show in full; with more, it shows two and a half, so the cut-off column shows that the
-strip scrolls. It never exceeds the screen's width. Accounts remain grouped by provider, with the combined
-overview immediately to the left of the first account. SwiftUI's native view-aligned scrolling handles
-momentum and snaps a column to the leading edge; selecting a page brings it to the leading edge, or as far as the
-strip scrolls. Left/right arrow keys, accessibility adjustment, and clickable symbol indicators
-navigate the same scroll position. Indicators show provider logos and expand the selected provider to show
-its account symbols. The indicator keeps a compact moving viewport, shrinking symbols at its edges when the sequence overflows.
+strip scrolls. It never exceeds the screen's width. Either side edge can be dragged, with the system's
+frame-resize cursor, to make the popup as narrow as one page or as wide as every page side by side; the cursor's
+arrows show which ways the width can still go. The popover stays anchored to its button and grows evenly about
+it, so the dragged edge follows the pointer at twice the width change (once the screen edge holds the other side,
+one for one). The chosen width is kept across launches (`NativeCombinedPopupWidth`).
 
-Every page runs down behind the page control to the toolbar, which rises into the empty foot of each account's
-footer. Account pages carry a hint of their service's colour, and the active login of a service with several a
-little more, so services read as separate areas side by side.
+The combined overview comes first. Accounts with usage left follow, most recently used first; drained ones (a
+current window exhausted or down to its low-fuel reserve, the lowest quota warning, as the fuel light reads it)
+go to the back, each on its own. A provider's accounts that all have usage left stay side by side, so they can be
+compared and switched; a passed reset counts as refilled. The order is frozen for a showing and accounts that
+appear meanwhile join its end. SwiftUI's native view-aligned scrolling handles momentum and snaps a column to the
+leading edge; selecting a page brings it to the leading edge, or as far as the strip scrolls. Left/right arrow
+keys and accessibility adjustment navigate the same scroll position.
+
+The popup shows no page control (2026-10-28): the pages begin at the popup's top edge, with no band above them, and
+the columns themselves show where the strip is. `NativeCombinedPageIndicators` and its model are kept, unplaced, for
+the fixtures below. When it was shown, the page control sat above the dials like a tab bar, its marks in the dials' own empty top margin (11 points
+down; each page's content starts 16 points down), so it adds no band of its own. Its ink is quiet (30% for pages out
+of view, 80% for those in it): every page in the window lights its mark, and a page part in lights it by as much of
+it as shows, in twentieths, so the marks read like the window's extent over the strip. Marks are placed by their
+measured ink, not their image boxes, so unevenly padded custom art sits on the same line as the system symbols. Its
+marks follow the pages: one provider logo per run of a
+provider's adjacent pages, so a drained account sorted away from its others shows a logo of its own there. The
+selected run expands to its account symbols, which emerge from the logo and sit with it on one platter, closer
+together than the marks outside it. The control keeps a compact moving viewport, shrinking symbols at its edges
+when the sequence overflows. System symbols keep the page control's one configuration (13 pt, small scale).
+Custom provider marks, mail and project symbols and website masks were drawn to fill a fixed box, which made a
+wide mark (Claude's, iCloud's) short and small beside them; each is scaled from its measured ink to cover a
+system circle's 11 pt area, no wider than the widest system mark (14 pt).
+
+Every page runs down behind the toolbar. The toolbar has no bar of its own: as in
+Liquid Glass, its controls float as glass over the pages (the refresh arrow and age in one capsule, with 8.5 points
+of glass past their ink on every side, the range
+control, the settings gear), so each service's tint runs on underneath. A service's own popup floats the same
+toolbar over its columns. Account pages carry a hint of their service's colour, and the active login of a service
+with several a little more, so services read as separate areas side by side.
+
+Each account's footer names its login (its email) and, beside it, a badge for its plan: white type on a small
+rounded square of the service's colour, in the style of `20.square.fill`, darkened only as far as the type needs for
+4.5:1 contrast and padded evenly around its ink. It keeps its size in a crowded footer; the name shortens instead. It
+reads: a usage multiplier when the plan has one ("Claude Max 20x" and
+"Pro 20x" read 20×, "Pro 5x" 5×), otherwise the plan's name without the service's words ("Pro", "Plus",
+"Allegretto"). The plan comes from the menu's own plan text, so every provider that reports one has a badge. A
+login with no email shows the name its service gives it instead: Kimi Code's profile (`/coding/v1/me`, read with
+the usage and never holding it up) has no email for a phone login, so its nickname shows, and its `user_level_name`
+("Ultra") is the plan when the usage report names none. claude-swap's reports carry its own source label where a
+plan goes; its rows take their plan from the account's Claude profile that claude-swap keeps beside its backups
+(`~/.claude-swap-backup/configs`, no credentials), whose rate-limit tier names it. A login nothing identifies shows no
+name rather than its service's. The name takes the room it needs before anything else gives.
+
+The toolbar's controls sit as far from the footer above them as from the popup's edge below (3 points of their own
+above, after the footer's 6; 9 below).
 
 Page identities include the provider. Their order stays fixed for a showing, including while active logins or
 usage readings change. Account pages reuse the normal native instruments, history, warning actions, and login
 switching. The bottom toolbar shares the time range, refreshes the connected providers, and opens settings for
 the current provider.
 
-The popup is kept between showings, like a service's own popup. A showing opens on the most recently used account
-with that moment's page order and width. A service's pending background change, and its Claude archive reload, wait
+The popup is kept between showings, like a service's own popup. A showing resumes where the pages were left (the
+page at the leading edge and the selection) when the popup was closed for less than six hours and those pages still
+exist; otherwise it opens on the most recently used account. The overview always stays built, so its charts keep
+what they drew rather than rising from nothing at each opening. A service's pending background change, and its Claude archive reload, wait
 for `popoverDidShow`, once the popup has finished appearing: a rebuild queued behind a `Task.yield` still runs
 before the run loop draws, so the window used to wait for it. The toolbar receives rows each service has already
 prepared, and `preparingInspection` returns a row prepared for the same history unchanged instead of rebuilding it.

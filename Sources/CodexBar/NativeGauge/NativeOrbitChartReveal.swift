@@ -5,12 +5,14 @@ import SwiftUI
 /// Reveal a retained native chart entirely in the compositor. Native view frames stay fixed throughout the sweep,
 /// keeping clipping and translation out of NSHostingView's layout. Selection and data still update hosted content.
 struct NativeOrbitChartReveal<Key: Equatable, Content: View>: NSViewRepresentable {
+    @Environment(\.nativeOrbitPlotIsVisible) private var isVisible
     let phase: NativeOrbitStartupPhase
     let contentKey: Key
     @ViewBuilder let content: Content
 
     final class Coordinator {
         var key: Key?
+        var wasVisible = true
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -21,13 +23,28 @@ struct NativeOrbitChartReveal<Key: Equatable, Content: View>: NSViewRepresentabl
     }
 
     func updateNSView(_ view: NativeOrbitChartRevealView, context: Context) {
+        // Stop at the outer hosting boundary: replacing even its axis wrapper schedules expensive Charts
+        // layout for every warmed account. Keep the last key so entering the viewport applies the newest range.
+        guard self.isVisible else {
+            context.coordinator.wasVisible = false
+            return
+        }
+        let wasVisible = context.coordinator.wasVisible
+        context.coordinator.wasVisible = true
         if context.coordinator.key != self.contentKey {
             context.coordinator.key = self.contentKey
-            view.host.rootView = AnyView(self.content)
+            var transaction = context.transaction
+            if !wasVisible {
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
+            withTransaction(transaction) {
+                view.presentation.content = AnyView(self.content)
+            }
         }
         view.reveal(
             self.phase,
-            animated: context.transaction.animation != nil
+            animated: wasVisible && context.transaction.animation != nil
                 && !context.transaction.disablesAnimations)
     }
 
@@ -41,6 +58,23 @@ struct NativeOrbitChartReveal<Key: Equatable, Content: View>: NSViewRepresentabl
 }
 
 final class NativeOrbitChartRevealView: NSView {
+    @Observable final class Presentation {
+        var content: AnyView
+
+        init(content: AnyView) {
+            self.content = content
+        }
+    }
+
+    private struct RetainedChart: View {
+        let presentation: Presentation
+
+        var body: some View {
+            self.presentation.content
+        }
+    }
+
+    let presentation: Presentation
     let host: NSHostingView<AnyView>
     let clip = NativeOrbitChartClipView()
     let revealMask = CALayer()
@@ -52,7 +86,11 @@ final class NativeOrbitChartRevealView: NSView {
     }
 
     init(content: AnyView, phase: NativeOrbitStartupPhase) {
-        self.host = NSHostingView(rootView: content)
+        let presentation = Presentation(content: content)
+        self.presentation = presentation
+        // Retain the outer hosting graph too: assigning rootView forces a fresh native layout traversal before
+        // the inner chart can present its first animated frame, even when its dimensions stay unchanged.
+        self.host = NSHostingView(rootView: AnyView(RetainedChart(presentation: presentation)))
         self.phase = phase
         super.init(frame: CGRect(x: 0, y: 0, width: 224, height: 224))
         self.wantsLayer = true

@@ -51,7 +51,8 @@ struct NativeCombinedPageIndicators: View {
                     NativePageControlImageMetrics.length(
                         NativePageControlSymbol($0, configuration: self.configuration).size,
                         vertical: self.configuration.direction.isVertical)
-                })
+                },
+                groups: self.indicators.map { $0.expanded ? $0.group : nil })
             let artwork = NativePageControlArtwork(
                 indicators: self.indicators,
                 layout: layout,
