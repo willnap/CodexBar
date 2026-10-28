@@ -39,37 +39,55 @@ clear of edges. Rail arcs are split at fixed 15° stops so that overlapping piec
 
 ## Showcase renders
 
-`docs/screenshots/native-showcase/readme-light.png` and `readme-dark.png` are the README screenshot: the combined
-window opened on its All page, six columns wide, under the combined menu bar item. Every page is the production view
-fed a month of generated usage for fictitious accounts (`NativeOrbitShowcaseScene`); nothing is drawn to imitate it.
-Each service reports only the windows it really has, in its own brand accent, and pages take the production order
-(most recently used first). Most accounts run with room to spare; four lamps cover different realms without any
-red:
+The README images in `docs/screenshots/native-showcase/` are the production views fed a month of generated usage for
+fictitious accounts (`NativeOrbitShowcaseScene`); nothing is drawn to imitate them. They are tracked with Git LFS.
 
-- Claude Max 20x a little ahead of pace on its week (amber hare), with Sonnet's own allowance and extra usage.
-- Codex Pro with a saved reset just added (green) and three banked.
-- Kimi Code on pace across its session, week and monthly pool (no lamp).
-- GLM Coding Plan with half its week unused and under a day to go (green tortoise).
-- Gemini Code Assist during a provider incident (amber status lamp).
-- DeepSeek pay-as-you-go against a prepaid balance, the sixth page, counted on the All page.
+- `hero-{light,dark}`: `--preview-scene`, the combined window on its All page, three and three-quarter columns wide,
+  cropped to the window with an even margin under the right end of a full-width menu bar, over the Solar Gradients
+  wallpaper at midday or after dark (Sonoma if macOS hasn't downloaded it).
+- `before-after`: a screenshot of CodexBar 0.82.1 built from upstream `main`, open on real accounts, beside the hero
+  scene in light mode at the same height (`CODEXBAR_PREVIEW_NOTCH` draws a notched MacBook's menu bar to match;
+  `CODEXBAR_PREVIEW_WALLPAPER_FRAME` the same time of day). The desktop outside the original menu is continued from the
+  wallpaper beside it, where another window covered it. `ReadmeOriginalMenuShotTests` can instead open the original
+  menu on the showcase's fictional logins.
+- `feature-*`: cards with the same padding on every side, each whole columns (240 points between dividers) cut from the
+  hero, the accounts scene held seven hours into its forecast
+  (`CODEXBAR_PREVIEW_INSPECT_HOURS=7`), `--preview-scene-trouble` or the motion recording, with rounded corners over
+  the night wallpaper.
+- `icon-{light,dark}`: `NativeIcon.icon` exported with Xcode's `ictool` (`--platform macOS --rendition Default|Dark
+  --design-generation 27`).
 
-Each account's quarter-hour request slices add up to its daily totals, so the All page's chart can split a day at
-any range start. Past windows cost what the current one does for the same work, and accounts stop where they were
-last used, so each chart's history agrees with its projection. The clock is set so that "now" is always a weekday
-afternoon.
+Readings arrive every few minutes in whole percentages, accounts in use sit early in their windows after earlier
+windows drained deep, and spend and tokens are a heavy user's: about 1.3 billion tokens a day on Claude Max 20x at
+$0.52 per million with cache reads, 1.4 billion on Codex Pro, and the other services close enough behind that the
+lead on the All page changes hands. Codex was the main tool earlier in the month and Claude has overtaken it. The clock
+is set so that "now" is always a weekday afternoon for the viewer; logins elsewhere (China, the US) work on their own
+hours, so their histories differ in shape. Each account's quarter-hour request slices add up to its daily totals.
 
-The window sits on nothing, so the capture keeps transparency and suits GitHub's light and dark pages. The scene's
-panel always reports itself key: glass draws its tint only in the key window, and macOS refuses focus to the scene
-while someone works in another app. Build, then capture the scene window in each appearance:
+Scenes without a wallpaper or `CODEXBAR_PREVIEW_BACKDROP` sit on nothing, so their captures keep transparency. The
+scene's panel always reports itself key: glass draws its tint only in the key window, and macOS refuses focus to the scene
+while someone works in another app. Build, then capture each scene window in each appearance:
 
 ```sh
-open -n "$HOME/Applications/CodexBar Native.app" --args --native-preview --preview-scene --preview-light
-screencapture -x -o -l <window id> readme-light.png   # and again with --preview-dark
+open -n /Applications/CodexBar.app --args --native-preview --preview-scene --preview-light
+# --preview-scene-accounts, --preview-scene-api, --preview-scene-trouble; --preview-dark for the dark set
+screencapture -x -o -l <window id> combined-light.png
 ```
 
-`--preview-scene-services` instead fans out one popover per service, as the earlier header did, and
-`CODEXBAR_PREVIEW_BACKDROP` puts an image behind either scene. `CODEXBAR_PREVIEW_DAYS` sets the combined window's
-range (1, 7 or 30).
+The `motion` GIF records `--preview-scene-motion`: the combined window four whole columns wide (All, both Claude
+logins, Codex), where OpenAI has just reset Codex's spare login. With `CODEXBAR_PREVIEW_PLAY=motion` a drawn pointer
+starts two seconds after the scene appears and uses the window as a person would, its moves sent to the window as real
+hover, click and scroll events: it opens the window (the ignition check), switches All to money, reads back along All's
+chart and Claude's, swipes one column to the spare Codex login, rests on its "Reset by OpenAI" mark, clicks Use (in
+memory only), steps through Week, Month and Day, and returns to tokens. The real pointer is ignored. Record only the
+window and without the pointer (a ScreenCaptureKit stream with `showsCursor` off; `screencapture -v` also records the
+real pointer), over a solid backdrop in GitHub's page colour (`CODEXBAR_PREVIEW_BACKDROP`), then convert with ffmpeg
+(`fps=15`, one 256-colour `palettegen` with `stats_mode=full`, `paletteuse=dither=none`; a dither re-applied only to
+changed rectangles flickers on the dark backgrounds). `CODEXBAR_PREVIEW_PLAY=startup` reruns the ignition check
+alone in any scene.
+
+`--preview-scene-services` fans out one popover per service, and `CODEXBAR_PREVIEW_BACKDROP` puts an image behind any
+scene. `CODEXBAR_PREVIEW_DAYS` sets the combined window's range (1, 7 or 30).
 
 For a single popup, `--native-preview --preview-orbit --preview-open --preview-window --preview-showcase
 --preview-provider claude --preview-light` draws it as a rounded card over the backdrop.
