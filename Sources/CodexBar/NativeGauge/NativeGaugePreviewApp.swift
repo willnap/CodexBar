@@ -254,7 +254,8 @@ private final class NativeGaugePreviewController: NSObject, NSApplicationDelegat
         popover.contentViewController = hosting
         popover.contentSize = NSSize(
             width: CGFloat(state.accounts.count * 240 + max(0, state.accounts.count - 1)),
-            height: NativeOrbitPopupView.contentHeight(showsFooter: state.accounts.count > 1))
+            height: NativeOrbitPopupView.contentHeight(
+                showsFooter: NativeAccountUsePresentation.showsFooter(accounts: state.accounts)))
         self.popover = popover
         if CommandLine.arguments.contains("--preview-window") {
             let window = CommandLine.arguments.contains("--preview-performance")

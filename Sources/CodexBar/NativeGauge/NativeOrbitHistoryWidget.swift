@@ -592,8 +592,10 @@ struct NativeOrbitHistoryWidget: View {
             }
         }
         let resetDates = resetEvents.filter { $0.laneIDs.contains(history.name.rawValue) }.map(\.date)
+        let timeline = NativeOrbitQuotaTimeline(history: self.histories)
         func period(_ entry: PlanUtilizationHistoryEntry) -> TimeInterval? {
-            Self.sourcePeriod(cadences[entry] ?? [], fallback: history.windowMinutes)
+            if let descriptor = entry.quotaDescriptor { return descriptor.period }
+            return Self.sourcePeriod(cadences[entry] ?? [], fallback: history.windowMinutes)
         }
         // How a reading continues the one before it: across a reset drawn at an instant, plainly, or not at all.
         enum Join { case reset(Date), plain, broken }
@@ -603,6 +605,13 @@ struct NativeOrbitHistoryWidget: View {
             _ entry: PlanUtilizationHistoryEntry,
             _ period: TimeInterval?) -> Join
         {
+            guard timeline.canJoin(
+                NativeOrbitQuotaTimeline.quotaID(history, provider: self.provider) ?? history.name.rawValue,
+                from: previous.capturedAt,
+                to: entry.capturedAt)
+            else {
+                return .broken
+            }
             let crossedReset = previous.resetsAt.map { $0 > previous.capturedAt && $0 <= entry.capturedAt } ?? false
             let unknownReset = previous.resetsAt == nil && entry.usedPercent < previous.usedPercent
             let comparable = previousPeriod == period
@@ -864,6 +873,9 @@ struct NativeOrbitHistoryWidget: View {
     }
 
     private func label(_ history: PlanUtilizationSeriesHistory) -> String {
+        let cutoff = self.selectedDate ?? self.now
+        if let entry = history.entries.last(where: { $0.capturedAt <= cutoff }),
+           let label = entry.quotaDescriptor?.label, !label.isEmpty { return label }
         if !history.name.isNativeQuotaObservation {
             return history.name == .session && history.windowMinutes == 300 ? "Session (5h)"
                 : history.name.rawValue.capitalized

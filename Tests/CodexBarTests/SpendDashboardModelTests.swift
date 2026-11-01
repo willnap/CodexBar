@@ -4,6 +4,16 @@ import Testing
 @testable import CodexBarCore
 
 struct SpendDashboardModelTests {
+    @Test(arguments: ["Europe/London", "America/New_York"], ["2026-04-05T12:00:00Z", "2026-11-08T12:00:00Z"])
+    func `coverage counts civil days across seasonal clock changes`(zone: String, instant: String) throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: zone))
+        let now = try #require(ISO8601DateFormatter().date(from: instant))
+        let end = calendar.startOfDay(for: now)
+        let start = try #require(calendar.date(byAdding: .day, value: -29, to: end))
+        #expect(SpendDashboardModel.dayCount(in: start...end, calendar: calendar) == 30)
+    }
+
     @Test
     func `count labels avoid plural agreement and localize numbers`() {
         CodexBarLocalizationOverride.$appLanguage.withValue("en") {

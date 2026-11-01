@@ -1,4 +1,5 @@
 /* Turkish localization for CodexBar */
+"Copilot subscription ended" = "Copilot aboneliği sona erdi";
 
 /* iCloud Sync */
 "+ %d more" = "+ %d daha";
@@ -160,6 +161,7 @@
 "Individual credits" = "Bireysel krediler";
 "Workspace" = "Çalışma alanı";
 "Credits history" = "Kredi geçmişi";
+"Cursor app session expired — open Cursor to sign in again, or sign in to cursor.com in your browser." = "Cursor uygulama oturumunun süresi doldu — yeniden giriş yapmak için Cursor’ı açın veya tarayıcınızda cursor.com’a giriş yapın.";
 "Cursor login failed" = "Cursor girişi başarısız";
 "Custom" = "Özel";
 "Custom Path" = "Özel yol";
@@ -1058,11 +1060,8 @@
 "Today cash" = "Bugünkü nakit";
 "DeepSeek 30 day token usage trend" = "DeepSeek 30 günlük token kullanım trendi";
 "DeepSeek this month token usage trend" = "DeepSeek bu ayki token kullanım trendi";
-"Chrome profile" = "Chrome profili";
 "Choose which signed-in DeepSeek Platform session supplies detailed usage." = "Ayrıntılı kullanımı sağlayacak oturum açılmış DeepSeek Platform hesabını seçin.";
 "Detailed usage unavailable." = "Ayrıntılı kullanım kullanılamıyor.";
-"Sign in to DeepSeek Platform in Chrome for detailed usage." = "Ayrıntılı kullanım için Chrome'da DeepSeek Platform'a giriş yapın.";
-"Select a DeepSeek Chrome profile in Settings." = "Ayarlarda bir DeepSeek Chrome profili seçin.";
 "Select profile…" = "Profil seç…";
 "cache-hit input" = "önbellekten alınan girdi";
 "cache-miss input" = "önbellekte bulunmayan girdi";
@@ -2549,131 +2548,6 @@
 "Pace sign" = "Kullanım hızı işareti";
 "Ahead of pace is +" = "Hızın üzerinde kullanım +";
 "Reserve is +" = "Rezerv +";
-
-"Sign In…" = "Sign In…";
-
-"Connect…" = "Connect…";
-
-"Show model-specific weekly usage" = "Show model-specific weekly usage";
-"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
-
-// Native gauge settings and states.
-"Approve in Login Items…" = "Approve in Login Items…";
-"Available services" = "Available services";
-"Configured services" = "Configured services";
-"Redesign" = "Redesign";
-"Combine into one icon" = "Combine into one icon";
-"With 4 or more services" = "With 4 or more services";
-"Always" = "Always";
-"Manage services in the sidebar." = "Manage services in the sidebar.";
-"Enabled services" = "Enabled services";
-"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
-"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
-"Original" = "Original";
-"Local agents" = "Local agents";
-"No usage access" = "No usage access";
-"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
-"Provider disabled" = "Provider disabled";
-"Search services and active accounts" = "Search services and active accounts";
-"Service maintenance" = "Service maintenance";
-"Service outage" = "Service outage";
-"Sign in required" = "Sign in required";
-"Design" = "Design";
-"Usage delayed or service degraded" = "Usage delayed or service degraded";
-"Usage pace" = "Usage pace";
-"Usage unknown" = "Usage unknown";
-
-/* Settings search and provider ordering */
-"Search settings" = "Search settings";
-"Used providers first" = "Used providers first";
-"No matching settings" = "No matching settings";
-"Settings" = "Settings";
-
-// Native orbit popup
-"Available" = "Kullanılabilir";
-"24h" = "24h";
-"No history yet" = "Henüz geçmiş yok";
-"Recorded available usage" = "Kaydedilen kullanılabilir kullanım";
-
-"Switch when exhausted" = "Switch when exhausted";
-"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
-"Automatic account switching" = "Automatic account switching";
-"Automatic switching on" = "Automatic switching on";
-"Automatic switching off" = "Automatic switching off";
-
-"Local usage totals" = "Local usage totals";
-
-"Time period" = "Dönem";
-
-"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Tüm hesapların geçmişi, tokenları ve harcamaları için dönem. Kota göstergeleri mevcut kullanılabilirliği gösterir.";
-
-"Active %@ account" = "Etkin %@ hesabı";
-
-"Use in %@" = "%@ içinde kullan";
-
-"Use this account in %@" = "Bu hesabı %@ içinde kullan";
-
-"Use %@ in %@" = "%@ hesabını %@ içinde kullan";
-
-"Last updated %@" = "Son güncelleme %@";
-
-"No observations" = "Gözlem yok";
-
-"History begins with recorded usage. Missing time is left empty." = "Geçmiş, kaydedilen kullanım verileriyle başlar. Veri olmayan dönemler boş bırakılır.";
-
-"native_orbit_range_help" = "Geçmiş, token ve harcama dönemi";
-
-"1d" = "1 gün";
-"<1m ago" = "<1 dk önce";
-"Auto switch" = "Otomatik geçiş";
-
-"Switch" = "Geç";
-
-"Switch accounts automatically" = "Hesapları otomatik değiştir";
-
-"native_auto_switch_settings_detail" = "Etkin hesabın kotası bittiğinde Codex CLI, kotası kalan bir hesaba geçer. Elle geçiş bunu 10 dakika duraklatır.";
-"Now" = "Şimdi";
-"Updating…" = "Güncelleniyor…";
-
-"Local Claude archive" = "Yerel Claude arşivi";
-
-"Account not recorded" = "Hesap kaydedilmemiş";
-
-"Anonymous observations from this provider. No account identity was recorded." = "Bu sağlayıcıdan anonim ölçümler. Hesap kimliği kaydedilmemiş.";
-
-"History begins with recorded usage." = "Geçmiş, kaydedilen kullanımla başlar.";
-
-"%d observations · %d/%d days" = "%d gözlem · %d/%d gün";
-
-"No observations in this period" = "Bu dönemde gözlem yok";
-
-"Last observed %@" = "Son gözlem %@";
-
-"First observed %@" = "İlk gözlem %@";
-
-"Connecting lines hold the last recorded value." = "Bağlantı çizgileri son kaydedilen değeri korur.";
-
-"Local Codex archive" = "Yerel Codex arşivi";
-
-"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Oturum günlükleri önbellekteki kota değerlerini tekrarlayabilir. Hesap kimliği kaydedilmez.";
-
-"%ds ago" = "%dsn önce";
-
-"Local Kimi archive" = "Yerel Kimi arşivi";
-"Lines connect nearby observations. Gaps have no recorded data." = "Çizgiler, zaman olarak yakın ölçümleri birleştirir. Boşluklarda kaydedilmiş veri yoktur.";
-"native_refresh_timed_out" = "Yenileme beklenenden uzun sürüyor. Arka planda devam ediyor.";
-"native_refresh_claude_swap_paced" = "claude-swap, Anthropic’in istek sınırı içinde kalmak için bu hesabı birkaç dakikada bir günceller.";
-"native_refresh_issue_stale" = "Eski";
-"native_refresh_issue_slow" = "Yavaş";
-"native_orbit_range_day" = "G";
-"native_orbit_range_week" = "H";
-"native_orbit_range_month" = "A";
-"Last 7 days" = "Son 7 gün";
-
-"Use" = "Kullan";
-
-/* Combined account paging (English fallback). */
-"Account pages" = "Account pages";
 "Back" = "Geri";
 "Forward" = "İleri";
 
@@ -2888,3 +2762,134 @@
 "Show this Mac's recorded OpenCode usage in Codex history. Off by default; scoped or alternate CODEX_HOME locations always stay excluded." = "Bu Mac’te kaydedilen OpenCode kullanımını Codex geçmişinde gösterir. Varsayılan olarak kapalıdır; kapsamı sınırlandırılmış veya alternatif CODEX_HOME konumları her zaman hariç tutulur.";
 "Auto uses the active saved session, otherwise an API key or browser cookies." = "Otomatik, etkin kayıtlı oturumu kullanır; yoksa bir API anahtarı veya tarayıcı çerezlerini kullanır.";
 "Store multiple Command Code subscription sessions." = "Birden fazla Command Code abonelik oturumunu depolayın.";
+
+"codex_reset_credit_expiry_notifications_title" = "Codex sıfırlama kredisi süresi";
+
+"codex_reset_credit_expiry_notifications_subtitle" = "Kullanım yenilendiğinde, süre dolmadan 1 gün ve 1 saat önce hatırlatır.";
+/* OpenDesign */
+"OpenDesign" = "OpenDesign";
+"Show OpenDesign usage" = "OpenDesign kullanımını göster";
+"Sign in to OpenDesign, then refresh CodexBar." = "OpenDesign hesabınıza giriş yapın, ardından CodexBar’ı yenileyin.";
+"OpenDesign usage response format changed." = "OpenDesign kullanım yanıtının biçimi değişti.";
+"OpenDesign billing access was denied." = "OpenDesign fatura bilgilerine erişim reddedildi.";
+"OpenDesign request failed. Try again later." = "OpenDesign isteği başarısız oldu. Daha sonra tekrar deneyin.";
+"OpenDesign subscription usage is unavailable for this workspace." = "Bu çalışma alanı için OpenDesign abonelik kullanımı mevcut değil.";
+"upcoming_reset_notifications_title" = "Yaklaşan sıfırlama uyarıları";
+"upcoming_reset_notifications_subtitle" = "Codex için haftalık limit sıfırlanmadan önce, kota kullanılmamışken uyarır.";
+"upcoming_reset_notification_title" = "%1$@ %2$@ limiti yakında sıfırlanacak";
+"upcoming_reset_notification_body" = "Henüz %1$@ kota kullanılmadı. %2$@ içinde sıfırlanacak ve kullanılmayan kota kaybolacak.";
+"upcoming_reset_notification_body_with_account" = "Hesap %1$@. Henüz %2$@ kota kullanılmadı. %3$@ içinde sıfırlanacak ve kullanılmayan kota kaybolacak.";
+"Sign in to DeepSeek Platform in a Chromium-based browser for detailed usage." = "Ayrıntılı kullanım için Chromium tabanlı bir tarayıcıda DeepSeek Platform'a giriş yapın.";
+"Select a DeepSeek browser profile in Settings." = "Ayarlarda bir DeepSeek tarayıcı profili seçin.";
+"menu_bar_layout_token_separator_glyph_accessibility" = "Ayırıcı %@";
+"menu_bar_layout_separator_pipe" = "Dikey çizgi";
+"menu_bar_layout_separator_slash" = "Eğik çizgi";
+"menu_bar_layout_separator_hyphen" = "Kısa çizgi";
+"menu_bar_layout_separator_bullet" = "Madde imi";
+"menu_bar_layout_separator_diamond" = "Dolu baklava";
+"menu_bar_layout_separator_hollowDiamond" = "Boş baklava";
+"menu_bar_layout_separator_tilde" = "Yaklaşık işareti";
+"menu_bar_layout_separator_doubleBar" = "Çift dikey çizgi";
+"Rename" = "Yeniden adlandır";
+"Rename account" = "Hesabı yeniden adlandır";
+"Account name" = "Hesap adı";
+"Leave blank to use the default name." = "Varsayılan adı kullanmak için boş bırakın.";
+"Rewards" = "Ödüller";
+"Reward expiry" = "Ödüllerin son kullanma tarihi";
+
+/* Native redesign */
+"Chrome profile" = "Chrome profili";
+"Sign in to DeepSeek Platform in Chrome for detailed usage." = "Ayrıntılı kullanım için Chrome'da DeepSeek Platform'a giriş yapın.";
+"Select a DeepSeek Chrome profile in Settings." = "Ayarlarda bir DeepSeek Chrome profili seçin.";
+"Sign In…" = "Sign In…";
+"Connect…" = "Connect…";
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Redesign" = "Redesign";
+"Combine into one icon" = "Combine into one icon";
+"With 4 or more services" = "With 4 or more services";
+"Always" = "Always";
+"Manage services in the sidebar." = "Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Original" = "Original";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Design" = "Design";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+"Available" = "Kullanılabilir";
+"24h" = "24h";
+"No history yet" = "Henüz geçmiş yok";
+"Recorded available usage" = "Kaydedilen kullanılabilir kullanım";
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+"Local usage totals" = "Local usage totals";
+"Time period" = "Dönem";
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Tüm hesapların geçmişi, tokenları ve harcamaları için dönem. Kota göstergeleri mevcut kullanılabilirliği gösterir.";
+"Active %@ account" = "Etkin %@ hesabı";
+"Use in %@" = "%@ içinde kullan";
+"Use this account in %@" = "Bu hesabı %@ içinde kullan";
+"Use %@ in %@" = "%@ hesabını %@ içinde kullan";
+"Last updated %@" = "Son güncelleme %@";
+"No observations" = "Gözlem yok";
+"History begins with recorded usage. Missing time is left empty." = "Geçmiş, kaydedilen kullanım verileriyle başlar. Veri olmayan dönemler boş bırakılır.";
+"native_orbit_range_help" = "Geçmiş, token ve harcama dönemi";
+"1d" = "1 gün";
+"<1m ago" = "<1 dk önce";
+"Auto switch" = "Otomatik geçiş";
+"Switch" = "Geç";
+"Switch accounts automatically" = "Hesapları otomatik değiştir";
+"native_auto_switch_settings_detail" = "Etkin hesabın kotası bittiğinde Codex CLI, kotası kalan bir hesaba geçer. Elle geçiş bunu 10 dakika duraklatır.";
+"Now" = "Şimdi";
+"Updating…" = "Güncelleniyor…";
+"Local Claude archive" = "Yerel Claude arşivi";
+"Account not recorded" = "Hesap kaydedilmemiş";
+"Anonymous observations from this provider. No account identity was recorded." = "Bu sağlayıcıdan anonim ölçümler. Hesap kimliği kaydedilmemiş.";
+"History begins with recorded usage." = "Geçmiş, kaydedilen kullanımla başlar.";
+"%d observations · %d/%d days" = "%d gözlem · %d/%d gün";
+"No observations in this period" = "Bu dönemde gözlem yok";
+"Last observed %@" = "Son gözlem %@";
+"First observed %@" = "İlk gözlem %@";
+"Connecting lines hold the last recorded value." = "Bağlantı çizgileri son kaydedilen değeri korur.";
+"Local Codex archive" = "Yerel Codex arşivi";
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Oturum günlükleri önbellekteki kota değerlerini tekrarlayabilir. Hesap kimliği kaydedilmez.";
+"%ds ago" = "%dsn önce";
+"Local Kimi archive" = "Yerel Kimi arşivi";
+"Lines connect nearby observations. Gaps have no recorded data." = "Çizgiler, zaman olarak yakın ölçümleri birleştirir. Boşluklarda kaydedilmiş veri yoktur.";
+"native_refresh_timed_out" = "Yenileme beklenenden uzun sürüyor. Arka planda devam ediyor.";
+"native_refresh_claude_swap_paced" = "claude-swap, Anthropic’in istek sınırı içinde kalmak için bu hesabı birkaç dakikada bir günceller.";
+"native_refresh_issue_stale" = "Eski";
+"native_refresh_issue_slow" = "Yavaş";
+"native_orbit_range_day" = "G";
+"native_orbit_range_week" = "H";
+"native_orbit_range_month" = "A";
+"Last 7 days" = "Son 7 gün";
+"Use" = "Kullan";
+"Account pages" = "Account pages";
+"native_account_use_missing_login" = "Kayıtlı oturum yok. Yeniden giriş yapın.";
+"native_account_use_unknown_status" = "Hesap durumu bilinmiyor. Yenileyip tekrar deneyin.";
+"native_account_use_read_only" = "Bu bağlantı hesap değiştirmeyi desteklemiyor.";
+"native_account_use_monitor_only" = "Bu hesabı sağlayıcının uygulamasında veya CLI üzerinden değiştirin.";
+"native_account_use_busy" = "Mevcut hesap değişiminin bitmesini bekleyin.";
+"native_account_use_not_ready" = "Hesap değiştirme henüz hazır değil. Biraz sonra tekrar deneyin.";
+"native_account_use_unverified_login" = "Mevcut oturum doğrulanmadı. Yenileyip tekrar deneyin.";
+"native_app_update_ready" = "CodexBar güncellemesi yüklenmeye hazır.";

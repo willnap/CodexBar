@@ -6,6 +6,19 @@ struct NativeCodexQuotaHistoryLane: Hashable, Sendable {
     let windowMinutes: Int
 }
 
+/// Recovery matches the measured tuple; labels and cadence annotations are independent provenance.
+private struct NativeCodexQuotaReading: Hashable, Sendable {
+    let capturedAt: Date
+    let usedPercent: Double
+    let resetsAt: Date?
+
+    init(_ entry: PlanUtilizationHistoryEntry) {
+        self.capturedAt = entry.capturedAt
+        self.usedPercent = entry.usedPercent
+        self.resetsAt = entry.resetsAt
+    }
+}
+
 extension UsageStore {
     func scheduleNativeCodexSessionHistoryBackfill(
         projection: CodexVisibleAccountProjection,
@@ -161,8 +174,11 @@ extension UsageStore {
             let repaired = histories.compactMap { history -> PlanUtilizationSeriesHistory? in
                 let lane = NativeCodexQuotaHistoryLane(name: history.name, windowMinutes: history.windowMinutes)
                 guard history.name.isNativeQuotaObservation, let source = lanes[lane] else { return history }
+                let sourceReadings = Set(source.map(NativeCodexQuotaReading.init))
+                let protectedReadings = Set((protected[owner]?[lane] ?? []).map(NativeCodexQuotaReading.init))
                 let entries = history.entries.filter {
-                    !source.contains($0) || protected[owner]?[lane]?.contains($0) == true
+                    let reading = NativeCodexQuotaReading($0)
+                    return !sourceReadings.contains(reading) || protectedReadings.contains(reading)
                 }
                 return entries.isEmpty ? nil : PlanUtilizationSeriesHistory(
                     name: history.name, windowMinutes: history.windowMinutes, entries: entries)

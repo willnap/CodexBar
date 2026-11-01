@@ -359,6 +359,10 @@ private func makeUpdaterController() -> UpdaterProviding {
         return DisabledUpdaterController(unavailableReason: "Updates unavailable in this build.")
     }
 
+    guard !InstallOrigin.isLocalBuild(appBundleURL: bundleURL) else {
+        return DisabledUpdaterController(unavailableReason: L("Updates unavailable in this build."))
+    }
+
     if InstallOrigin.isHomebrewCask(appBundleURL: bundleURL) {
         return HomebrewUpdaterController(
             savedAutoCheck: (UserDefaults.standard.object(forKey: "autoUpdateEnabled") as? Bool) ?? true,

@@ -1,4 +1,5 @@
 /* Persian localization for CodexBar */
+"Copilot subscription ended" = "اشتراک Copilot پایان یافته است";
 
 /* iCloud Sync */
 "+ %d more" = "+ %d مورد دیگر";
@@ -160,6 +161,7 @@
 "Individual credits" = "اعتبارات فردی";
 "Workspace" = "فضای کاری";
 "Credits history" = "تاریخچه اعتبارها";
+"Cursor app session expired — open Cursor to sign in again, or sign in to cursor.com in your browser." = "نشست برنامهٔ Cursor منقضی شده است — Cursor را باز کنید و دوباره وارد شوید، یا در مرورگر خود وارد cursor.com شوید.";
 "Cursor login failed" = "ورود Cursor ناموفق";
 "Custom" = "عرف";
 "Custom Path" = "مسیر سفارشی";
@@ -1062,10 +1064,7 @@
 "Today cash" = "امروزه پول نقد";
 "DeepSeek 30 day token usage trend" = "DeepSeek روند استفاده ۳۰ روزه از توکن";
 "Detailed usage unavailable." = "جزئیات استفاده در دسترس نیست.";
-"Sign in to DeepSeek Platform in Chrome for detailed usage." = "برای مشاهده جزئیات استفاده، در Chrome وارد DeepSeek Platform شوید.";
-"Select a DeepSeek Chrome profile in Settings." = "یک نمایه Chrome دیپ‌سیک را در تنظیمات انتخاب کنید.";
 "DeepSeek this month token usage trend" = "روند استفاده از توکن DeepSeek در این ماه";
-"Chrome profile" = "نمایه Chrome";
 "Choose which signed-in DeepSeek Platform session supplies detailed usage." = "انتخاب کنید کدام نشست واردشدهٔ DeepSeek Platform جزئیات استفاده را ارائه دهد.";
 "Select profile…" = "انتخاب نمایه…";
 "cache-hit input" = "ورودی کش و ضربه";
@@ -2401,7 +2400,7 @@
 "Optional. Select each profile's .gemini folder to combine local token and cost history. The primary home is always included. Does not change sign-in or quotas." = "اختیاری. پوشه .gemini هر پروفایل را برای ادغام تاریخچه محلی توکن‌ها و هزینه‌ها انتخاب کنید. پوشه اصلی همیشه گنجانده می‌شود. ورود به حساب یا سهمیه‌ها را تغییر نمی‌دهد.";
 
 /* Selected browser profile */
-"Browser profile" = "نمایهٔ مرورگر";
+"Browser profile" = "نمایه مرورگر";
 "Unavailable profile: %@" = "نمایه در دسترس نیست: %@";
 "Read only the selected %@ profile. Accounts are never selected automatically." = "فقط نمایهٔ انتخاب‌شدهٔ %@ خوانده می‌شود. حساب‌ها هرگز به‌طور خودکار انتخاب نمی‌شوند.";
 "Langdock cost usage is not supported." = "ردیابی هزینه‌های استفاده از Langdock پشتیبانی نمی‌شود.";
@@ -2550,131 +2549,6 @@
 "Pace sign" = "علامت آهنگ مصرف";
 "Ahead of pace is +" = "جلوتر از آهنگ مصرف یعنی +";
 "Reserve is +" = "ذخیره یعنی +";
-
-"Sign In…" = "Sign In…";
-
-"Connect…" = "Connect…";
-
-"Show model-specific weekly usage" = "Show model-specific weekly usage";
-"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
-
-// Native gauge settings and states.
-"Approve in Login Items…" = "Approve in Login Items…";
-"Available services" = "Available services";
-"Configured services" = "Configured services";
-"Redesign" = "Redesign";
-"Combine into one icon" = "Combine into one icon";
-"With 4 or more services" = "With 4 or more services";
-"Always" = "Always";
-"Manage services in the sidebar." = "Manage services in the sidebar.";
-"Enabled services" = "Enabled services";
-"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
-"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
-"Original" = "Original";
-"Local agents" = "Local agents";
-"No usage access" = "No usage access";
-"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
-"Provider disabled" = "Provider disabled";
-"Search services and active accounts" = "Search services and active accounts";
-"Service maintenance" = "Service maintenance";
-"Service outage" = "Service outage";
-"Sign in required" = "Sign in required";
-"Design" = "Design";
-"Usage delayed or service degraded" = "Usage delayed or service degraded";
-"Usage pace" = "Usage pace";
-"Usage unknown" = "Usage unknown";
-
-/* Settings search and provider ordering */
-"Search settings" = "Search settings";
-"Used providers first" = "Used providers first";
-"No matching settings" = "No matching settings";
-"Settings" = "Settings";
-
-// Native orbit popup
-"Available" = "در دسترس";
-"24h" = "24h";
-"No history yet" = "هنوز سابقه‌ای وجود ندارد";
-"Recorded available usage" = "مصرف در دسترس ثبت‌شده";
-
-"Switch when exhausted" = "Switch when exhausted";
-"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
-"Automatic account switching" = "Automatic account switching";
-"Automatic switching on" = "Automatic switching on";
-"Automatic switching off" = "Automatic switching off";
-
-"Local usage totals" = "Local usage totals";
-
-"Time period" = "بازهٔ زمانی";
-
-"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "بازهٔ زمانی تاریخچه، توکن‌ها و هزینه‌های همهٔ حساب‌ها. نشانگرهای سهمیه مقدار در دسترس فعلی را نمایش می‌دهند.";
-
-"Active %@ account" = "حساب فعال %@";
-
-"Use in %@" = "استفاده در %@";
-
-"Use this account in %@" = "استفاده از این حساب در %@";
-
-"Use %@ in %@" = "استفاده از %@ در %@";
-
-"Last updated %@" = "آخرین به‌روزرسانی %@";
-
-"No observations" = "مشاهده‌ای ثبت نشده";
-
-"History begins with recorded usage. Missing time is left empty." = "تاریخچه از داده‌های مصرف ثبت‌شده آغاز می‌شود. بازه‌های بدون داده خالی می‌مانند.";
-
-"native_orbit_range_help" = "بازه برای تاریخچه، توکن‌ها و هزینه";
-
-"1d" = "1 روز";
-"<1m ago" = "کمتر از 1د پیش";
-"Auto switch" = "تعویض خودکار";
-
-"Switch" = "تعویض";
-
-"Switch accounts automatically" = "تعویض خودکار حساب‌ها";
-
-"native_auto_switch_settings_detail" = "وقتی سهمیه حساب فعال تمام شود، Codex CLI به حسابی با سهمیه باقی‌مانده می‌رود. تعویض دستی این کار را ۱۰ دقیقه متوقف می‌کند.";
-"Now" = "اکنون";
-"Updating…" = "در حال به‌روزرسانی…";
-
-"Local Claude archive" = "بایگانی محلی Claude";
-
-"Account not recorded" = "حساب ثبت نشده";
-
-"Anonymous observations from this provider. No account identity was recorded." = "مشاهدات ناشناس از این ارائه‌دهنده. هویت حساب ثبت نشده است.";
-
-"History begins with recorded usage." = "تاریخچه با مصرف ثبت‌شده آغاز می‌شود.";
-
-"%d observations · %d/%d days" = "%d مشاهده · %d/%d روز";
-
-"No observations in this period" = "در این بازه مشاهده‌ای وجود ندارد";
-
-"Last observed %@" = "آخرین مشاهده %@";
-
-"First observed %@" = "اولین مشاهده %@";
-
-"Connecting lines hold the last recorded value." = "خطوط اتصال آخرین مقدار ثبت‌شده را حفظ می‌کنند.";
-
-"Local Codex archive" = "بایگانی محلی Codex";
-
-"Session logs can repeat cached quota readings. Their account identity is not recorded." = "گزارش‌های نشست ممکن است مقادیر سهمیهٔ ذخیره‌شده را تکرار کنند. هویت حساب ثبت نشده است.";
-
-"%ds ago" = "%d ثانیه پیش";
-
-"Local Kimi archive" = "بایگانی محلی Kimi";
-"Lines connect nearby observations. Gaps have no recorded data." = "خط‌ها اندازه‌گیری‌های نزدیک به هم در زمان را به هم وصل می‌کنند. فاصله‌های خالی دادهٔ ثبت‌شده‌ای ندارند.";
-"native_refresh_timed_out" = "به‌روزرسانی بیش از حد انتظار طول می‌کشد. در پس‌زمینه ادامه می‌یابد.";
-"native_refresh_claude_swap_paced" = "claude-swap این حساب را هر چند دقیقه یک‌بار به‌روزرسانی می‌کند تا در محدودهٔ نرخ مجاز Anthropic بماند.";
-"native_refresh_issue_stale" = "قدیمی";
-"native_refresh_issue_slow" = "کند";
-"native_orbit_range_day" = "ر";
-"native_orbit_range_week" = "ه";
-"native_orbit_range_month" = "م";
-"Last 7 days" = "۷ روز گذشته";
-
-"Use" = "استفاده";
-
-/* Combined account paging (English fallback). */
-"Account pages" = "Account pages";
 "Back" = "بازگشت";
 "Forward" = "جلو";
 
@@ -2889,3 +2763,134 @@
 "Show this Mac's recorded OpenCode usage in Codex history. Off by default; scoped or alternate CODEX_HOME locations always stay excluded." = "مصرف ثبت‌شدهٔ OpenCode در این Mac را در تاریخچهٔ Codex نمایش می‌دهد. به‌طور پیش‌فرض خاموش است؛ مسیرهای CODEX_HOME با دامنهٔ محدود یا جایگزین همیشه مستثنا هستند.";
 "Auto uses the active saved session, otherwise an API key or browser cookies." = "حالت خودکار از نشست ذخیره‌شدهٔ فعال استفاده می‌کند؛ در غیر این صورت از کلید API یا کوکی‌های مرورگر استفاده می‌کند.";
 "Store multiple Command Code subscription sessions." = "چندین نشست اشتراک Command Code را ذخیره کنید.";
+
+"codex_reset_credit_expiry_notifications_title" = "انقضای اعتبار بازنشانی Codex";
+
+"codex_reset_credit_expiry_notifications_subtitle" = "هنگام به‌روزرسانی مصرف، ۱ روز و ۱ ساعت پیش از انقضا یادآوری می‌کند.";
+/* OpenDesign */
+"OpenDesign" = "OpenDesign";
+"Show OpenDesign usage" = "نمایش میزان استفاده از OpenDesign";
+"Sign in to OpenDesign, then refresh CodexBar." = "وارد OpenDesign شوید، سپس CodexBar را تازه‌سازی کنید.";
+"OpenDesign usage response format changed." = "قالب پاسخ میزان استفاده از OpenDesign تغییر کرده است.";
+"OpenDesign billing access was denied." = "دسترسی به اطلاعات صورتحساب OpenDesign رد شد.";
+"OpenDesign request failed. Try again later." = "درخواست OpenDesign ناموفق بود. بعداً دوباره تلاش کنید.";
+"OpenDesign subscription usage is unavailable for this workspace." = "میزان استفاده از اشتراک OpenDesign برای این فضای کاری در دسترس نیست.";
+"upcoming_reset_notifications_title" = "هشدارهای پیش از بازنشانی";
+"upcoming_reset_notifications_subtitle" = "برای Codex پیش از بازنشانی محدودیت هفتگی، وقتی سهمیه هنوز مصرف نشده هشدار می‌دهد.";
+"upcoming_reset_notification_title" = "محدودیت %2$@ در %1$@ به‌زودی بازنشانی می‌شود";
+"upcoming_reset_notification_body" = "هنوز %1$@ از سهمیه استفاده نشده است. در %2$@ بازنشانی می‌شود و سهمیه استفاده‌نشده از دست می‌رود.";
+"upcoming_reset_notification_body_with_account" = "حساب %1$@. هنوز %2$@ از سهمیه استفاده نشده است. در %3$@ بازنشانی می‌شود و سهمیه استفاده‌نشده از دست می‌رود.";
+"Sign in to DeepSeek Platform in a Chromium-based browser for detailed usage." = "برای مشاهده جزئیات استفاده، در یک مرورگر مبتنی بر Chromium وارد DeepSeek Platform شوید.";
+"Select a DeepSeek browser profile in Settings." = "یک نمایه مرورگر دیپ‌سیک را در تنظیمات انتخاب کنید.";
+"menu_bar_layout_token_separator_glyph_accessibility" = "جداکننده %@";
+"menu_bar_layout_separator_pipe" = "خط عمودی";
+"menu_bar_layout_separator_slash" = "خط مورب";
+"menu_bar_layout_separator_hyphen" = "خط تیره";
+"menu_bar_layout_separator_bullet" = "نشان گلوله‌ای";
+"menu_bar_layout_separator_diamond" = "لوزی توپر";
+"menu_bar_layout_separator_hollowDiamond" = "لوزی توخالی";
+"menu_bar_layout_separator_tilde" = "مد";
+"menu_bar_layout_separator_doubleBar" = "خط عمودی دوتایی";
+"Rename" = "تغییر نام";
+"Rename account" = "تغییر نام حساب";
+"Account name" = "نام حساب";
+"Leave blank to use the default name." = "برای استفاده از نام پیش‌فرض، این قسمت را خالی بگذارید.";
+"Rewards" = "پاداش‌ها";
+"Reward expiry" = "انقضای پاداش‌ها";
+
+/* Native redesign */
+"Sign in to DeepSeek Platform in Chrome for detailed usage." = "برای مشاهده جزئیات استفاده، در Chrome وارد DeepSeek Platform شوید.";
+"Select a DeepSeek Chrome profile in Settings." = "یک نمایه Chrome دیپ‌سیک را در تنظیمات انتخاب کنید.";
+"Chrome profile" = "نمایه Chrome";
+"Sign In…" = "Sign In…";
+"Connect…" = "Connect…";
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Redesign" = "Redesign";
+"Combine into one icon" = "Combine into one icon";
+"With 4 or more services" = "With 4 or more services";
+"Always" = "Always";
+"Manage services in the sidebar." = "Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Original" = "Original";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Design" = "Design";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+"Available" = "در دسترس";
+"24h" = "24h";
+"No history yet" = "هنوز سابقه‌ای وجود ندارد";
+"Recorded available usage" = "مصرف در دسترس ثبت‌شده";
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+"Local usage totals" = "Local usage totals";
+"Time period" = "بازهٔ زمانی";
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "بازهٔ زمانی تاریخچه، توکن‌ها و هزینه‌های همهٔ حساب‌ها. نشانگرهای سهمیه مقدار در دسترس فعلی را نمایش می‌دهند.";
+"Active %@ account" = "حساب فعال %@";
+"Use in %@" = "استفاده در %@";
+"Use this account in %@" = "استفاده از این حساب در %@";
+"Use %@ in %@" = "استفاده از %@ در %@";
+"Last updated %@" = "آخرین به‌روزرسانی %@";
+"No observations" = "مشاهده‌ای ثبت نشده";
+"History begins with recorded usage. Missing time is left empty." = "تاریخچه از داده‌های مصرف ثبت‌شده آغاز می‌شود. بازه‌های بدون داده خالی می‌مانند.";
+"native_orbit_range_help" = "بازه برای تاریخچه، توکن‌ها و هزینه";
+"1d" = "1 روز";
+"<1m ago" = "کمتر از 1د پیش";
+"Auto switch" = "تعویض خودکار";
+"Switch" = "تعویض";
+"Switch accounts automatically" = "تعویض خودکار حساب‌ها";
+"native_auto_switch_settings_detail" = "وقتی سهمیه حساب فعال تمام شود، Codex CLI به حسابی با سهمیه باقی‌مانده می‌رود. تعویض دستی این کار را ۱۰ دقیقه متوقف می‌کند.";
+"Now" = "اکنون";
+"Updating…" = "در حال به‌روزرسانی…";
+"Local Claude archive" = "بایگانی محلی Claude";
+"Account not recorded" = "حساب ثبت نشده";
+"Anonymous observations from this provider. No account identity was recorded." = "مشاهدات ناشناس از این ارائه‌دهنده. هویت حساب ثبت نشده است.";
+"History begins with recorded usage." = "تاریخچه با مصرف ثبت‌شده آغاز می‌شود.";
+"%d observations · %d/%d days" = "%d مشاهده · %d/%d روز";
+"No observations in this period" = "در این بازه مشاهده‌ای وجود ندارد";
+"Last observed %@" = "آخرین مشاهده %@";
+"First observed %@" = "اولین مشاهده %@";
+"Connecting lines hold the last recorded value." = "خطوط اتصال آخرین مقدار ثبت‌شده را حفظ می‌کنند.";
+"Local Codex archive" = "بایگانی محلی Codex";
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "گزارش‌های نشست ممکن است مقادیر سهمیهٔ ذخیره‌شده را تکرار کنند. هویت حساب ثبت نشده است.";
+"%ds ago" = "%d ثانیه پیش";
+"Local Kimi archive" = "بایگانی محلی Kimi";
+"Lines connect nearby observations. Gaps have no recorded data." = "خط‌ها اندازه‌گیری‌های نزدیک به هم در زمان را به هم وصل می‌کنند. فاصله‌های خالی دادهٔ ثبت‌شده‌ای ندارند.";
+"native_refresh_timed_out" = "به‌روزرسانی بیش از حد انتظار طول می‌کشد. در پس‌زمینه ادامه می‌یابد.";
+"native_refresh_claude_swap_paced" = "claude-swap این حساب را هر چند دقیقه یک‌بار به‌روزرسانی می‌کند تا در محدودهٔ نرخ مجاز Anthropic بماند.";
+"native_refresh_issue_stale" = "قدیمی";
+"native_refresh_issue_slow" = "کند";
+"native_orbit_range_day" = "ر";
+"native_orbit_range_week" = "ه";
+"native_orbit_range_month" = "م";
+"Last 7 days" = "۷ روز گذشته";
+"Use" = "استفاده";
+"Account pages" = "Account pages";
+"native_account_use_missing_login" = "ورود ذخیره‌شده‌ای وجود ندارد. دوباره وارد شوید.";
+"native_account_use_unknown_status" = "وضعیت حساب نامشخص است. تازه‌سازی کنید و دوباره تلاش کنید.";
+"native_account_use_read_only" = "این اتصال از تغییر حساب پشتیبانی نمی‌کند.";
+"native_account_use_monitor_only" = "این حساب را در برنامه یا CLI ارائه‌دهنده تغییر دهید.";
+"native_account_use_busy" = "منتظر بمانید تا تغییر حساب فعلی تمام شود.";
+"native_account_use_not_ready" = "تغییر حساب هنوز آماده نیست. کمی بعد دوباره تلاش کنید.";
+"native_account_use_unverified_login" = "ورود فعلی تأیید نشده است. تازه‌سازی کنید و دوباره تلاش کنید.";
+"native_app_update_ready" = "به‌روزرسانی CodexBar آمادهٔ نصب است.";

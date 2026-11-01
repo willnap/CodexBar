@@ -1,4 +1,5 @@
 /* Chinese (Simplified) localization for CodexBar */
+"Copilot subscription ended" = "Copilot 订阅已结束";
 
 /* iCloud Sync */
 "+ %d more" = "还有 %d 个";
@@ -180,6 +181,7 @@
 "Individual credits" = "个人额度";
 "Workspace" = "工作区";
 "Credits history" = "额度记录";
+"Cursor app session expired — open Cursor to sign in again, or sign in to cursor.com in your browser." = "Cursor 应用会话已过期 — 请打开 Cursor 重新登录，或在浏览器中登录 cursor.com。";
 "Cursor login failed" = "Cursor 登录失败";
 "Custom" = "自定义";
 "Custom Path" = "自定义路径";
@@ -1329,11 +1331,8 @@
 "Share Stats…" = "分享统计数据…";
 "Stats copied" = "统计数据已复制";
 "DeepSeek this month token usage trend" = "DeepSeek 本月 token 用量趋势";
-"Chrome profile" = "Chrome 配置文件";
 "Choose which signed-in DeepSeek Platform session supplies detailed usage." = "选择要提供详细用量的已登录 DeepSeek Platform 会话。";
 "Detailed usage unavailable." = "详细用量不可用。";
-"Sign in to DeepSeek Platform in Chrome for detailed usage." = "请在 Chrome 中登录 DeepSeek Platform 以查看详细用量。";
-"Select a DeepSeek Chrome profile in Settings." = "请在“设置”中选择 DeepSeek Chrome 配置文件。";
 "Select profile…" = "选择配置文件…";
 
 "%@: %@" = "%@：%@";
@@ -2539,131 +2538,6 @@
 "Pace sign" = "使用节奏符号";
 "Ahead of pace is +" = "超出节奏为 +";
 "Reserve is +" = "余量为 +";
-
-"Sign In…" = "Sign In…";
-
-"Connect…" = "Connect…";
-
-"Show model-specific weekly usage" = "Show model-specific weekly usage";
-"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
-
-// Native gauge settings and states.
-"Approve in Login Items…" = "Approve in Login Items…";
-"Available services" = "Available services";
-"Configured services" = "Configured services";
-"Redesign" = "Redesign";
-"Combine into one icon" = "Combine into one icon";
-"With 4 or more services" = "With 4 or more services";
-"Always" = "Always";
-"Manage services in the sidebar." = "Manage services in the sidebar.";
-"Enabled services" = "Enabled services";
-"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
-"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
-"Original" = "Original";
-"Local agents" = "Local agents";
-"No usage access" = "No usage access";
-"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
-"Provider disabled" = "Provider disabled";
-"Search services and active accounts" = "Search services and active accounts";
-"Service maintenance" = "Service maintenance";
-"Service outage" = "Service outage";
-"Sign in required" = "Sign in required";
-"Design" = "Design";
-"Usage delayed or service degraded" = "Usage delayed or service degraded";
-"Usage pace" = "Usage pace";
-"Usage unknown" = "Usage unknown";
-
-/* Settings search and provider ordering */
-"Search settings" = "Search settings";
-"Used providers first" = "Used providers first";
-"No matching settings" = "No matching settings";
-"Settings" = "Settings";
-
-// Native orbit popup
-"Available" = "可用";
-"24h" = "24h";
-"No history yet" = "暂无历史记录";
-"Recorded available usage" = "已记录的可用额度";
-
-"Switch when exhausted" = "Switch when exhausted";
-"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
-"Automatic account switching" = "Automatic account switching";
-"Automatic switching on" = "Automatic switching on";
-"Automatic switching off" = "Automatic switching off";
-
-"Local usage totals" = "Local usage totals";
-
-"Time period" = "时间范围";
-
-"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "所有账户的历史记录、Token 和支出的时间范围。配额表盘显示当前可用量。";
-
-"Active %@ account" = "当前 %@ 账户";
-
-"Use in %@" = "在 %@ 中使用";
-
-"Use this account in %@" = "在 %@ 中使用此账户";
-
-"Use %@ in %@" = "在 %2$@ 中使用 %1$@";
-
-"Last updated %@" = "上次更新 %@";
-
-"No observations" = "暂无记录";
-
-"History begins with recorded usage. Missing time is left empty." = "历史记录从已记录的使用数据开始。缺少数据的时间段保持空白。";
-
-"native_orbit_range_help" = "历史、令牌和花费的时间范围";
-
-"1d" = "1 天";
-"<1m ago" = "不到1分钟前";
-"Auto switch" = "自动切换";
-
-"Switch" = "切换";
-
-"Switch accounts automatically" = "自动切换账户";
-
-"native_auto_switch_settings_detail" = "当前账户用尽额度时，Codex CLI 会切换到仍有额度的账户。手动切换后暂停 10 分钟。";
-"Now" = "现在";
-"Updating…" = "正在更新…";
-
-"Local Claude archive" = "Claude 本地历史";
-
-"Account not recorded" = "未记录账户";
-
-"Anonymous observations from this provider. No account identity was recorded." = "此提供商的匿名观测记录，未记录账户身份。";
-
-"History begins with recorded usage." = "历史记录始于首次记录的用量。";
-
-"%d observations · %d/%d days" = "%d 次记录 · %d/%d 天";
-
-"No observations in this period" = "此期间没有记录";
-
-"Last observed %@" = "最后记录 %@";
-
-"First observed %@" = "首次记录 %@";
-
-"Connecting lines hold the last recorded value." = "连接线保持最后记录的数值。";
-
-"Local Codex archive" = "本地 Codex 存档";
-
-"Session logs can repeat cached quota readings. Their account identity is not recorded." = "会话日志可能重复记录缓存的额度值，且未记录账户身份。";
-
-"%ds ago" = "%d秒前";
-
-"Local Kimi archive" = "本地 Kimi 存档";
-"Lines connect nearby observations. Gaps have no recorded data." = "线条连接时间相近的测量值。空白区间没有记录的数据。";
-"native_refresh_timed_out" = "刷新耗时超出预期，将在后台继续。";
-"native_refresh_claude_swap_paced" = "claude-swap 每隔几分钟更新一次此账户，以遵守 Anthropic 的速率限制。";
-"native_refresh_issue_stale" = "已过时";
-"native_refresh_issue_slow" = "较慢";
-"native_orbit_range_day" = "日";
-"native_orbit_range_week" = "周";
-"native_orbit_range_month" = "月";
-"Last 7 days" = "最近 7 天";
-
-"Use" = "使用";
-
-/* Combined account paging (English fallback). */
-"Account pages" = "Account pages";
 "Back" = "后退";
 "Forward" = "前进";
 
@@ -2877,3 +2751,134 @@
 "Show this Mac's recorded OpenCode usage in Codex history. Off by default; scoped or alternate CODEX_HOME locations always stay excluded." = "在 Codex 历史记录中显示此 Mac 上记录的 OpenCode 用量。默认关闭；始终排除限定范围或其他 CODEX_HOME 位置。";
 "Auto uses the active saved session, otherwise an API key or browser cookies." = "自动使用当前启用的已保存会话，否则使用 API 密钥或浏览器 Cookie。";
 "Store multiple Command Code subscription sessions." = "存储多个 Command Code 订阅会话。";
+
+"codex_reset_credit_expiry_notifications_title" = "Codex 重置卡到期提醒";
+
+"codex_reset_credit_expiry_notifications_subtitle" = "刷新用量时，在到期前 1 天和 1 小时发送提醒。";
+/* OpenDesign */
+"OpenDesign" = "OpenDesign";
+"Show OpenDesign usage" = "显示 OpenDesign 用量";
+"Sign in to OpenDesign, then refresh CodexBar." = "登录 OpenDesign，然后刷新 CodexBar。";
+"OpenDesign usage response format changed." = "OpenDesign 用量响应格式已更改。";
+"OpenDesign billing access was denied." = "OpenDesign 账单访问被拒绝。";
+"OpenDesign request failed. Try again later." = "OpenDesign 请求失败。请稍后重试。";
+"OpenDesign subscription usage is unavailable for this workspace." = "此工作区的 OpenDesign 订阅用量不可用。";
+"upcoming_reset_notifications_title" = "额度重置前提醒";
+"upcoming_reset_notifications_subtitle" = "在 Codex 每周额度重置前，若额度仍有剩余则发出提醒。";
+"upcoming_reset_notification_title" = "%1$@ %2$@额度即将重置";
+"upcoming_reset_notification_body" = "还有 %1$@ 的额度未使用。额度将在 %2$@ 后重置，未使用的额度将失效。";
+"upcoming_reset_notification_body_with_account" = "账户 %1$@。还有 %2$@ 的额度未使用。额度将在 %3$@ 后重置，未使用的额度将失效。";
+"Sign in to DeepSeek Platform in a Chromium-based browser for detailed usage." = "请在基于 Chromium 的浏览器中登录 DeepSeek Platform 以查看详细用量。";
+"Select a DeepSeek browser profile in Settings." = "请在“设置”中选择 DeepSeek 浏览器配置文件。";
+"menu_bar_layout_token_separator_glyph_accessibility" = "分隔符 %@";
+"menu_bar_layout_separator_pipe" = "竖线";
+"menu_bar_layout_separator_slash" = "斜杠";
+"menu_bar_layout_separator_hyphen" = "连字符";
+"menu_bar_layout_separator_bullet" = "项目符号";
+"menu_bar_layout_separator_diamond" = "实心菱形";
+"menu_bar_layout_separator_hollowDiamond" = "空心菱形";
+"menu_bar_layout_separator_tilde" = "波浪号";
+"menu_bar_layout_separator_doubleBar" = "双竖线";
+"Rename" = "重命名";
+"Rename account" = "重命名账户";
+"Account name" = "账户名称";
+"Leave blank to use the default name." = "留空以使用默认名称。";
+"Rewards" = "奖励";
+"Reward expiry" = "奖励到期日期";
+
+/* Native redesign */
+"Chrome profile" = "Chrome 配置文件";
+"Sign in to DeepSeek Platform in Chrome for detailed usage." = "请在 Chrome 中登录 DeepSeek Platform 以查看详细用量。";
+"Select a DeepSeek Chrome profile in Settings." = "请在“设置”中选择 DeepSeek Chrome 配置文件。";
+"Sign In…" = "Sign In…";
+"Connect…" = "Connect…";
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Redesign" = "Redesign";
+"Combine into one icon" = "Combine into one icon";
+"With 4 or more services" = "With 4 or more services";
+"Always" = "Always";
+"Manage services in the sidebar." = "Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Original" = "Original";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Design" = "Design";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+"Available" = "可用";
+"24h" = "24h";
+"No history yet" = "暂无历史记录";
+"Recorded available usage" = "已记录的可用额度";
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+"Local usage totals" = "Local usage totals";
+"Time period" = "时间范围";
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "所有账户的历史记录、Token 和支出的时间范围。配额表盘显示当前可用量。";
+"Active %@ account" = "当前 %@ 账户";
+"Use in %@" = "在 %@ 中使用";
+"Use this account in %@" = "在 %@ 中使用此账户";
+"Use %@ in %@" = "在 %2$@ 中使用 %1$@";
+"Last updated %@" = "上次更新 %@";
+"No observations" = "暂无记录";
+"History begins with recorded usage. Missing time is left empty." = "历史记录从已记录的使用数据开始。缺少数据的时间段保持空白。";
+"native_orbit_range_help" = "历史、令牌和花费的时间范围";
+"1d" = "1 天";
+"<1m ago" = "不到1分钟前";
+"Auto switch" = "自动切换";
+"Switch" = "切换";
+"Switch accounts automatically" = "自动切换账户";
+"native_auto_switch_settings_detail" = "当前账户用尽额度时，Codex CLI 会切换到仍有额度的账户。手动切换后暂停 10 分钟。";
+"Now" = "现在";
+"Updating…" = "正在更新…";
+"Local Claude archive" = "Claude 本地历史";
+"Account not recorded" = "未记录账户";
+"Anonymous observations from this provider. No account identity was recorded." = "此提供商的匿名观测记录，未记录账户身份。";
+"History begins with recorded usage." = "历史记录始于首次记录的用量。";
+"%d observations · %d/%d days" = "%d 次记录 · %d/%d 天";
+"No observations in this period" = "此期间没有记录";
+"Last observed %@" = "最后记录 %@";
+"First observed %@" = "首次记录 %@";
+"Connecting lines hold the last recorded value." = "连接线保持最后记录的数值。";
+"Local Codex archive" = "本地 Codex 存档";
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "会话日志可能重复记录缓存的额度值，且未记录账户身份。";
+"%ds ago" = "%d秒前";
+"Local Kimi archive" = "本地 Kimi 存档";
+"Lines connect nearby observations. Gaps have no recorded data." = "线条连接时间相近的测量值。空白区间没有记录的数据。";
+"native_refresh_timed_out" = "刷新耗时超出预期，将在后台继续。";
+"native_refresh_claude_swap_paced" = "claude-swap 每隔几分钟更新一次此账户，以遵守 Anthropic 的速率限制。";
+"native_refresh_issue_stale" = "已过时";
+"native_refresh_issue_slow" = "较慢";
+"native_orbit_range_day" = "日";
+"native_orbit_range_week" = "周";
+"native_orbit_range_month" = "月";
+"Last 7 days" = "最近 7 天";
+"Use" = "使用";
+"Account pages" = "Account pages";
+"native_account_use_missing_login" = "没有已保存的登录信息。请重新登录。";
+"native_account_use_unknown_status" = "账户状态未知。请刷新后重试。";
+"native_account_use_read_only" = "此连接不支持切换账户。";
+"native_account_use_monitor_only" = "请在提供商的应用或 CLI 中切换此账户。";
+"native_account_use_busy" = "请等待当前账户切换完成。";
+"native_account_use_not_ready" = "尚未准备好切换账户。请稍后重试。";
+"native_account_use_unverified_login" = "当前登录尚未验证。请刷新后重试。";
+"native_app_update_ready" = "CodexBar 更新已就绪，可以安装。";

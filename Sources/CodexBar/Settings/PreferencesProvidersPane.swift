@@ -125,7 +125,10 @@ struct ProvidersPane: View {
                             }
                         },
                         automaticSwitchingDefaults: self.settings.nativeDesignEnabled
-                            ? self.settings.userDefaults : nil)
+                            ? self.settings.userDefaults : nil,
+                        renameAccount: { account, name in
+                            self.settings.renameCodexAccount(account, to: name)
+                        })
                 }
             })
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -280,7 +283,8 @@ struct ProvidersPane: View {
             isRemovingManagedAccount: self.managedCodexAccountCoordinator.isRemovingManagedAccount,
             isAuthenticatingLiveAccount: self.isAuthenticatingLiveCodexAccount,
             isPromotingSystemAccount: self.codexAccountPromotionCoordinator.isPromotingSystemAccount,
-            notice: self.codexAccountsNotice ?? degradedNotice)
+            notice: self.codexAccountsNotice ?? degradedNotice,
+            hidePersonalInfo: self.settings.hidePersonalInfo)
     }
 
     func selectCodexVisibleAccount(id: String) async {

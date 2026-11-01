@@ -15,7 +15,7 @@ public enum ClaudeSwapAccountReaderError: LocalizedError, Sendable {
     }
 }
 
-/// Bounded adapter over the external `claude-swap` executable.
+/// Structured adapter over the external `claude-swap` executable.
 ///
 /// Executes only the fixed list and explicit switch argument arrays (never a
 /// shell or config-defined passthrough arguments), per the contracts in
@@ -26,20 +26,33 @@ public enum ClaudeSwapAccountReader {
     public static let maxOutputBytes = 262_144
     public static let defaultTimeout: TimeInterval = 30
 
+    /// A cswap list can rotate saved OAuth credentials. Drain it before honoring cancellation, just like a
+    /// switch, so a consumed refresh grant is persisted. Read-only adapters retain the supplied timeout.
     public static func readAccountList(
         executablePath: String,
         source: ClaudeSwapAccountSource = .claudeSwap,
         timeout: TimeInterval = ClaudeSwapAccountReader.defaultTimeout) async throws -> ClaudeSwapAccountList
     {
+        try Task.checkCancellation()
         // Handled claude-swap failures print a schema-v1 error envelope to stdout
         // and exit non-zero, so non-zero exits still parse; the parser surfaces
         // the envelope as `ClaudeSwapListParserError.reportedError`.
-        let result = try await self.run(
-            executablePath: executablePath,
-            arguments: source.listArguments,
-            timeout: timeout,
-            acceptsNonZeroExit: true,
-            label: "\(source.label) list")
+        let result = if source == .claudeSwap {
+            try await self.runCredentialTransaction(
+                executablePath: executablePath,
+                arguments: source.listArguments,
+                acceptsNonZeroExit: true,
+                label: "\(source.label) list")
+        } else {
+            try await self.run(
+                executablePath: executablePath,
+                arguments: source.listArguments,
+                timeout: timeout,
+                acceptsNonZeroExit: true,
+                label: "\(source.label) list")
+        }
+        // The credential transaction finishes, but a superseded read must never publish its account state.
+        try Task.checkCancellation()
         return try ClaudeSwapListParser.parse(Data(result.utf8))
     }
 

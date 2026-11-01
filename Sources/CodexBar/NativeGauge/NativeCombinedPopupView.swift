@@ -104,9 +104,8 @@ struct NativeCombinedPopupView: View {
     var rendersStaticStrip = false
     @State private var navigation: NativePageControlNavigation
     @State private var scrollID: String?
-    /// Pages whose content is built; the rest hold their place and tint. An opening builds and updates only the
-    /// pages on screen, the others follow once the popup has appeared, and built pages stay while it is open, so
-    /// scrolling never builds a page.
+    /// The viewport and neighbouring pages retain their content. Distant pages hold only their place and tint,
+    /// so chart residency follows the viewport instead of growing with the account inventory.
     @State private var livePages: Set<String>
     @State private var renderedColumns: ClosedRange<Int>
     @State private var modelMemo = NativeCombinedAccountsMemo()
@@ -138,6 +137,14 @@ struct NativeCombinedPopupView: View {
         Set(self.openingColumns(ids, leadingID: leadingID, width: width)
             .compactMap { ids.indices.contains($0) ? ids[$0] : nil })
             .union([NativeCombinedAccounts.overviewID])
+    }
+
+    /// Keep the viewport and one neighbour at either edge ready. Distant pages must release their native chart
+    /// graphs, rather than all being constructed on the first swipe or retained after scrolling past them.
+    static func residentPages(_ ids: [String], columns: ClosedRange<Int>) -> Set<String> {
+        Set(ids.enumerated().compactMap {
+            (max(0, columns.lowerBound - 1)...max(0, columns.upperBound + 1)).contains($0.offset) ? $0.element : nil
+        }).union([NativeCombinedAccounts.overviewID])
     }
 
     private static func openingColumns(_ ids: [String], leadingID: String, width: CGFloat? = nil) -> ClosedRange<Int> {
@@ -190,6 +197,7 @@ struct NativeCombinedPopupView: View {
                     self.navigation.inventoryChanged(
                         validIDs: ids,
                         fallbackID: model.pages.first?.id ?? NativeCombinedAccounts.overviewID)
+                    self.livePages = Self.residentPages(ids, columns: self.renderedColumns)
                     self.synchronizeRange(self.toolbar.days)
                 }
                 .onChange(of: self.sources.map(\.state.now), initial: true) {
@@ -263,21 +271,6 @@ struct NativeCombinedPopupView: View {
         }
     }
 
-    /// Once the popup has appeared, the pages off screen are built one at a time, a frame apart, nearest first.
-    private func buildRemainingPages(_ ids: [String]) async {
-        guard self.showing.shownGeneration > 0 else { return }
-        let closed = self.showing.closedGeneration
-        let selected = ids.firstIndex(of: self.selection) ?? 0
-        for id in ids.enumerated().sorted(by: { abs($0.offset - selected) < abs($1.offset - selected) }).map(\.element)
-            where !self.livePages.contains(id)
-        {
-            try? await Task.sleep(for: .milliseconds(20))
-            // A popup closed meanwhile keeps only its opening pages.
-            guard !Task.isCancelled, self.showing.closedGeneration == closed else { return }
-            self.livePages.insert(id)
-        }
-    }
-
     private func scrollingStrip(ids: [String], model: NativeCombinedAccounts) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
@@ -301,6 +294,7 @@ struct NativeCombinedPopupView: View {
                     transaction.disablesAnimations = true
                     withTransaction(transaction) {
                         self.renderedColumns = viewport.intersecting
+                        self.livePages = Self.residentPages(ids, columns: viewport.intersecting)
                         self.synchronizeRange(self.toolbar.days)
                     }
                 }
@@ -320,8 +314,6 @@ struct NativeCombinedPopupView: View {
             }
             .onScrollPhaseChange { old, phase in
                 if phase.isScrolling != old.isScrolling {
-                    // Swiping before every page is built: build the rest now rather than slide in empty pages.
-                    if phase.isScrolling, self.livePages.count < ids.count { self.livePages = Set(ids) }
                     for source in self.sources {
                         source.holdPresentation(phase.isScrolling)
                         source.state.isScrolling = phase.isScrolling
@@ -356,11 +348,13 @@ struct NativeCombinedPopupView: View {
             let leading = self.showing.openingLeadingID
             self.renderedColumns = Self.openingColumns(ids, leadingID: leading, width: self.showing.width)
             self.synchronizeRange(self.toolbar.days)
-            self.livePages.formUnion(Self.pagesInView(ids, leadingID: leading, width: self.showing.width))
+            self.livePages = Self.residentPages(ids, columns: self.renderedColumns)
             self.clearInspection()
             self.navigation.resume(selectionID: self.showing.openingID, leadingID: leading)
         }
-        .task(id: self.showing.shownGeneration) { await self.buildRemainingPages(ids) }
+        .onChange(of: self.showing.shownGeneration) {
+            self.livePages = Self.residentPages(ids, columns: self.renderedColumns)
+        }
         .onChange(of: self.showing.closedGeneration) {
             // The next opening most likely resumes here, so only these pages stay built.
             self.livePages = Self.pagesInView(

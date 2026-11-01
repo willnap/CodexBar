@@ -156,7 +156,7 @@ extension UsageStore {
         generation: UInt64? = nil,
         requestedAccountIDs: Set<String>? = nil) async
     {
-        let projection = self.freshCodexVisibleAccountProjectionForAccountRefresh()
+        let projection = await self.codexVisibleAccountProjectionRenewingDueLogins()
         let visibleAccounts = self.limitedCodexVisibleAccounts(
             projection.visibleAccounts.filter { requestedAccountIDs?.contains($0.id) ?? true },
             snapshots: self.codexAccountSnapshots,
@@ -373,6 +373,7 @@ extension UsageStore {
             CodexVisibleAccountProjection.make(from: snapshot),
             snapshot: snapshot,
             requireLiveManagedAuthFor: accountIDs)
+            .applyingCustomNames(self.settings.codexAccountNames)
     }
 
     private func codexManagedAccountIDsWithReadableAuth() -> Set<UUID> {
@@ -1396,6 +1397,10 @@ extension UsageStore {
                 provider: .codex,
                 snapshot: snapshot,
                 accountDiscriminator: codexOwnerKey?.rawValue)
+            self.handleUpcomingResetWarning(
+                provider: .codex,
+                snapshot: snapshot,
+                accountDiscriminator: codexOwnerKey?.rawValue)
             let sessionRestored = self.handleSessionQuotaTransition(
                 provider: .codex,
                 snapshot: snapshot,
@@ -1479,6 +1484,10 @@ extension UsageStore {
                 from: self.lastKnownResetSnapshots[provider.instanceID])
             let warningAccountDiscriminator = Self.warningTokenAccountDiscriminator(account)
             self.handleQuotaWarningTransitions(
+                provider: provider,
+                snapshot: backfilled,
+                accountDiscriminator: warningAccountDiscriminator)
+            self.handleUpcomingResetWarning(
                 provider: provider,
                 snapshot: backfilled,
                 accountDiscriminator: warningAccountDiscriminator)

@@ -49,7 +49,7 @@ enum NativeCombinedRangeTiming {
 @MainActor
 enum NativeCombinedRangeProbe {
     static func run(view: NSView, toolbar: NativeOrbitPopupState, directory: URL) async {
-        // Match popoverDidShow: the production pager warms every account page after appearing.
+        // Let the production pager settle its visible pages and adjacent chart hosts after appearing.
         try? await Task.sleep(for: .seconds(4))
         var results: [[String: Any]] = []
         for days in [7, 30, 1, 30, 7, 1] {

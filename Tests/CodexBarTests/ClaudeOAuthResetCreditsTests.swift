@@ -128,6 +128,7 @@ struct ClaudeOAuthResetCreditsTests {
         let usage = try ClaudeUsageFetcher._mapOAuthUsageForTesting(Data(payload.utf8))
         #expect(usage.primary == nil)
         #expect(usage.providerCost?.spendLimitWindow?.usedPercent == 30)
+        #expect(usage.quotaWindowPresence?.isEmpty == true)
         #expect(usage.secondary == nil)
         #expect(usage.opus == nil)
         #expect(usage.providerCost?.used == 3)

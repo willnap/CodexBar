@@ -31,8 +31,8 @@ enum ClaudeSwapSwitchPhase: Equatable, Sendable {
     case reconciling
 }
 
-/// External credential transactions must run to completion; configuration changes hide their state but do not
-/// cancel the subprocess halfway through a claude-swap transaction.
+/// External credential transactions, including lists that refresh saved logins, must run to completion;
+/// configuration changes hide their state without killing the subprocess halfway through token rotation.
 struct ClaudeSwapTransientState {
     var lastError: String?
     var lastErrorAccountID: ProviderAccountIdentity?
@@ -53,8 +53,8 @@ struct ClaudeSwapTransientState {
 
 extension UsageStore {
     /// True when the opt-in claude-swap adapter should run alongside the
-    /// ambient Claude refresh. Listing is read-only; explicit account activation
-    /// stays external-process-owned and never exposes credentials to CodexBar.
+    /// ambient Claude refresh. Listing can refresh saved logins; credentials and
+    /// explicit account activation stay external-process-owned and never enter CodexBar.
     func shouldFetchClaudeSwapAccounts() -> Bool {
         self.isEnabled(.claude) && self.settings.claudeSwapEnabled &&
             !self.settings.claudeSwapExecutablePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -93,6 +93,7 @@ extension UsageStore {
             self.claudeSwapTransientState.switchPhase != nil ||
             self.claudeSwapTransientState.versionProbedPath != nil ||
             self.claudeSwapDetectedVersion != nil
+        // Invalidate the reading, but the reader drains any started token rotation before returning cancellation.
         self.claudeSwapRefreshTask?.cancel()
         self.claudeSwapRefreshTask = nil
         self.claudeSwapAccountSnapshots = []

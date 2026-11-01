@@ -193,6 +193,7 @@ public enum ClaudeWebAPIFetcher {
 
     /// Claude usage data from the API
     public struct WebUsageData: Sendable {
+        public fileprivate(set) var quotaWindowPresence: [String: Bool]?
         public let sessionPercentUsed: Double?
         public let sessionResetsAt: Date?
         public let weeklyPercentUsed: Double?
@@ -742,7 +743,7 @@ extension ClaudeWebAPIFetcher {
             ?? ClaudeWebExtraUsageCost.parse(from: json["extra_usage"])
         let resetStatus = Self.parseResetStatus(from: json["cedar_ember"])
 
-        return WebUsageData(
+        var data = WebUsageData(
             sessionPercentUsed: sessionPercent,
             sessionResetsAt: sessionResets,
             weeklyPercentUsed: weeklyPercent,
@@ -756,6 +757,14 @@ extension ClaudeWebAPIFetcher {
             resetCredits: resetStatus?.snapshot(updatedAt: Date()),
             resetCreditsIneligibleReason: resetStatus.flatMap { $0.eligible ? nil : $0.ineligibleReason },
             cloudCredits: ClaudeCloudCreditsSnapshot.parse(json["iguana_necktie"]))
+        func presence(_ key: String) -> Bool? {
+            guard let value = json[key], !(value is NSNull) else { return false }
+            return value is [String: Any] ? true : nil
+        }
+        let hasBaseSchema = ["five_hour", "seven_day"].contains { json[$0] != nil && presence($0) != nil }
+        data.quotaWindowPresence = hasBaseSchema
+            ? ["primary": presence("five_hour"), "secondary": presence("seven_day")].compactMapValues { $0 } : nil
+        return data
     }
 
     /// Anything unreadable in the `cedar_ember` block yields no inventory and leaves the usage windows intact.

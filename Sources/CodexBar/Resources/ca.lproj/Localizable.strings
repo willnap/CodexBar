@@ -1,4 +1,5 @@
 /* Catalan localization for CodexBar */
+"Copilot subscription ended" = "La subscripció a Copilot ha finalitzat";
 
 /* iCloud Sync */
 "+ %d more" = "+ %d més";
@@ -163,6 +164,7 @@
 "Individual credits" = "Crèdits individuals";
 "Workspace" = "Espai de treball";
 "Credits history" = "Historial de crèdits";
+"Cursor app session expired — open Cursor to sign in again, or sign in to cursor.com in your browser." = "La sessió de l’app Cursor ha caducat — obre Cursor per tornar a iniciar sessió o inicia sessió a cursor.com al navegador.";
 "Cursor login failed" = "L'inici de sessió de Cursor ha fallat";
 "Custom" = "Personalitzat";
 "Custom Path" = "Camí personalitzat";
@@ -918,10 +920,7 @@
 "Today cash" = "Efectiu d'avui";
 "DeepSeek 30 day token usage trend" = "Tendència d'ús de tokens de 30 dies de DeepSeek";
 "Detailed usage unavailable." = "L'ús detallat no està disponible.";
-"Sign in to DeepSeek Platform in Chrome for detailed usage." = "Inicieu la sessió a DeepSeek Platform al Chrome per veure l'ús detallat.";
-"Select a DeepSeek Chrome profile in Settings." = "Seleccioneu un perfil de Chrome de DeepSeek a Configuració.";
 "DeepSeek this month token usage trend" = "Tendència d'ús de tokens de DeepSeek aquest mes";
-"Chrome profile" = "Perfil de Chrome";
 "Choose which signed-in DeepSeek Platform session supplies detailed usage." = "Tria quina sessió iniciada de DeepSeek Platform proporciona l'ús detallat.";
 "Select profile…" = "Selecciona un perfil…";
 "cache-hit input" = "entrada amb encert de memòria cau";
@@ -2401,7 +2400,7 @@
 "Optional. Select each profile's .gemini folder to combine local token and cost history. The primary home is always included. Does not change sign-in or quotas." = "Opcional. Selecciona la carpeta .gemini de cada perfil per combinar l’historial local de tokens i costos. El directori d’inici principal sempre s’inclou. No modifica l’inici de sessió ni les quotes.";
 
 /* Selected browser profile */
-"Browser profile" = "Perfil del navegador";
+"Browser profile" = "Perfil de navegador";
 "Unavailable profile: %@" = "Perfil no disponible: %@";
 "Read only the selected %@ profile. Accounts are never selected automatically." = "Llegeix només el perfil de %@ seleccionat. Els comptes no se seleccionen mai automàticament.";
 "Langdock cost usage is not supported." = "No s’admet el seguiment dels costos de Langdock.";
@@ -2550,131 +2549,6 @@
 "Pace sign" = "Signe del ritme";
 "Ahead of pace is +" = "Per sobre del ritme és +";
 "Reserve is +" = "La reserva és +";
-
-"Sign In…" = "Sign In…";
-
-"Connect…" = "Connect…";
-
-"Show model-specific weekly usage" = "Show model-specific weekly usage";
-"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
-
-// Native gauge settings and states.
-"Approve in Login Items…" = "Approve in Login Items…";
-"Available services" = "Available services";
-"Configured services" = "Configured services";
-"Redesign" = "Redesign";
-"Combine into one icon" = "Combine into one icon";
-"With 4 or more services" = "With 4 or more services";
-"Always" = "Always";
-"Manage services in the sidebar." = "Manage services in the sidebar.";
-"Enabled services" = "Enabled services";
-"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
-"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
-"Original" = "Original";
-"Local agents" = "Local agents";
-"No usage access" = "No usage access";
-"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
-"Provider disabled" = "Provider disabled";
-"Search services and active accounts" = "Search services and active accounts";
-"Service maintenance" = "Service maintenance";
-"Service outage" = "Service outage";
-"Sign in required" = "Sign in required";
-"Design" = "Design";
-"Usage delayed or service degraded" = "Usage delayed or service degraded";
-"Usage pace" = "Usage pace";
-"Usage unknown" = "Usage unknown";
-
-/* Settings search and provider ordering */
-"Search settings" = "Search settings";
-"Used providers first" = "Used providers first";
-"No matching settings" = "No matching settings";
-"Settings" = "Settings";
-
-// Native orbit popup
-"Available" = "Disponible";
-"24h" = "24h";
-"No history yet" = "Encara no hi ha historial";
-"Recorded available usage" = "Ús disponible registrat";
-
-"Switch when exhausted" = "Switch when exhausted";
-"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
-"Automatic account switching" = "Automatic account switching";
-"Automatic switching on" = "Automatic switching on";
-"Automatic switching off" = "Automatic switching off";
-
-"Local usage totals" = "Local usage totals";
-
-"Time period" = "Període";
-
-"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Període de l’historial, els tokens i la despesa de tots els comptes. Els indicadors de quota mostren la disponibilitat actual.";
-
-"Active %@ account" = "Compte %@ actiu";
-
-"Use in %@" = "Utilitza a %@";
-
-"Use this account in %@" = "Utilitza aquest compte a %@";
-
-"Use %@ in %@" = "Utilitza %@ a %@";
-
-"Last updated %@" = "Darrera actualització %@";
-
-"No observations" = "Sense observacions";
-
-"History begins with recorded usage. Missing time is left empty." = "L’historial comença amb les dades d’ús registrades. Els períodes sense dades queden buits.";
-
-"native_orbit_range_help" = "Període de l'historial, els tokens i la despesa";
-
-"1d" = "1d";
-"<1m ago" = "fa <1min";
-"Auto switch" = "Canvi automàtic";
-
-"Switch" = "Canvia";
-
-"Switch accounts automatically" = "Canvia de compte automàticament";
-
-"native_auto_switch_settings_detail" = "Quan el compte actiu s'esgota, Codex CLI canvia a un amb quota disponible. Un canvi manual ho atura durant 10 minuts.";
-"Now" = "Ara";
-"Updating…" = "S’està actualitzant…";
-
-"Local Claude archive" = "Arxiu local de Claude";
-
-"Account not recorded" = "Compte no identificat";
-
-"Anonymous observations from this provider. No account identity was recorded." = "Observacions anònimes d’aquest proveïdor. No s’ha registrat la identitat del compte.";
-
-"History begins with recorded usage." = "L’historial comença amb l’ús registrat.";
-
-"%d observations · %d/%d days" = "%d observacions · %d/%d dies";
-
-"No observations in this period" = "No hi ha observacions en aquest període";
-
-"Last observed %@" = "Última observació %@";
-
-"First observed %@" = "Primera observació %@";
-
-"Connecting lines hold the last recorded value." = "Les línies de connexió mantenen el darrer valor registrat.";
-
-"Local Codex archive" = "Arxiu local de Codex";
-
-"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Els registres de sessió poden repetir lectures de quota en memòria cau. No s’hi registra la identitat del compte.";
-
-"%ds ago" = "fa %ds";
-
-"Local Kimi archive" = "Arxiu local de Kimi";
-"Lines connect nearby observations. Gaps have no recorded data." = "Les línies connecten mesures properes. Els buits no tenen dades registrades.";
-"native_refresh_timed_out" = "L’actualització està trigant més del previst. Continua en segon pla.";
-"native_refresh_claude_swap_paced" = "claude-swap actualitza aquest compte cada pocs minuts per mantenir-se dins del límit de freqüència d’Anthropic.";
-"native_refresh_issue_stale" = "Antiga";
-"native_refresh_issue_slow" = "Lent";
-"native_orbit_range_day" = "D";
-"native_orbit_range_week" = "S";
-"native_orbit_range_month" = "M";
-"Last 7 days" = "Darrers 7 dies";
-
-"Use" = "Utilitza";
-
-/* Combined account paging (English fallback). */
-"Account pages" = "Account pages";
 "Back" = "Enrere";
 "Forward" = "Endavant";
 
@@ -2887,3 +2761,134 @@
 "Show this Mac's recorded OpenCode usage in Codex history. Off by default; scoped or alternate CODEX_HOME locations always stay excluded." = "Mostra l’ús de l’OpenCode registrat en aquest Mac a l’historial del Codex. Desactivat per defecte; les ubicacions de CODEX_HOME amb àmbit restringit o alternatives sempre en queden excloses.";
 "Auto uses the active saved session, otherwise an API key or browser cookies." = "Auto utilitza la sessió desada activa; si no n’hi ha, una clau API o les galetes del navegador.";
 "Store multiple Command Code subscription sessions." = "Deseu diverses sessions de subscripció de Command Code.";
+
+"codex_reset_credit_expiry_notifications_title" = "Caducitat dels crèdits de reinici de Codex";
+
+"codex_reset_credit_expiry_notifications_subtitle" = "Afegeix recordatoris en actualitzar l’ús 1 dia i 1 hora abans del venciment.";
+/* OpenDesign */
+"OpenDesign" = "OpenDesign";
+"Show OpenDesign usage" = "Mostra l’ús d’OpenDesign";
+"Sign in to OpenDesign, then refresh CodexBar." = "Inicia sessió a OpenDesign i actualitza CodexBar.";
+"OpenDesign usage response format changed." = "El format de la resposta d’ús d’OpenDesign ha canviat.";
+"OpenDesign billing access was denied." = "S’ha denegat l’accés a la facturació d’OpenDesign.";
+"OpenDesign request failed. Try again later." = "La sol·licitud a OpenDesign ha fallat. Torna-ho a provar més tard.";
+"OpenDesign subscription usage is unavailable for this workspace." = "L’ús de la subscripció d’OpenDesign no està disponible per a aquest espai de treball.";
+"Sign in to DeepSeek Platform in a Chromium-based browser for detailed usage." = "Inicieu la sessió a DeepSeek Platform en un navegador basat en Chromium per veure l'ús detallat.";
+"Select a DeepSeek browser profile in Settings." = "Seleccioneu un perfil de navegador de DeepSeek a Configuració.";
+"upcoming_reset_notifications_title" = "Avisos abans del restabliment";
+"upcoming_reset_notifications_subtitle" = "Avisa per a Codex abans que el límit setmanal es restableixi mentre quedi quota per usar.";
+"upcoming_reset_notification_title" = "Límit de %1$@ a punt de restablir-se (%2$@)";
+"upcoming_reset_notification_body" = "Queda %1$@ de la quota per usar. Es reinicia en %2$@ i la quota no usada es perd.";
+"upcoming_reset_notification_body_with_account" = "Compte %1$@. Queda %2$@ de la quota per usar. Es reinicia en %3$@ i la quota no usada es perd.";
+"menu_bar_layout_token_separator_glyph_accessibility" = "Separador %@";
+"menu_bar_layout_separator_pipe" = "Barra vertical";
+"menu_bar_layout_separator_slash" = "Barra inclinada";
+"menu_bar_layout_separator_hyphen" = "Guionet";
+"menu_bar_layout_separator_bullet" = "Pic";
+"menu_bar_layout_separator_diamond" = "Rombe ple";
+"menu_bar_layout_separator_hollowDiamond" = "Rombe buit";
+"menu_bar_layout_separator_tilde" = "Titlla";
+"menu_bar_layout_separator_doubleBar" = "Doble barra vertical";
+"Rename" = "Canvia el nom";
+"Rename account" = "Canvia el nom del compte";
+"Account name" = "Nom del compte";
+"Leave blank to use the default name." = "Deixa-ho en blanc per fer servir el nom per defecte.";
+"Rewards" = "Recompenses";
+"Reward expiry" = "Caducitat de les recompenses";
+
+/* Native redesign */
+"Sign in to DeepSeek Platform in Chrome for detailed usage." = "Inicieu la sessió a DeepSeek Platform al Chrome per veure l'ús detallat.";
+"Select a DeepSeek Chrome profile in Settings." = "Seleccioneu un perfil de Chrome de DeepSeek a Configuració.";
+"Chrome profile" = "Perfil de Chrome";
+"Sign In…" = "Sign In…";
+"Connect…" = "Connect…";
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Redesign" = "Redesign";
+"Combine into one icon" = "Combine into one icon";
+"With 4 or more services" = "With 4 or more services";
+"Always" = "Always";
+"Manage services in the sidebar." = "Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Original" = "Original";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Design" = "Design";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+"Available" = "Disponible";
+"24h" = "24h";
+"No history yet" = "Encara no hi ha historial";
+"Recorded available usage" = "Ús disponible registrat";
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+"Local usage totals" = "Local usage totals";
+"Time period" = "Període";
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Període de l’historial, els tokens i la despesa de tots els comptes. Els indicadors de quota mostren la disponibilitat actual.";
+"Active %@ account" = "Compte %@ actiu";
+"Use in %@" = "Utilitza a %@";
+"Use this account in %@" = "Utilitza aquest compte a %@";
+"Use %@ in %@" = "Utilitza %@ a %@";
+"Last updated %@" = "Darrera actualització %@";
+"No observations" = "Sense observacions";
+"History begins with recorded usage. Missing time is left empty." = "L’historial comença amb les dades d’ús registrades. Els períodes sense dades queden buits.";
+"native_orbit_range_help" = "Període de l'historial, els tokens i la despesa";
+"1d" = "1d";
+"<1m ago" = "fa <1min";
+"Auto switch" = "Canvi automàtic";
+"Switch" = "Canvia";
+"Switch accounts automatically" = "Canvia de compte automàticament";
+"native_auto_switch_settings_detail" = "Quan el compte actiu s'esgota, Codex CLI canvia a un amb quota disponible. Un canvi manual ho atura durant 10 minuts.";
+"Now" = "Ara";
+"Updating…" = "S’està actualitzant…";
+"Local Claude archive" = "Arxiu local de Claude";
+"Account not recorded" = "Compte no identificat";
+"Anonymous observations from this provider. No account identity was recorded." = "Observacions anònimes d’aquest proveïdor. No s’ha registrat la identitat del compte.";
+"History begins with recorded usage." = "L’historial comença amb l’ús registrat.";
+"%d observations · %d/%d days" = "%d observacions · %d/%d dies";
+"No observations in this period" = "No hi ha observacions en aquest període";
+"Last observed %@" = "Última observació %@";
+"First observed %@" = "Primera observació %@";
+"Connecting lines hold the last recorded value." = "Les línies de connexió mantenen el darrer valor registrat.";
+"Local Codex archive" = "Arxiu local de Codex";
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Els registres de sessió poden repetir lectures de quota en memòria cau. No s’hi registra la identitat del compte.";
+"%ds ago" = "fa %ds";
+"Local Kimi archive" = "Arxiu local de Kimi";
+"Lines connect nearby observations. Gaps have no recorded data." = "Les línies connecten mesures properes. Els buits no tenen dades registrades.";
+"native_refresh_timed_out" = "L’actualització està trigant més del previst. Continua en segon pla.";
+"native_refresh_claude_swap_paced" = "claude-swap actualitza aquest compte cada pocs minuts per mantenir-se dins del límit de freqüència d’Anthropic.";
+"native_refresh_issue_stale" = "Antiga";
+"native_refresh_issue_slow" = "Lent";
+"native_orbit_range_day" = "D";
+"native_orbit_range_week" = "S";
+"native_orbit_range_month" = "M";
+"Last 7 days" = "Darrers 7 dies";
+"Use" = "Utilitza";
+"Account pages" = "Account pages";
+"native_account_use_missing_login" = "No hi ha cap inici de sessió desat. Torna a iniciar sessió.";
+"native_account_use_unknown_status" = "Estat del compte desconegut. Actualitza i torna-ho a provar.";
+"native_account_use_read_only" = "Aquesta connexió no permet canviar de compte.";
+"native_account_use_monitor_only" = "Canvia aquest compte a l’app o la CLI del proveïdor.";
+"native_account_use_busy" = "Espera que acabi el canvi de compte actual.";
+"native_account_use_not_ready" = "El canvi de compte encara no està llest. Torna-ho a provar d’aquí a poc.";
+"native_account_use_unverified_login" = "No s’ha verificat l’inici de sessió actual. Actualitza i torna-ho a provar.";
+"native_app_update_ready" = "L’actualització de CodexBar està llesta per instal·lar.";

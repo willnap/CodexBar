@@ -45,6 +45,15 @@ public enum ClaudeSwapAccountProjection {
                 source: source,
                 previous: previousByID[id],
                 now: now)
+            let unavailableReason: ProviderAccountActivationUnavailableReason? = if !list.supportsAccountSwitching {
+                .readOnlySource
+            } else {
+                switch row.usageStatus {
+                case .noCredentials: .missingCredentials
+                case .unknown: .unrecognizedStatus
+                default: nil
+                }
+            }
             return ProviderAccountUsageSnapshot(
                 id: id,
                 provider: .claude,
@@ -55,6 +64,7 @@ public enum ClaudeSwapAccountProjection {
                 historyAccountKey: self.historyAccountKey(for: row, source: source),
                 isActive: row.isActive,
                 canActivate: list.supportsAccountSwitching && self.canActivate(row),
+                activationUnavailableReason: unavailableReason,
                 // Schema v1 slots are reusable and expose no stable owner ID; unattended activation fails closed.
                 autoSwitchEligible: false,
                 usesLastKnownUsage: projected.usesLastKnownUsage,
@@ -70,7 +80,7 @@ public enum ClaudeSwapAccountProjection {
         switch status {
         case .foreignCredential: .wrongAccount
         case .keychainUnavailable: .keychain
-        case .tokenExpired, .reloginRequired, .noCredentials: .signIn
+        case .reloginRequired, .noCredentials: .signIn
         default: nil
         }
     }
@@ -78,9 +88,9 @@ public enum ClaudeSwapAccountProjection {
     public static func condition(for status: ClaudeSwapUsageStatus) -> ProviderAccountCondition {
         switch status {
         case .ok: .ok
-        case .tokenExpired, .reloginRequired, .keychainUnavailable, .noCredentials, .foreignCredential:
+        case .reloginRequired, .keychainUnavailable, .noCredentials, .foreignCredential:
             .credentialProblem
-        case .unavailable: .usageUnavailable
+        case .tokenExpired, .unavailable: .usageUnavailable
         case .apiKey: .notApplicable
         case .unknown: .unrecognized
         }
@@ -187,13 +197,14 @@ public enum ClaudeSwapAccountProjection {
         case .ok, .unavailable:
             // claude-swap serves a per-account cache, so an `ok` row can carry a
             // measurement fetched minutes ago. Prefer its own fetch time over `now`.
-            if let projected = self.snapshot(
+            if var projected = self.snapshot(
                 from: row.measurement,
                 row: row,
                 source: source,
                 updatedAt: row.usageFetchedAt ?? now)
             {
                 if row.usageStatus == .ok {
+                    projected.quotaWindowPresence = ["primary": row.fiveHour != nil, "secondary": row.sevenDay != nil]
                     return .live(projected)
                 }
                 if let pruned = self.prunedAtLimitSnapshot(
@@ -438,10 +449,12 @@ public enum ClaudeSwapAccountProjection {
 
     private static func canActivate(_ row: ClaudeSwapAccountRow) -> Bool {
         if row.isActive { return row.usageStatus == .foreignCredential }
+        // Usage authentication is not switching capability: selecting a saved login lets Claude Code refresh
+        // or re-authenticate it. Missing credentials and unknown statuses still fail closed.
         return switch row.usageStatus {
-        case .ok, .apiKey, .unavailable, .foreignCredential:
+        case .ok, .apiKey, .unavailable, .foreignCredential, .tokenExpired, .reloginRequired, .keychainUnavailable:
             true
-        case .tokenExpired, .reloginRequired, .keychainUnavailable, .noCredentials, .unknown:
+        case .noCredentials, .unknown:
             false
         }
     }

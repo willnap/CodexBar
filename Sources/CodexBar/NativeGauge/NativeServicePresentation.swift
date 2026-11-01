@@ -98,6 +98,7 @@ extension UsageStore {
               self.lastSourceLabels[.codex] != CodexUsageDataSource.pat.sourceLabel else { return nil }
         return self.settings.codexVisibleAccountProjectionForMenuDisplay
             ?? self.nativeCodexAccountSwitchPresentation?.projection
+            .applyingCustomNames(self.settings.codexAccountNames)
     }
 
     func nativeClaudeSwapDisplay(inspectedAccountID: ProviderAccountIdentity? = nil) -> ClaudeSwapAccountMenuDisplay {

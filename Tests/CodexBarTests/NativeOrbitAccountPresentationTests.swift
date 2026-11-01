@@ -6,6 +6,53 @@ import Testing
 
 @MainActor
 struct NativeOrbitAccountPresentationTests {
+    @Test(arguments: [false, true])
+    func `native Codex columns honor renamed accounts while privacy hides their names`(duringSwitch: Bool) throws {
+        let store = self.store()
+        let account = self.codexAccount(id: "named", email: "owner@example.test", active: true)
+        let projection = CodexVisibleAccountProjection(
+            visibleAccounts: [account],
+            activeVisibleAccountID: account.id,
+            liveVisibleAccountID: account.id,
+            hasUnreadableAddedAccountStore: false)
+        store.settings.renameCodexAccount(account, to: "Personal projects")
+        if duringSwitch {
+            store.nativeCodexAccountSwitchPresentation = .init(projection: projection, snapshots: [])
+        } else {
+            store.settings.cachedCodexAccountMenuProjection = .init(
+                activeSource: store.settings.codexActiveSource, loadedAt: Date(), projection: projection)
+        }
+        let visible = try #require(store.nativeOrbitAccounts(for: .codex).first)
+        #expect(visible.label == "Personal projects")
+        #expect(visible.id == account.id)
+        #expect(visible.isActive)
+        store.settings.hidePersonalInfo = true
+        let hidden = try #require(store.nativeOrbitAccounts(for: .codex).first)
+        #expect(hidden.label == "Account 1")
+        #expect(hidden.email == nil)
+        #expect(hidden.id == visible.id)
+    }
+
+    @Test(arguments: [false, true])
+    func `a sole Kimi account never offers login switching`(savedToken: Bool) throws {
+        let store = self.store()
+        if savedToken {
+            store.settings.addTokenAccount(provider: .kimi, label: "Personal", token: "fixture-kimi")
+            let account = try #require(store.settings.tokenAccounts(for: .kimi).first)
+            store.cacheTokenAccountSnapshot(
+                provider: .kimi, account: account, snapshot: self.snapshot(used: 25), sourceLabel: "fixture")
+        } else {
+            store.snapshots[.kimi] = self.snapshot(used: 25)
+        }
+        let rows = store.nativeOrbitAccounts(for: .kimi)
+        #expect(rows.count == 1)
+        let row = try #require(rows.first)
+        let status = NativeAccountUsePresentation.resolve(account: row, controllerAvailable: false)
+        #expect(!status.showsUse)
+        #expect(!status.isEnabled)
+        #expect(status.unavailableReason == nil)
+    }
+
     @Test func `token accounts stay separate without claiming a machine login`() {
         let store = self.store()
         store.settings.addTokenAccount(

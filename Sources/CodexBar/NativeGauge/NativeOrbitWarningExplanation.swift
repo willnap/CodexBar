@@ -47,7 +47,7 @@ extension NativeOrbitWarningLight.Kind {
         case .timeZone: "Time zone changed."
         case .unknownError: "Usage refresh failed."
         case .helper: "Required helper unavailable."
-        case .update: "Update available."
+        case .update: "Software update needed."
         case .localLogs: "Unreadable logs make totals incomplete."
         case .folderAccess: "Cannot open usage-log folder."
         case .storage: "Cannot save usage history."

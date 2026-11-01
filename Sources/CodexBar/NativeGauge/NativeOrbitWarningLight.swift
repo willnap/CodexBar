@@ -511,7 +511,12 @@ enum NativeOrbitFetchFault {
              CodexOAuthCredentialsError.decodeFailed, CodexOAuthCredentialsError.missingTokens:
             return Self.signInLight(name)
         case ClaudeSwapListParserError.unsupportedSchemaVersion:
-            return .init(.update, .caution, message, action: .settings)
+            return .init(
+                .update,
+                .caution,
+                message,
+                action: .settings,
+                tooltipDetail: "claude-swap format is unsupported. Update CodexBar.")
         case ClaudeUsageError.claudeNotInstalled, ProviderFetchError.noAvailableStrategy:
             return .init(.helper, .critical, Self.condition(.helper), action: .settings)
         case is DecodingError:

@@ -103,13 +103,13 @@ struct ClaudeSwapAccountProjectionTests {
 
     @Test
     func `maps sentinel statuses to per account errors without usage`() throws {
-        let rows: [(ClaudeSwapUsageStatus, String)] = [
-            (.tokenExpired, "Token expired"),
-            (.reloginRequired, "Re-login required"),
-            (.apiKey, "API-key account"),
-            (.keychainUnavailable, "Keychain"),
-            (.noCredentials, "No stored credentials"),
-            (.unknown("mystery"), "mystery"),
+        let rows: [(ClaudeSwapUsageStatus, String, Bool)] = [
+            (.tokenExpired, "Token expired", true),
+            (.reloginRequired, "Re-login required", true),
+            (.apiKey, "API-key account", true),
+            (.keychainUnavailable, "Keychain", true),
+            (.noCredentials, "No stored credentials", false),
+            (.unknown("mystery"), "mystery", false),
         ]
 
         for (index, entry) in rows.enumerated() {
@@ -129,7 +129,7 @@ struct ClaudeSwapAccountProjectionTests {
             #expect(snapshot.snapshot == nil)
             let error = try #require(snapshot.error)
             #expect(error.contains(entry.1))
-            #expect(snapshot.canActivate == (entry.0 == .apiKey))
+            #expect(snapshot.canActivate == entry.2)
         }
     }
 

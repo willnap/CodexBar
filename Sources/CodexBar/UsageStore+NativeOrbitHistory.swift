@@ -205,7 +205,8 @@ extension UsageStore {
                         snapshot: snapshot,
                         id: lane.id),
                     usedPercent: lane.window.usedPercent,
-                    resetsAt: lane.window.resetsAt))
+                    resetsAt: lane.window.resetsAt,
+                    quotaDescriptor: .init(label: lane.title, windowMinutes: lane.window.windowMinutes)))
         }
     }
 
@@ -313,6 +314,7 @@ extension UsageStore {
         func repeats(_ lhs: PlanUtilizationHistoryEntry, _ rhs: PlanUtilizationHistoryEntry) -> Bool {
             lhs.historicalPeriod == nil && rhs.historicalPeriod == nil && lhs.usedPercent == rhs.usedPercent
                 && lhs.resetsAt == rhs.resetsAt && lhs.nativeMetrics == rhs.nativeMetrics
+                && lhs.quotaDescriptor == rhs.quotaDescriptor
                 && floor(lhs.capturedAt.timeIntervalSinceReferenceDate / self.nativeOrbitObservationBucket)
                 == floor(rhs.capturedAt.timeIntervalSinceReferenceDate / self.nativeOrbitObservationBucket)
         }
@@ -331,23 +333,32 @@ extension UsageStore {
         // Provider-specific by design: older Codex raw observations followed transport slots. A known cadence
         // proves which logical quota those fragments measured; unknown cadences keep their existing slot.
         guard provider == .codex else { return histories }
-        return histories.map { history in
+        return histories.flatMap { history -> [PlanUtilizationSeriesHistory] in
             guard ["nativeQuota:primary", "nativeQuota:secondary"].contains(history.name.rawValue) else {
-                return history
+                return [history]
             }
-            let name: PlanUtilizationSeriesName = switch history.windowMinutes {
-            case 300: "nativeQuota:primary"
-            case 10080: "nativeQuota:secondary"
-            case 43200: "nativeQuota:monthly"
-            default: history.name
+            // A coalesced series may contain several original cadences. Route each observed descriptor,
+            // keeping legacy fragment cadence only where no per-reading metadata survived.
+            var groups = Dictionary(grouping: history.entries) { entry in
+                entry.quotaDescriptor.map { $0.windowMinutes ?? 0 } ?? history.windowMinutes
             }
-            return .init(name: name, windowMinutes: history.windowMinutes, entries: history.entries)
+            if groups.isEmpty { groups[history.windowMinutes] = [] }
+            return groups.map { minutes, entries in
+                let name: PlanUtilizationSeriesName = switch minutes {
+                case 300: "nativeQuota:primary"
+                case 10080: "nativeQuota:secondary"
+                case 43200: "nativeQuota:monthly"
+                default: history.name
+                }
+                return .init(name: name, windowMinutes: minutes, entries: entries)
+            }.sorted(by: PlanUtilizationSeriesHistory.precedes)
         }
     }
 
     /// A quota's advertised reset duration can change without changing the measured quota or its owner.
     nonisolated static func nativeOrbitCoalescedQuotaHistories(
-        _ histories: [PlanUtilizationSeriesHistory]) -> [PlanUtilizationSeriesHistory]
+        _ histories: [PlanUtilizationSeriesHistory],
+        preservingDescriptors: Bool = false) -> [PlanUtilizationSeriesHistory]
     {
         var native: [PlanUtilizationSeriesName: PlanUtilizationSeriesHistory] = [:]
         for history in histories where history.name.isNativeQuotaObservation {
@@ -361,7 +372,19 @@ extension UsageStore {
             native[history.name] = .init(
                 name: history.name,
                 windowMinutes: latest.windowMinutes,
-                entries: self.nativeOrbitMergedRawEntries(existing.entries, history.entries))
+                entries: self.nativeOrbitMergedRawEntries(
+                    preservingDescriptors ? existing.entries.map {
+                        $0.withQuotaDescriptor(.init(
+                            label: nil,
+                            windowMinutes: existing.windowMinutes > 0
+                                ? existing.windowMinutes : nil))
+                    } : existing.entries,
+                    preservingDescriptors ? history.entries.map {
+                        $0.withQuotaDescriptor(.init(
+                            label: nil,
+                            windowMinutes: history.windowMinutes > 0
+                                ? history.windowMinutes : nil))
+                    } : history.entries))
         }
         return (histories.filter { !$0.name.isNativeQuotaObservation } + native.values)
             .sorted(by: PlanUtilizationSeriesHistory.precedes)

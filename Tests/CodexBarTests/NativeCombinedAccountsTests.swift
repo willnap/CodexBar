@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 import Testing
@@ -7,6 +8,54 @@ import Testing
 @MainActor
 struct NativeCombinedAccountsTests {
     private let now = Date(timeIntervalSince1970: 1_800_014_400)
+
+    @Test func `chart residency follows the viewport with bounded neighbours and rejects removed accounts`() {
+        let ids = [NativeCombinedAccounts.overviewID] + (0..<1000).map(String.init)
+        #expect(NativeCombinedPopupView.residentPages(ids, columns: 0...2) == Set(ids.prefix(4)))
+        #expect(NativeCombinedPopupView.residentPages(ids, columns: 500...502)
+            == Set(ids[499...503]).union([NativeCombinedAccounts.overviewID]))
+        #expect(NativeCombinedPopupView.residentPages(ids, columns: 998...1000)
+            == Set(ids[997...1000]).union([NativeCombinedAccounts.overviewID]))
+        #expect(NativeCombinedPopupView.residentPages(ids, columns: 2...7)
+            == Set(ids[1...8]).union([NativeCombinedAccounts.overviewID]))
+        #expect(NativeCombinedPopupView.residentPages([ids[0], ids[5]], columns: 0...2) == [ids[0], ids[5]])
+    }
+
+    @Test func `an open popup keeps only nearby account charts resident`() async throws {
+        _ = NSApplication.shared
+        let state = NativeOrbitPopupState()
+        state.accounts = (0..<12).map { self.account(.codex, id: String($0)) }
+        let toolbar = NativeOrbitPopupState()
+        let showing = NativeCombinedShowing()
+        let ids = [NativeCombinedAccounts.overviewID] + state.accounts.map { "codex:\($0.id)" }
+        let size = NativeCombinedPopupView.contentSize(pageCount: ids.count)
+        showing.begin(openingID: ids[1], pageOrder: Array(ids.dropFirst()), width: size.width)
+        let host = NSHostingView(rootView: NativeCombinedPopupView(
+            sources: [.init(provider: .codex, state: state)], toolbar: toolbar, showing: showing))
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.orderFrontRegardless()
+        defer { window.close() }
+        showing.shown()
+        try await Task.sleep(for: .seconds(2))
+        host.layoutSubtreeIfNeeded()
+        func chartCount(_ view: NSView) -> Int {
+            (view is NativeOrbitChartRevealView ? 1 : 0) + view.subviews.reduce(0) { $0 + chartCount($1) }
+        }
+        // Three visible/partial columns and at most one neighbour on either side. The overview has no quota chart.
+        #expect(chartCount(host) > 0)
+        #expect(chartCount(host) <= 5)
+        showing.begin(openingID: ids[9], pageOrder: Array(ids.dropFirst()), width: size.width)
+        try await Task.sleep(for: .seconds(1))
+        host.layoutSubtreeIfNeeded()
+        #expect(chartCount(host) > 0)
+        #expect(chartCount(host) <= 5)
+    }
 
     @Test func `range returns reuse live overview readings while historical inspection remains independent`() {
         var account = self.account(.codex, id: "first")

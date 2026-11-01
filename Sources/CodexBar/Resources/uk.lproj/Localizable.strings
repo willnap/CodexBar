@@ -1,4 +1,5 @@
 /* Ukrainian localization for CodexBar */
+"Copilot subscription ended" = "Підписка Copilot закінчилася";
 
 /* iCloud Sync */
 "+ %d more" = "Ще %d";
@@ -177,6 +178,7 @@
 "Individual credits" = "Особисті кредити";
 "Workspace" = "Робоча область";
 "Credits history" = "Історія кредитів";
+"Cursor app session expired — open Cursor to sign in again, or sign in to cursor.com in your browser." = "Термін дії сеансу програми Cursor закінчився — відкрийте Cursor, щоб увійти знову, або увійдіть на cursor.com у браузері.";
 "Cursor login failed" = "Помилка входу в Cursor";
 "Custom" = "Користувацький";
 "Custom Path" = "Власний шлях";
@@ -1346,11 +1348,8 @@
 "Share Stats…" = "Поділитися статистикою…";
 "Stats copied" = "Статистику скопійовано";
 "DeepSeek this month token usage trend" = "Тенденція використання токенів DeepSeek цього місяця";
-"Chrome profile" = "Профіль Chrome";
 "Choose which signed-in DeepSeek Platform session supplies detailed usage." = "Виберіть сеанс DeepSeek Platform із виконаним входом, який надаватиме докладні дані про використання.";
 "Detailed usage unavailable." = "Докладні дані про використання недоступні.";
-"Sign in to DeepSeek Platform in Chrome for detailed usage." = "Увійдіть у DeepSeek Platform у Chrome, щоб переглянути докладні дані про використання.";
-"Select a DeepSeek Chrome profile in Settings." = "Виберіть профіль Chrome для DeepSeek у налаштуваннях.";
 "Select profile…" = "Вибрати профіль…";
 
 "%@: %@" = "%@: %@";
@@ -2547,131 +2546,6 @@
 "Pace sign" = "Знак темпу витрат";
 "Ahead of pace is +" = "Випередження темпу — +";
 "Reserve is +" = "Запас — +";
-
-"Sign In…" = "Sign In…";
-
-"Connect…" = "Connect…";
-
-"Show model-specific weekly usage" = "Show model-specific weekly usage";
-"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
-
-// Native gauge settings and states.
-"Approve in Login Items…" = "Approve in Login Items…";
-"Available services" = "Available services";
-"Configured services" = "Configured services";
-"Redesign" = "Redesign";
-"Combine into one icon" = "Combine into one icon";
-"With 4 or more services" = "With 4 or more services";
-"Always" = "Always";
-"Manage services in the sidebar." = "Manage services in the sidebar.";
-"Enabled services" = "Enabled services";
-"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
-"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
-"Original" = "Original";
-"Local agents" = "Local agents";
-"No usage access" = "No usage access";
-"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
-"Provider disabled" = "Provider disabled";
-"Search services and active accounts" = "Search services and active accounts";
-"Service maintenance" = "Service maintenance";
-"Service outage" = "Service outage";
-"Sign in required" = "Sign in required";
-"Design" = "Design";
-"Usage delayed or service degraded" = "Usage delayed or service degraded";
-"Usage pace" = "Usage pace";
-"Usage unknown" = "Usage unknown";
-
-/* Settings search and provider ordering */
-"Search settings" = "Search settings";
-"Used providers first" = "Used providers first";
-"No matching settings" = "No matching settings";
-"Settings" = "Settings";
-
-// Native orbit popup
-"Available" = "Доступно";
-"24h" = "24h";
-"No history yet" = "Історії поки немає";
-"Recorded available usage" = "Записаний доступний ліміт";
-
-"Switch when exhausted" = "Switch when exhausted";
-"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
-"Automatic account switching" = "Automatic account switching";
-"Automatic switching on" = "Automatic switching on";
-"Automatic switching off" = "Automatic switching off";
-
-"Local usage totals" = "Local usage totals";
-
-"Time period" = "Період";
-
-"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Період історії, токенів і витрат для всіх облікових записів. Індикатори квот показують поточну доступність.";
-
-"Active %@ account" = "Активний обліковий запис %@";
-
-"Use in %@" = "Використовувати в %@";
-
-"Use this account in %@" = "Використовувати цей обліковий запис у %@";
-
-"Use %@ in %@" = "Використовувати %@ у %@";
-
-"Last updated %@" = "Останнє оновлення %@";
-
-"No observations" = "Немає спостережень";
-
-"History begins with recorded usage. Missing time is left empty." = "Історія починається із записаних даних використання. Періоди без даних залишаються порожніми.";
-
-"native_orbit_range_help" = "Період для історії, токенів і витрат";
-
-"1d" = "1д";
-"<1m ago" = "<1хв тому";
-"Auto switch" = "Автоперемикання";
-
-"Switch" = "Змінити";
-
-"Switch accounts automatically" = "Автоматично перемикати облікові записи";
-
-"native_auto_switch_settings_detail" = "Коли ліміт активного облікового запису вичерпано, Codex CLI перемикається на запис із залишком квоти. Ручне перемикання призупиняє це на 10 хвилин.";
-"Now" = "Зараз";
-"Updating…" = "Оновлення…";
-
-"Local Claude archive" = "Локальний архів Claude";
-
-"Account not recorded" = "Обліковий запис не збережено";
-
-"Anonymous observations from this provider. No account identity was recorded." = "Анонімні вимірювання цього провайдера. Ідентифікатор облікового запису не збережено.";
-
-"History begins with recorded usage." = "Історія починається із записаного використання.";
-
-"%d observations · %d/%d days" = "%d вимірювань · %d/%d днів";
-
-"No observations in this period" = "Немає вимірювань за цей період";
-
-"Last observed %@" = "Останнє вимірювання %@";
-
-"First observed %@" = "Перше вимірювання %@";
-
-"Connecting lines hold the last recorded value." = "З’єднувальні лінії зберігають останнє записане значення.";
-
-"Local Codex archive" = "Локальний архів Codex";
-
-"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Журнали сеансів можуть повторювати кешовані значення квот. Ідентифікатор облікового запису не записується.";
-
-"%ds ago" = "%dс тому";
-
-"Local Kimi archive" = "Локальний архів Kimi";
-"Lines connect nearby observations. Gaps have no recorded data." = "Лінії з’єднують близькі в часі вимірювання. У проміжках немає записаних даних.";
-"native_refresh_timed_out" = "Оновлення триває довше, ніж очікувалося. Воно продовжується у фоновому режимі.";
-"native_refresh_claude_swap_paced" = "claude-swap оновлює цей обліковий запис раз на кілька хвилин, щоб не перевищувати ліміт запитів Anthropic.";
-"native_refresh_issue_stale" = "Застаріло";
-"native_refresh_issue_slow" = "Повільно";
-"native_orbit_range_day" = "Д";
-"native_orbit_range_week" = "Т";
-"native_orbit_range_month" = "М";
-"Last 7 days" = "Останні 7 днів";
-
-"Use" = "Вибрати";
-
-/* Combined account paging (English fallback). */
-"Account pages" = "Account pages";
 "Back" = "Назад";
 "Forward" = "Вперед";
 
@@ -2886,3 +2760,134 @@
 "Show this Mac's recorded OpenCode usage in Codex history. Off by default; scoped or alternate CODEX_HOME locations always stay excluded." = "Показує використання OpenCode, записане на цьому Mac, в історії Codex. Типово вимкнено; розташування CODEX_HOME з обмеженою областю дії або альтернативні розташування завжди виключаються.";
 "Auto uses the active saved session, otherwise an API key or browser cookies." = "Автоматичний режим використовує активний збережений сеанс, інакше — ключ API або файли cookie браузера.";
 "Store multiple Command Code subscription sessions." = "Зберігати кілька сеансів передплати Command Code.";
+
+"codex_reset_credit_expiry_notifications_title" = "Закінчення строку кредитів скидання Codex";
+
+"codex_reset_credit_expiry_notifications_subtitle" = "Нагадує під час оновлення використання за 1 день і за 1 годину до завершення терміну дії.";
+/* OpenDesign */
+"OpenDesign" = "OpenDesign";
+"Show OpenDesign usage" = "Показувати використання OpenDesign";
+"Sign in to OpenDesign, then refresh CodexBar." = "Увійдіть в OpenDesign, а потім оновіть CodexBar.";
+"OpenDesign usage response format changed." = "Формат відповіді про використання OpenDesign змінився.";
+"OpenDesign billing access was denied." = "Доступ до платіжних даних OpenDesign відхилено.";
+"OpenDesign request failed. Try again later." = "Запит до OpenDesign не вдався. Спробуйте пізніше.";
+"OpenDesign subscription usage is unavailable for this workspace." = "Дані про використання підписки OpenDesign недоступні для цього робочого простору.";
+"upcoming_reset_notifications_title" = "Попередження про швидке скидання";
+"upcoming_reset_notifications_subtitle" = "Попереджає про швидке скидання тижневого ліміту Codex, поки квота ще не витрачена.";
+"upcoming_reset_notification_title" = "Незабаром скидання ліміту %1$@ (%2$@)";
+"upcoming_reset_notification_body" = "%1$@ квоти ще не витрачено. Ліміт скинеться за %2$@, а невитрачена квота зникне.";
+"upcoming_reset_notification_body_with_account" = "Обліковий запис %1$@. %2$@ квоти ще не витрачено. Ліміт скинеться за %3$@, а невитрачена квота зникне.";
+"Sign in to DeepSeek Platform in a Chromium-based browser for detailed usage." = "Увійдіть у DeepSeek Platform у браузері на базі Chromium, щоб переглянути докладні дані про використання.";
+"Select a DeepSeek browser profile in Settings." = "Виберіть профіль браузера для DeepSeek у налаштуваннях.";
+"menu_bar_layout_token_separator_glyph_accessibility" = "Роздільник %@";
+"menu_bar_layout_separator_pipe" = "Вертикальна риска";
+"menu_bar_layout_separator_slash" = "Скісна риска";
+"menu_bar_layout_separator_hyphen" = "Дефіс";
+"menu_bar_layout_separator_bullet" = "Маркер";
+"menu_bar_layout_separator_diamond" = "Заповнений ромб";
+"menu_bar_layout_separator_hollowDiamond" = "Порожній ромб";
+"menu_bar_layout_separator_tilde" = "Тильда";
+"menu_bar_layout_separator_doubleBar" = "Подвійна вертикальна риска";
+"Rename" = "Перейменувати";
+"Rename account" = "Перейменувати обліковий запис";
+"Account name" = "Назва облікового запису";
+"Leave blank to use the default name." = "Залиште поле порожнім, щоб використовувати назву за замовчуванням.";
+"Rewards" = "Винагороди";
+"Reward expiry" = "Термін дії винагород";
+
+/* Native redesign */
+"Chrome profile" = "Профіль Chrome";
+"Sign in to DeepSeek Platform in Chrome for detailed usage." = "Увійдіть у DeepSeek Platform у Chrome, щоб переглянути докладні дані про використання.";
+"Select a DeepSeek Chrome profile in Settings." = "Виберіть профіль Chrome для DeepSeek у налаштуваннях.";
+"Sign In…" = "Sign In…";
+"Connect…" = "Connect…";
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Redesign" = "Redesign";
+"Combine into one icon" = "Combine into one icon";
+"With 4 or more services" = "With 4 or more services";
+"Always" = "Always";
+"Manage services in the sidebar." = "Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Original" = "Original";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Design" = "Design";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+"Available" = "Доступно";
+"24h" = "24h";
+"No history yet" = "Історії поки немає";
+"Recorded available usage" = "Записаний доступний ліміт";
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+"Local usage totals" = "Local usage totals";
+"Time period" = "Період";
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Період історії, токенів і витрат для всіх облікових записів. Індикатори квот показують поточну доступність.";
+"Active %@ account" = "Активний обліковий запис %@";
+"Use in %@" = "Використовувати в %@";
+"Use this account in %@" = "Використовувати цей обліковий запис у %@";
+"Use %@ in %@" = "Використовувати %@ у %@";
+"Last updated %@" = "Останнє оновлення %@";
+"No observations" = "Немає спостережень";
+"History begins with recorded usage. Missing time is left empty." = "Історія починається із записаних даних використання. Періоди без даних залишаються порожніми.";
+"native_orbit_range_help" = "Період для історії, токенів і витрат";
+"1d" = "1д";
+"<1m ago" = "<1хв тому";
+"Auto switch" = "Автоперемикання";
+"Switch" = "Змінити";
+"Switch accounts automatically" = "Автоматично перемикати облікові записи";
+"native_auto_switch_settings_detail" = "Коли ліміт активного облікового запису вичерпано, Codex CLI перемикається на запис із залишком квоти. Ручне перемикання призупиняє це на 10 хвилин.";
+"Now" = "Зараз";
+"Updating…" = "Оновлення…";
+"Local Claude archive" = "Локальний архів Claude";
+"Account not recorded" = "Обліковий запис не збережено";
+"Anonymous observations from this provider. No account identity was recorded." = "Анонімні вимірювання цього провайдера. Ідентифікатор облікового запису не збережено.";
+"History begins with recorded usage." = "Історія починається із записаного використання.";
+"%d observations · %d/%d days" = "%d вимірювань · %d/%d днів";
+"No observations in this period" = "Немає вимірювань за цей період";
+"Last observed %@" = "Останнє вимірювання %@";
+"First observed %@" = "Перше вимірювання %@";
+"Connecting lines hold the last recorded value." = "З’єднувальні лінії зберігають останнє записане значення.";
+"Local Codex archive" = "Локальний архів Codex";
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Журнали сеансів можуть повторювати кешовані значення квот. Ідентифікатор облікового запису не записується.";
+"%ds ago" = "%dс тому";
+"Local Kimi archive" = "Локальний архів Kimi";
+"Lines connect nearby observations. Gaps have no recorded data." = "Лінії з’єднують близькі в часі вимірювання. У проміжках немає записаних даних.";
+"native_refresh_timed_out" = "Оновлення триває довше, ніж очікувалося. Воно продовжується у фоновому режимі.";
+"native_refresh_claude_swap_paced" = "claude-swap оновлює цей обліковий запис раз на кілька хвилин, щоб не перевищувати ліміт запитів Anthropic.";
+"native_refresh_issue_stale" = "Застаріло";
+"native_refresh_issue_slow" = "Повільно";
+"native_orbit_range_day" = "Д";
+"native_orbit_range_week" = "Т";
+"native_orbit_range_month" = "М";
+"Last 7 days" = "Останні 7 днів";
+"Use" = "Вибрати";
+"Account pages" = "Account pages";
+"native_account_use_missing_login" = "Немає збереженого входу. Увійдіть знову.";
+"native_account_use_unknown_status" = "Статус облікового запису невідомий. Оновіть і спробуйте знову.";
+"native_account_use_read_only" = "Це підключення не підтримує перемикання облікових записів.";
+"native_account_use_monitor_only" = "Перемкніть цей обліковий запис у застосунку або CLI постачальника.";
+"native_account_use_busy" = "Дочекайтеся завершення поточного перемикання облікового запису.";
+"native_account_use_not_ready" = "Перемикання облікових записів ще не готове. Спробуйте трохи пізніше.";
+"native_account_use_unverified_login" = "Поточний вхід не підтверджено. Оновіть і спробуйте знову.";
+"native_app_update_ready" = "Оновлення CodexBar готове до встановлення.";

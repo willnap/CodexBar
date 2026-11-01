@@ -6,6 +6,29 @@ import Testing
 struct UsageStorePlanUtilizationCodexMergeTests {
     @MainActor
     @Test
+    func `owner migration preserves native quota cadence fragments before coalescing`() throws {
+        let store = UsageStorePlanUtilizationTests.makeStore()
+        let snapshot = UsageStorePlanUtilizationTests.makeSnapshot(provider: .codex, email: "fixture@example.test")
+        let key = try #require(UsageStore._planUtilizationAccountKeyForTesting(provider: .codex, snapshot: snapshot))
+        let legacy = UsageStore
+            ._codexLegacyPlanUtilizationEmailHashKeyForTesting(normalizedEmail: "fixture@example.test")
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        store.planUtilizationHistory[.codex] = .init(accounts: [
+            key: [.init(name: "nativeQuota:primary", windowMinutes: 300, entries: [
+                .init(capturedAt: now.addingTimeInterval(-300), usedPercent: 20, resetsAt: nil),
+            ])],
+            legacy: [.init(name: "nativeQuota:primary", windowMinutes: 600, entries: [
+                .init(capturedAt: now, usedPercent: 30, resetsAt: nil),
+            ])],
+        ])
+        store._setSnapshotForTesting(snapshot, provider: .codex)
+        let merged = store.planUtilizationHistory(for: .codex)
+        #expect(merged.first { $0.name.rawValue == "nativeQuota:primary" }?
+            .entries.map { $0.quotaDescriptor?.windowMinutes } == [300, 600])
+    }
+
+    @MainActor
+    @Test
     func `codex materialize leaves canonical-only history untouched`() throws {
         let store = UsageStorePlanUtilizationTests.makeStore()
         let snapshot = UsageStorePlanUtilizationTests.makeSnapshot(provider: .codex, email: "alice@example.com")

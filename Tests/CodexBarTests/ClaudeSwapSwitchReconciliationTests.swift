@@ -91,6 +91,8 @@ struct ClaudeSwapSwitchReconciliationTests {
             let firstList = try fixture.currentAdapterTask()
             fixture.store.scheduleClaudeSwapAccountRefresh()
             try await fixture.waitUntil { fixture.listEntered(2) }
+            // Superseded lists finish their own credential writes before cancellation is observed.
+            try fixture.releaseList(1)
             await firstList.value
             await Task.yield()
             #expect(firstList.isCancelled)
@@ -132,6 +134,7 @@ struct ClaudeSwapSwitchReconciliationTests {
             let nextListNumber = changePath ? 1 : 2
             try await fixture.waitUntil { fixture.listEntered(nextListNumber, executable: replacement) }
             let newList = try fixture.currentAdapterTask()
+            try fixture.releaseList(1)
             try await fixture.waitUntil { fixture.switchCompleted }
             await task.value
             await oldList.value

@@ -54,8 +54,16 @@ struct NativeOrbitQuotaCompletenessTests {
         let histories = try #require(store.planUtilizationHistory[.codex]?.unscoped)
         let primary = try #require(histories.first { $0.name == "nativeQuota:primary" })
         let extra = try #require(histories.first { $0.name == "nativeQuota:measured-extra" })
-        #expect(primary.entries == [.init(capturedAt: captured, usedPercent: 125, resetsAt: nil)])
-        #expect(extra.entries == [.init(capturedAt: captured, usedPercent: 140, resetsAt: nil)])
+        #expect(primary.entries == [.init(
+            capturedAt: captured,
+            usedPercent: 125,
+            resetsAt: nil,
+            quotaDescriptor: .init(label: "Session", windowMinutes: 300))])
+        #expect(extra.entries == [.init(
+            capturedAt: captured,
+            usedPercent: 140,
+            resetsAt: nil,
+            quotaDescriptor: .init(label: "Measured extra", windowMinutes: nil))])
         #expect(histories.first { $0.name == .session }?.entries.first?.usedPercent == 100)
         let disk = PlanUtilizationHistoryStore(directoryURL: directory)
         #expect(disk.save(store.planUtilizationHistory).isEmpty)

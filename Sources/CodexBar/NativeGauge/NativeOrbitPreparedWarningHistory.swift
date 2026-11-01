@@ -20,9 +20,14 @@ final class NativeOrbitPreparedWarningHistory {
 
     init(history: [PlanUtilizationSeriesHistory]) {
         self.quotas = history.filter(\.name.isNativeQuotaObservation)
-        self.inventories = history.filter { $0.name.rawValue == "nativeMetric:resets" }
-        var dates = self.inventories.flatMap(\.entries).filter { $0.nativeMetrics?.resets != nil }.map(\.capturedAt)
+        self.inventories = history.filter {
+            ["nativeMetric:resets", "nativeMetric:quotaSchema"].contains($0.name.rawValue)
+        }
+        var dates = self.inventories.flatMap(\.entries).filter {
+            $0.nativeMetrics?.resets != nil || $0.nativeMetrics?.quotaSchema != nil
+        }.map(\.capturedAt)
         var consumption: [NativeOrbitActivity.Rise] = []
+        let timeline = NativeOrbitQuotaTimeline(history: history)
         for lane in self.quotas {
             let measured = lane.entries.filter {
                 $0.historicalPeriod == nil && $0.usedPercent.isFinite && $0.usedPercent >= 0
@@ -31,6 +36,7 @@ final class NativeOrbitPreparedWarningHistory {
             for (before, after) in zip(measured, measured.dropFirst())
                 where after.usedPercent > before.usedPercent + NativeOrbitActivity.minimumIncrease
                 && NativeOrbitActivity.sameWindow(before, after)
+                && timeline.canJoin(lane.name.rawValue, from: before.capturedAt, to: after.capturedAt)
             {
                 consumption.append(.init(
                     lane: lane.name.rawValue,
@@ -40,10 +46,13 @@ final class NativeOrbitPreparedWarningHistory {
             for (before, after) in zip(measured, measured.dropFirst())
                 where after.capturedAt > before.capturedAt
             {
-                guard let schedule = before.resetsAt, schedule > before.capturedAt,
+                guard timeline.canJoin(lane.name.rawValue, from: before.capturedAt, to: after.capturedAt),
+                      let schedule = before.resetsAt, schedule > before.capturedAt,
                       schedule.timeIntervalSince(after.capturedAt) > NativeOrbitResetEvent.sameInstant,
                       NativeOrbitResetEvent.isResetDrop(from: before.usedPercent, to: after.usedPercent)
                 else { continue }
+                if let first = before.quotaDescriptor, let second = after.quotaDescriptor,
+                   first.windowMinutes != second.windowMinutes { continue }
                 dates.append(after.capturedAt)
             }
         }

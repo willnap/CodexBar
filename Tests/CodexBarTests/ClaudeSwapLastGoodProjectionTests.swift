@@ -46,8 +46,8 @@ struct ClaudeSwapLastGoodProjectionTests {
         #expect(snapshot.secondary?.usedPercent == 41)
         // The card must state the measurement's real age, not the refresh time.
         #expect(snapshot.updatedAt == self.fetchedAt)
-        // The row stays non-actionable and keeps explaining why.
-        #expect(account.canActivate == false)
+        // A pending token refresh keeps its age and diagnostic without hiding the saved login's switch action.
+        #expect(account.canActivate)
         #expect(account.error?.contains("Token expired") == true)
     }
 

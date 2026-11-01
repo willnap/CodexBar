@@ -14,7 +14,7 @@
   <img src="docs/screenshots/native-showcase/hero-light.png" alt="CodexBar's window under its menu bar item: an All page with a pie chart and every account's history, then a gauge, warning lights and chart for each account." width="100%" />
 </picture>
 
-CodexBar already tracks usage, limits and spend for 110 providers, and does it thoroughly. I kept all of that and
+CodexBar already tracks usage, limits and spend for 111 providers, and does it thoroughly. I kept all of that and
 designed a new interface on top, one that fits far more information into the same space and is still easier to read at
 a glance.
 
@@ -273,7 +273,7 @@ See [CLI configuration](docs/cli-configuration.md) for the full flow.
 - [X API](docs/xapi.md) — Browser or manual console.x.com cookies for prepaid and free credits, including negative balances.
 - [Future AGI](docs/futureagi.md) — API key and secret key (billing-period usage, allowances, and estimated cost).
 - [LithosAI](docs/lithosai.md) — Browser or manual console cookies for prepaid USD balance and optional UTC spend.
-- [WorkBuddy](docs/workbuddy.md) — Chrome or manual www.workbuddy.cn cookies for the monthly credits allowance, plan name, and cycle reset.
+- [WorkBuddy](docs/workbuddy.md) — Chrome or manual www.workbuddy.cn cookies for the monthly credits allowance, plan name, cycle reset, and the platform reward credits.
 - [Tavily](docs/tavily.md) — API key for account-plan, per-key, and pay-as-you-go credit totals.
 - [Linkup](docs/linkup.md) — API key for the current prepaid USD credit balance.
 - [TinyApi](docs/tinyapi.md) — Browser or manual session cookies for aggregate available credits.
@@ -290,6 +290,7 @@ See [CLI configuration](docs/cli-configuration.md) for the full flow.
 - [Trae CN](docs/traecn.md) — Browser session for account credit usage.
 - [Chatbox AI](docs/chatbox.md) — API token
 - [abliteration.ai](docs/abliteration.md) — API key for prepaid USD credits and cumulative usage.
+- [OpenDesign](docs/opendesign.md) — Browser or manual session cookies for the active workspace's five-hour and weekly subscription allowance.
 <!-- End generated provider additions -->
 
 ## Icon & Screenshot
@@ -312,7 +313,7 @@ show an incident indicator.
 - Bundled CLI (`codexbar`) for scripts and CI (including `codexbar cost --provider codex`, `claude`, or `both` for local cost usage); macOS and Linux CLI builds available.
 - WidgetKit widgets for supported providers.
 - Localized app and website with a shared 23-language catalog, automatic website detection, persistent pickers, and RTL support.
-- Optional session quota notifications and weekly-reset confetti.
+- Optional session quota notifications, upcoming-reset warnings for unused Codex quota, and weekly-reset confetti.
 - Privacy-first: on-device parsing by default; browser cookies are opt-in and reused (no passwords stored).
 
 ## Privacy note

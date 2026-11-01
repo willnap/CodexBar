@@ -1,4 +1,5 @@
 /* Japanese localization for CodexBar */
+"Copilot subscription ended" = "Copilotのサブスクリプションは終了しました";
 
 /* iCloud Sync */
 "+ %d more" = "他 %d 件";
@@ -177,6 +178,7 @@
 "Individual credits" = "個人クレジット";
 "Workspace" = "ワークスペース";
 "Credits history" = "クレジット履歴";
+"Cursor app session expired — open Cursor to sign in again, or sign in to cursor.com in your browser." = "Cursorアプリのセッションの有効期限が切れました。Cursorを開いて再度ログインするか、ブラウザでcursor.comにログインしてください。";
 "Cursor login failed" = "Cursor のログインに失敗しました";
 "Custom" = "カスタム";
 "Custom Path" = "カスタムパス";
@@ -1346,11 +1348,8 @@
 "Share Stats…" = "統計を共有…";
 "Stats copied" = "統計をコピーしました";
 "DeepSeek this month token usage trend" = "今月の DeepSeek トークン使用量の推移";
-"Chrome profile" = "Chrome プロファイル";
 "Choose which signed-in DeepSeek Platform session supplies detailed usage." = "詳細な使用状況を取得する、ログイン済みの DeepSeek Platform セッションを選択します。";
 "Detailed usage unavailable." = "詳細な使用状況を取得できません。";
-"Sign in to DeepSeek Platform in Chrome for detailed usage." = "詳細な使用状況を確認するには、Chrome で DeepSeek Platform にログインしてください。";
-"Select a DeepSeek Chrome profile in Settings." = "設定で DeepSeek の Chrome プロファイルを選択してください。";
 "Select profile…" = "プロファイルを選択…";
 
 "%@: %@" = "%@: %@";
@@ -2546,131 +2545,6 @@
 "Pace sign" = "ペースの符号";
 "Ahead of pace is +" = "ペース超過を + で表示";
 "Reserve is +" = "余裕を + で表示";
-
-"Sign In…" = "Sign In…";
-
-"Connect…" = "Connect…";
-
-"Show model-specific weekly usage" = "Show model-specific weekly usage";
-"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
-
-// Native gauge settings and states.
-"Approve in Login Items…" = "Approve in Login Items…";
-"Available services" = "Available services";
-"Configured services" = "Configured services";
-"Redesign" = "Redesign";
-"Combine into one icon" = "Combine into one icon";
-"With 4 or more services" = "With 4 or more services";
-"Always" = "Always";
-"Manage services in the sidebar." = "Manage services in the sidebar.";
-"Enabled services" = "Enabled services";
-"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
-"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
-"Original" = "Original";
-"Local agents" = "Local agents";
-"No usage access" = "No usage access";
-"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
-"Provider disabled" = "Provider disabled";
-"Search services and active accounts" = "Search services and active accounts";
-"Service maintenance" = "Service maintenance";
-"Service outage" = "Service outage";
-"Sign in required" = "Sign in required";
-"Design" = "Design";
-"Usage delayed or service degraded" = "Usage delayed or service degraded";
-"Usage pace" = "Usage pace";
-"Usage unknown" = "Usage unknown";
-
-/* Settings search and provider ordering */
-"Search settings" = "Search settings";
-"Used providers first" = "Used providers first";
-"No matching settings" = "No matching settings";
-"Settings" = "Settings";
-
-// Native orbit popup
-"Available" = "利用可能";
-"24h" = "24h";
-"No history yet" = "履歴はまだありません";
-"Recorded available usage" = "記録された利用可能量";
-
-"Switch when exhausted" = "Switch when exhausted";
-"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
-"Automatic account switching" = "Automatic account switching";
-"Automatic switching on" = "Automatic switching on";
-"Automatic switching off" = "Automatic switching off";
-
-"Local usage totals" = "Local usage totals";
-
-"Time period" = "期間";
-
-"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "すべてのアカウントの履歴、トークン、支出の期間です。クォータのゲージは現在の利用可能量を示します。";
-
-"Active %@ account" = "使用中の%@アカウント";
-
-"Use in %@" = "%@で使用";
-
-"Use this account in %@" = "このアカウントを%@で使用";
-
-"Use %@ in %@" = "%@を%@で使用";
-
-"Last updated %@" = "最終更新 %@";
-
-"No observations" = "記録がありません";
-
-"History begins with recorded usage. Missing time is left empty." = "履歴は記録された使用データから始まります。データのない期間は空白のままです。";
-
-"native_orbit_range_help" = "履歴・トークン・支出の期間";
-
-"1d" = "1日";
-"<1m ago" = "<1分前";
-"Auto switch" = "自動切り替え";
-
-"Switch" = "切り替え";
-
-"Switch accounts automatically" = "アカウントを自動で切り替える";
-
-"native_auto_switch_settings_detail" = "使用中のアカウントの上限に達すると、Codex CLI は残りのあるアカウントに切り替わります。手動で切り替えると10分間停止します。";
-"Now" = "現在";
-"Updating…" = "更新中…";
-
-"Local Claude archive" = "Claudeのローカル履歴";
-
-"Account not recorded" = "アカウント未記録";
-
-"Anonymous observations from this provider. No account identity was recorded." = "このプロバイダーの匿名の測定値です。アカウントの識別情報は記録されていません。";
-
-"History begins with recorded usage." = "履歴は使用量の記録開始時から表示されます。";
-
-"%d observations · %d/%d days" = "%d 件の記録 · %d/%d 日";
-
-"No observations in this period" = "この期間の記録はありません";
-
-"Last observed %@" = "最終記録 %@";
-
-"First observed %@" = "最初の記録 %@";
-
-"Connecting lines hold the last recorded value." = "接続線は最後に記録された値を維持します。";
-
-"Local Codex archive" = "ローカル Codex アーカイブ";
-
-"Session logs can repeat cached quota readings. Their account identity is not recorded." = "セッションログにはキャッシュされた使用枠の値が繰り返し記録されることがあります。アカウントの識別情報は記録されていません。";
-
-"%ds ago" = "%d秒前";
-
-"Local Kimi archive" = "ローカル Kimi アーカイブ";
-"Lines connect nearby observations. Gaps have no recorded data." = "線は時間が近い測定値をつなぎます。空白には記録されたデータがありません。";
-"native_refresh_timed_out" = "更新に予想以上の時間がかかっています。バックグラウンドで続行します。";
-"native_refresh_claude_swap_paced" = "claude-swap は Anthropic のレート制限内に収めるため、このアカウントを数分ごとに更新します。";
-"native_refresh_issue_stale" = "古いデータ";
-"native_refresh_issue_slow" = "遅延中";
-"native_orbit_range_day" = "日";
-"native_orbit_range_week" = "週";
-"native_orbit_range_month" = "月";
-"Last 7 days" = "過去7日間";
-
-"Use" = "使用";
-
-/* Combined account paging (English fallback). */
-"Account pages" = "Account pages";
 "Back" = "戻る";
 "Forward" = "進む";
 
@@ -2885,3 +2759,134 @@
 "Show this Mac's recorded OpenCode usage in Codex history. Off by default; scoped or alternate CODEX_HOME locations always stay excluded." = "この Mac に記録された OpenCode の使用状況を Codex の履歴に表示します。デフォルトではオフです。スコープが限定された場所や代替の CODEX_HOME の場所は常に除外されます。";
 "Auto uses the active saved session, otherwise an API key or browser cookies." = "自動では使用中の保存済みセッションを使用し、それ以外の場合は API キーまたはブラウザの Cookie を使用します。";
 "Store multiple Command Code subscription sessions." = "Command Code サブスクリプションのセッションを複数保存します。";
+
+"codex_reset_credit_expiry_notifications_title" = "Codex リセットクレジットの有効期限";
+
+"codex_reset_credit_expiry_notifications_subtitle" = "使用状況の更新時に、有効期限の1日前と1時間前にリマインダーを通知します。";
+/* OpenDesign */
+"OpenDesign" = "OpenDesign";
+"Show OpenDesign usage" = "OpenDesignの使用状況を表示";
+"Sign in to OpenDesign, then refresh CodexBar." = "OpenDesignにサインインしてから、CodexBarを更新してください。";
+"OpenDesign usage response format changed." = "OpenDesignの使用状況の応答形式が変更されました。";
+"OpenDesign billing access was denied." = "OpenDesignの請求情報へのアクセスが拒否されました。";
+"OpenDesign request failed. Try again later." = "OpenDesignへのリクエストに失敗しました。後でもう一度お試しください。";
+"OpenDesign subscription usage is unavailable for this workspace." = "このワークスペースではOpenDesignのサブスクリプション使用状況を取得できません。";
+"upcoming_reset_notifications_title" = "リセット前の警告";
+"upcoming_reset_notifications_subtitle" = "週間上限のリセット前に、クォータがまだ残っている場合にCodexに警告します。";
+"upcoming_reset_notification_title" = "%1$@ の%2$@上限がまもなくリセットされます";
+"upcoming_reset_notification_body" = "クォータの%1$@がまだ未使用です。%2$@後にリセットされ、未使用のクォータは失われます。";
+"upcoming_reset_notification_body_with_account" = "アカウント %1$@。クォータの%2$@がまだ未使用です。%3$@後にリセットされ、未使用のクォータは失われます。";
+"Sign in to DeepSeek Platform in a Chromium-based browser for detailed usage." = "詳細な使用状況を確認するには、Chromium ベースのブラウザーで DeepSeek Platform にログインしてください。";
+"Select a DeepSeek browser profile in Settings." = "設定で DeepSeek のブラウザープロファイルを選択してください。";
+"menu_bar_layout_token_separator_glyph_accessibility" = "区切り %@";
+"menu_bar_layout_separator_pipe" = "縦棒";
+"menu_bar_layout_separator_slash" = "スラッシュ";
+"menu_bar_layout_separator_hyphen" = "ハイフン";
+"menu_bar_layout_separator_bullet" = "中黒";
+"menu_bar_layout_separator_diamond" = "黒ひし形";
+"menu_bar_layout_separator_hollowDiamond" = "白ひし形";
+"menu_bar_layout_separator_tilde" = "チルダ";
+"menu_bar_layout_separator_doubleBar" = "二重縦棒";
+"Rename" = "名前を変更";
+"Rename account" = "アカウント名を変更";
+"Account name" = "アカウント名";
+"Leave blank to use the default name." = "空欄にするとデフォルトの名前を使用します。";
+"Rewards" = "報酬";
+"Reward expiry" = "報酬の有効期限";
+
+/* Native redesign */
+"Chrome profile" = "Chrome プロファイル";
+"Sign in to DeepSeek Platform in Chrome for detailed usage." = "詳細な使用状況を確認するには、Chrome で DeepSeek Platform にログインしてください。";
+"Select a DeepSeek Chrome profile in Settings." = "設定で DeepSeek の Chrome プロファイルを選択してください。";
+"Sign In…" = "Sign In…";
+"Connect…" = "Connect…";
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Redesign" = "Redesign";
+"Combine into one icon" = "Combine into one icon";
+"With 4 or more services" = "With 4 or more services";
+"Always" = "Always";
+"Manage services in the sidebar." = "Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Original" = "Original";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Design" = "Design";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+"Available" = "利用可能";
+"24h" = "24h";
+"No history yet" = "履歴はまだありません";
+"Recorded available usage" = "記録された利用可能量";
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+"Local usage totals" = "Local usage totals";
+"Time period" = "期間";
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "すべてのアカウントの履歴、トークン、支出の期間です。クォータのゲージは現在の利用可能量を示します。";
+"Active %@ account" = "使用中の%@アカウント";
+"Use in %@" = "%@で使用";
+"Use this account in %@" = "このアカウントを%@で使用";
+"Use %@ in %@" = "%@を%@で使用";
+"Last updated %@" = "最終更新 %@";
+"No observations" = "記録がありません";
+"History begins with recorded usage. Missing time is left empty." = "履歴は記録された使用データから始まります。データのない期間は空白のままです。";
+"native_orbit_range_help" = "履歴・トークン・支出の期間";
+"1d" = "1日";
+"<1m ago" = "<1分前";
+"Auto switch" = "自動切り替え";
+"Switch" = "切り替え";
+"Switch accounts automatically" = "アカウントを自動で切り替える";
+"native_auto_switch_settings_detail" = "使用中のアカウントの上限に達すると、Codex CLI は残りのあるアカウントに切り替わります。手動で切り替えると10分間停止します。";
+"Now" = "現在";
+"Updating…" = "更新中…";
+"Local Claude archive" = "Claudeのローカル履歴";
+"Account not recorded" = "アカウント未記録";
+"Anonymous observations from this provider. No account identity was recorded." = "このプロバイダーの匿名の測定値です。アカウントの識別情報は記録されていません。";
+"History begins with recorded usage." = "履歴は使用量の記録開始時から表示されます。";
+"%d observations · %d/%d days" = "%d 件の記録 · %d/%d 日";
+"No observations in this period" = "この期間の記録はありません";
+"Last observed %@" = "最終記録 %@";
+"First observed %@" = "最初の記録 %@";
+"Connecting lines hold the last recorded value." = "接続線は最後に記録された値を維持します。";
+"Local Codex archive" = "ローカル Codex アーカイブ";
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "セッションログにはキャッシュされた使用枠の値が繰り返し記録されることがあります。アカウントの識別情報は記録されていません。";
+"%ds ago" = "%d秒前";
+"Local Kimi archive" = "ローカル Kimi アーカイブ";
+"Lines connect nearby observations. Gaps have no recorded data." = "線は時間が近い測定値をつなぎます。空白には記録されたデータがありません。";
+"native_refresh_timed_out" = "更新に予想以上の時間がかかっています。バックグラウンドで続行します。";
+"native_refresh_claude_swap_paced" = "claude-swap は Anthropic のレート制限内に収めるため、このアカウントを数分ごとに更新します。";
+"native_refresh_issue_stale" = "古いデータ";
+"native_refresh_issue_slow" = "遅延中";
+"native_orbit_range_day" = "日";
+"native_orbit_range_week" = "週";
+"native_orbit_range_month" = "月";
+"Last 7 days" = "過去7日間";
+"Use" = "使用";
+"Account pages" = "Account pages";
+"native_account_use_missing_login" = "保存済みのログインがありません。再度ログインしてください。";
+"native_account_use_unknown_status" = "アカウントの状態が不明です。更新して再試行してください。";
+"native_account_use_read_only" = "この接続ではアカウントを切り替えられません。";
+"native_account_use_monitor_only" = "プロバイダーのアプリまたはCLIでこのアカウントに切り替えてください。";
+"native_account_use_busy" = "現在のアカウント切り替えが完了するまでお待ちください。";
+"native_account_use_not_ready" = "アカウント切り替えの準備ができていません。少し待って再試行してください。";
+"native_account_use_unverified_login" = "現在のログインを確認できません。更新して再試行してください。";
+"native_app_update_ready" = "CodexBar のアップデートをインストールできます。";

@@ -119,11 +119,12 @@ struct PlanUtilizationHistoryEntry: Codable, Equatable, Hashable, Sendable {
     let resetsAt: Date?
     let historicalPeriod: PlanUtilizationHistoricalPeriod?
     let nativeMetrics: NativeOrbitMetricObservation?
+    let quotaDescriptor: NativeOrbitQuotaDescriptor?
 
     private enum CodingKeys: String, CodingKey {
         case capturedAt, usedPercent, resetsAt
         case capturedAtReferenceTime, resetsAtReferenceTime
-        case historicalPeriod, nativeMetrics
+        case historicalPeriod, nativeMetrics, quotaDescriptor
     }
 
     init(
@@ -131,13 +132,15 @@ struct PlanUtilizationHistoryEntry: Codable, Equatable, Hashable, Sendable {
         usedPercent: Double,
         resetsAt: Date?,
         historicalPeriod: PlanUtilizationHistoricalPeriod? = nil,
-        nativeMetrics: NativeOrbitMetricObservation? = nil)
+        nativeMetrics: NativeOrbitMetricObservation? = nil,
+        quotaDescriptor: NativeOrbitQuotaDescriptor? = nil)
     {
         self.capturedAt = capturedAt
         self.usedPercent = usedPercent
         self.resetsAt = resetsAt
         self.historicalPeriod = historicalPeriod
         self.nativeMetrics = nativeMetrics
+        self.quotaDescriptor = quotaDescriptor
     }
 
     init(from decoder: any Decoder) throws {
@@ -150,6 +153,7 @@ struct PlanUtilizationHistoryEntry: Codable, Equatable, Hashable, Sendable {
             try values.decode(Date.self, forKey: .capturedAt)
         }
         self.nativeMetrics = try values.decodeIfPresent(NativeOrbitMetricObservation.self, forKey: .nativeMetrics)
+        self.quotaDescriptor = try values.decodeIfPresent(NativeOrbitQuotaDescriptor.self, forKey: .quotaDescriptor)
         self.usedPercent = try values.decode(Double.self, forKey: .usedPercent)
         self.historicalPeriod = try values.decodeIfPresent(
             PlanUtilizationHistoricalPeriod.self,
@@ -172,6 +176,7 @@ struct PlanUtilizationHistoryEntry: Codable, Equatable, Hashable, Sendable {
         try values.encodeIfPresent(self.resetsAt?.timeIntervalSinceReferenceDate, forKey: .resetsAtReferenceTime)
         try values.encodeIfPresent(self.historicalPeriod, forKey: .historicalPeriod)
         try values.encodeIfPresent(self.nativeMetrics, forKey: .nativeMetrics)
+        try values.encodeIfPresent(self.quotaDescriptor, forKey: .quotaDescriptor)
     }
 
     static func precedes(_ lhs: Self, _ rhs: Self) -> Bool {

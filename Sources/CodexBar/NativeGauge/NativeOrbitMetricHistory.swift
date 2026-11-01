@@ -4,6 +4,7 @@ import Foundation
 /// These observations share the existing verified account buckets and persistence coordinator.
 /// Spend, balance, and inventory age independently; quota percentages cannot reconstruct them.
 struct NativeOrbitMetricObservation: Codable, Hashable, Sendable {
+    var quotaSchema: NativeOrbitQuotaSchemaObservation?
     var usage: NativeOrbitUsageObservation?
     var spend: ProviderCostSnapshot?
     var balance: NativeOrbitReportedBalance?
@@ -140,6 +141,9 @@ extension UsageStore {
                 name: .init(rawValue: "nativeMetric:" + name),
                 windowMinutes: 0,
                 entry: .init(capturedAt: date, usedPercent: 0, resetsAt: nil, nativeMetrics: observation)))
+        }
+        if let schema = Self.nativeOrbitQuotaSchema(provider: provider, snapshot: snapshot) {
+            append("quotaSchema", at: snapshot.updatedAt, observation: .init(quotaSchema: schema))
         }
         // Machine-local scans are not account receipts; history inspection reads their own dated buckets.
         let report = Self.nativeOrbitSnapshotReportIsMachineLocal(provider) ? nil

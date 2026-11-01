@@ -559,7 +559,8 @@ enum NativeOrbitShowcaseScene {
         let count = CGFloat(card.accounts.count)
         let full = NSSize(
             width: count * 240 + count - 1,
-            height: NativeOrbitPopupView.contentHeight(showsFooter: card.accounts.count > 1) + arrow)
+            height: NativeOrbitPopupView.contentHeight(
+                showsFooter: NativeAccountUsePresentation.showsFooter(accounts: state.accounts)) + arrow)
         // `CODEXBAR_PREVIEW_SCENE_HEIGHT` sets the scene's height in points, the popup still hanging under its item, so
         // it can sit level beside another picture.
         let height = ProcessInfo.processInfo.environment["CODEXBAR_PREVIEW_SCENE_HEIGHT"].flatMap(Double.init)
@@ -1234,10 +1235,12 @@ extension NativeOrbitShowcaseScene {
         let arrow: CGFloat = 11
         let menuBar: CGFloat = 30
         let margin: CGFloat = 64
-        let full = cards.map { card in
+        let states = cards.map { self.state(for: $0, now: now) }
+        let full = zip(cards, states).map { card, state in
             NSSize(
                 width: CGFloat(card.accounts.count * 240 + card.accounts.count - 1),
-                height: NativeOrbitPopupView.contentHeight(showsFooter: card.accounts.count > 1) + arrow)
+                height: NativeOrbitPopupView.contentHeight(
+                    showsFooter: NativeAccountUsePresentation.showsFooter(accounts: state.accounts)) + arrow)
         }
         // Each step away from the front recedes; every popover tucks slightly behind its neighbour nearer the front.
         let scales = cards.indices.map { [1, 0.86, 0.74, 0.64][min(3, abs($0 - hero))] as CGFloat }
@@ -1260,7 +1263,6 @@ extension NativeOrbitShowcaseScene {
         let height = menuBar + 2 + full[hero].height + margin
         let middle = margin + full[hero].height / 2
         let scene = self.scene(size: NSSize(width: width, height: height))
-        let states = cards.map { self.state(for: $0, now: now) }
         // Back to front.
         for index in cards.indices.sorted(by: { abs($0 - hero) > abs($1 - hero) }) {
             let size = NSSize(width: widths[index], height: full[index].height * scales[index])

@@ -73,6 +73,30 @@ final class NativeOrbitAccountsMemo {
 
     var entries: [UsageProvider: Entry] = [:]
     private var generations: [UsageProvider: Generation] = [:]
+    private struct WarningHistory {
+        let source: [PlanUtilizationSeriesHistory]
+        let prepared: NativeOrbitPreparedWarningHistory
+    }
+
+    private var warningHistories: [UsageProvider: [String: WarningHistory]] = [:]
+
+    /// Clock-only row rebuilds still need current warning expiry and pace, but their receipt indexes are unchanged.
+    func warningHistory(
+        provider: UsageProvider,
+        accountID: String,
+        history: [PlanUtilizationSeriesHistory]) -> NativeOrbitPreparedWarningHistory
+    {
+        if let cached = self.warningHistories[provider]?[accountID], cached.source == history {
+            return cached.prepared
+        }
+        let prepared = NativeOrbitPreparedWarningHistory(history: history)
+        self.warningHistories[provider, default: [:]][accountID] = .init(source: history, prepared: prepared)
+        return prepared
+    }
+
+    func retainWarningHistories(provider: UsageProvider, accountIDs: Set<String>) {
+        self.warningHistories[provider] = self.warningHistories[provider]?.filter { accountIDs.contains($0.key) }
+    }
 
     func generation(_ provider: UsageProvider) -> Generation {
         if let generation = self.generations[provider] { return generation }
@@ -112,6 +136,7 @@ extension UsageStore {
             }
         }
         memo.entries[provider] = .init(accounts: accounts, builtAt: now)
+        memo.retainWarningHistories(provider: provider, accountIDs: Set(accounts.map(\.id)))
         return accounts
     }
 
@@ -266,7 +291,7 @@ extension UsageStore {
         return Self.nativeOrbitOrdered(rows)
     }
 
-    /// Each column's name: its email, or "Account N" in privacy mode. Only when another shown column has the same
+    /// Each column's name: its custom name or email, or "Account N" in privacy mode. When another column has the same
     /// email does it add the workspace, or failing a distinct workspace name its number. Counted over the columns
     /// shown, so a hidden imported copy never adds anything, and never a hash.
     static func nativeOrbitCodexLabels(
@@ -287,7 +312,15 @@ extension UsageStore {
         let emails = Dictionary(grouping: accounts) { CodexIdentityResolver.normalizeEmail($0.email) ?? "" }
         return accounts.reduce(into: [:]) { labels, account in
             let email = account.email.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !hidePersonalInfo, !email.isEmpty else {
+            guard !hidePersonalInfo else {
+                labels[account.id] = number(account)
+                return
+            }
+            if account.customName != nil {
+                labels[account.id] = account.displayName
+                return
+            }
+            guard !email.isEmpty else {
                 labels[account.id] = number(account)
                 return
             }
@@ -489,6 +522,8 @@ extension UsageStore {
             usageLastKnownAt: usageLastKnownAt,
             warnings: self.nativeOrbitWarnings(
                 provider: provider,
+                accountID: automatic ? "\(provider.rawValue):automatic"
+                    : presentation.accountID ?? "\(provider.rawValue):automatic",
                 faultScope: self.nativeGaugeCredentialScope(for: provider) ?? "default",
                 updatedAt: snapshot?.updatedAt,
                 metrics: ambientMetrics,
@@ -627,6 +662,7 @@ extension UsageStore {
             fuelReserve: self.nativeFuelReserve(provider),
             warnings: self.nativeOrbitWarnings(
                 provider: provider,
+                accountID: id,
                 faultScope: faultScope,
                 updatedAt: snapshot?.updatedAt,
                 metrics: metrics,
@@ -711,6 +747,7 @@ extension NativeOrbitAccountSelection: Equatable {
                 && left.accountOrganizationName == right.accountOrganizationName
                 && left.sourceOrganizationID == right.sourceOrganizationID && left.isActive == right.isActive
                 && left.canActivate == right.canActivate && left.autoSwitchEligible == right.autoSwitchEligible
+                && left.activationUnavailableReason == right.activationUnavailableReason
                 && left.usesLastKnownUsage == right.usesLastKnownUsage && left.error == right.error
                 && left.sourceLabel == right.sourceLabel && left.snapshot?.updatedAt == right.snapshot?.updatedAt
         case (.none, .none): true

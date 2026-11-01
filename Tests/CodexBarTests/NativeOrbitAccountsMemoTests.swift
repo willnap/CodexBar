@@ -6,6 +6,27 @@ import Testing
 
 @MainActor
 struct NativeOrbitAccountsMemoTests {
+    @Test func `warning receipt indexes survive clock rebuilds and follow exact account history corrections`() {
+        let memo = NativeOrbitAccountsMemo()
+        let date = Date(timeIntervalSince1970: 1_800_000_000)
+        let history = [PlanUtilizationSeriesHistory(name: "nativeQuota:primary", windowMinutes: 10080, entries: [
+            .init(capturedAt: date, usedPercent: 20, resetsAt: date.addingTimeInterval(86400)),
+        ])]
+        let first = memo.warningHistory(provider: .claude, accountID: "one", history: history)
+        memo.forget(.claude)
+        #expect(memo.warningHistory(provider: .claude, accountID: "one", history: history.map(\.self)) === first)
+        #expect(memo.warningHistory(provider: .claude, accountID: "two", history: history) !== first)
+        #expect(memo.warningHistory(provider: .codex, accountID: "one", history: history) !== first)
+        let correction = [PlanUtilizationSeriesHistory(name: "nativeQuota:primary", windowMinutes: 10080, entries: [
+            .init(capturedAt: date, usedPercent: 30, resetsAt: date.addingTimeInterval(86400)),
+        ])]
+        #expect(memo.warningHistory(provider: .claude, accountID: "one", history: correction) !== first)
+        let kept = memo.warningHistory(provider: .claude, accountID: "two", history: history)
+        memo.retainWarningHistories(provider: .claude, accountIDs: ["two"])
+        #expect(memo.warningHistory(provider: .claude, accountID: "two", history: history) === kept)
+        #expect(memo.warningHistory(provider: .claude, accountID: "one", history: history) !== first)
+    }
+
     private final class Flag: @unchecked Sendable {
         var raised = false
     }

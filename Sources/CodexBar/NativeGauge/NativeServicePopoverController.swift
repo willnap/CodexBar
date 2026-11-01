@@ -24,7 +24,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         var refreshForSwitch: (() async -> Void)?
         var switchingAllowed: (() -> Bool)?
         var statusPage: () -> Void = {}
-        var availableUpdate: () -> String? = { nil }
+        var availableUpdate: () -> NativeOrbitWarningLight? = { nil }
         var checkForUpdates: (() -> Void)?
         var canLaunchLogin: () -> Bool = { false }
         var didClose: () -> Void = {}
@@ -61,6 +61,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     private var startupTask: Task<Void, Never>?
     private var startupSelection = NativeOrbitStartupSelection()
     private var switchingCheckedAt: Date?
+    private var hasPreparedPresentation = false
 
     init(
         provider: UsageProvider,
@@ -111,8 +112,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 
     override func loadView() {
-        self.store.prepareNativeAccountInventory(for: self.provider)
-        self.refreshPresentation()
+        self.preparePresentationIfNeeded()
         self.view = NSHostingView(rootView: NativeOrbitPopupView(
             state: self.orbitState,
             activate: { [weak self] id in self?.activateAccount(id: id) },
@@ -121,17 +121,25 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
             settings: { [weak self] in self?.openSettings() },
             lightAction: { [weak self] accountID, action in self?.handleLight(action, accountID: accountID) }))
         self.view.frame = NSRect(origin: .zero, size: self.preferredContentSize)
-        self.observePresentation()
-        self.reloadClaudeLocalArchive()
     }
 
     func prepare() {
-        _ = self.view
+        // The combined popup consumes this state directly. Constructing the standalone host here duplicates
+        // every account chart at launch, even when that service's own popup is never shown.
+        self.preparePresentationIfNeeded()
         self.reloadClaudeLocalArchive()
-        self.view.layoutSubtreeIfNeeded()
+        if self.isViewLoaded { self.view.layoutSubtreeIfNeeded() }
         self.orbitState.prepareStartupArtwork(
             screen: self.statusButton?.window?.screen,
-            appearance: self.isViewLoaded ? self.view.effectiveAppearance : nil)
+            appearance: self.statusButton?.effectiveAppearance ?? NSApp.effectiveAppearance)
+    }
+
+    private func preparePresentationIfNeeded() {
+        guard !self.hasPreparedPresentation else { return }
+        self.hasPreparedPresentation = true
+        self.store.prepareNativeAccountInventory(for: self.provider)
+        self.observePresentation()
+        self.reloadClaudeLocalArchive()
     }
 
     /// While the combined popup's pages are being scrolled, changes wait and land once they settle: rebuilding the
@@ -198,10 +206,8 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         let hasStatusPage = statusURL.flatMap(URL.init(string:)) != nil
         self.orbitState.accounts = accounts.map { account in
             var row = account
-            if let version = update {
-                row.warnings = NativeOrbitWarningLight.merged(row.warnings + [
-                    .init(.update, .opportunity, "CodexBar \(version) is available.", action: .checkForUpdates),
-                ])
+            if let update {
+                row.warnings = NativeOrbitWarningLight.merged(row.warnings + [update])
             }
             row.warnings = row.warnings.map {
                 $0.resolvingAction(
@@ -257,7 +263,8 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         self.updateReadiness()
         let count = self.orbitState.layoutColumns
         let availableWidth = self.statusButton?.window?.screen?.visibleFrame.width ?? 1200
-        let showsFooter = count > 1 || (self.orbitState.accounts.first?.updatedAt == nil && self.canSignIn)
+        let showsFooter = NativeAccountUsePresentation.showsFooter(
+            accounts: self.orbitState.accounts, canSignIn: self.canSignIn)
         self.preferredContentSize = NSSize(
             width: min(CGFloat(count * 240 + (count - 1)), availableWidth - 40),
             height: NativeOrbitPopupView.contentHeight(showsFooter: showsFooter))
@@ -269,7 +276,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
             } else {
                 self.orbitState.prepareStartupArtwork(
                     screen: self.statusButton?.window?.screen,
-                    appearance: self.isViewLoaded ? self.view.effectiveAppearance : nil)
+                    appearance: self.statusButton?.effectiveAppearance ?? NSApp.effectiveAppearance)
             }
         }
         NativeOrbitHistoryInspectionProof.write(provider: self.provider, store: self.store, state: self.orbitState)
@@ -504,7 +511,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         self.orbitState.armStartup(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
         self.orbitState.prepareStartupArtwork(
             screen: self.statusButton?.window?.screen,
-            appearance: self.isViewLoaded ? self.view.effectiveAppearance : nil)
+            appearance: self.statusButton?.effectiveAppearance ?? NSApp.effectiveAppearance)
     }
 
     func runCombinedStartup(in view: NSView) {

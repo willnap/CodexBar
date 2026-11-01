@@ -1,4 +1,5 @@
 /* Indonesian localization for CodexBar */
+"Copilot subscription ended" = "Langganan Copilot telah berakhir";
 
 /* iCloud Sync */
 "+ %d more" = "+ %d lainnya";
@@ -160,6 +161,7 @@
 "Individual credits" = "Kredit individual";
 "Workspace" = "Ruang kerja";
 "Credits history" = "Riwayat kredit";
+"Cursor app session expired — open Cursor to sign in again, or sign in to cursor.com in your browser." = "Sesi aplikasi Cursor telah kedaluwarsa — buka Cursor untuk masuk kembali, atau masuk ke cursor.com di browser Anda.";
 "Cursor login failed" = "Login Cursor gagal";
 "Custom" = "Kustom";
 "Custom Path" = "Path Kustom";
@@ -1064,11 +1066,8 @@
 "Today cash" = "Kas hari ini";
 "DeepSeek 30 day token usage trend" = "Tren penggunaan token 30 hari DeepSeek";
 "DeepSeek this month token usage trend" = "Tren penggunaan token DeepSeek bulan ini";
-"Chrome profile" = "Profil Chrome";
 "Choose which signed-in DeepSeek Platform session supplies detailed usage." = "Pilih sesi DeepSeek Platform yang telah masuk untuk menyediakan rincian penggunaan.";
 "Detailed usage unavailable." = "Rincian penggunaan tidak tersedia.";
-"Sign in to DeepSeek Platform in Chrome for detailed usage." = "Masuk ke DeepSeek Platform di Chrome untuk melihat rincian penggunaan.";
-"Select a DeepSeek Chrome profile in Settings." = "Pilih profil Chrome DeepSeek di Pengaturan.";
 "Select profile…" = "Pilih profil…";
 "cache-hit input" = "input cache-hit";
 "cache-miss input" = "input cache-miss";
@@ -2550,131 +2549,6 @@
 "Pace sign" = "Tanda laju penggunaan";
 "Ahead of pace is +" = "Di atas laju adalah +";
 "Reserve is +" = "Cadangan adalah +";
-
-"Sign In…" = "Sign In…";
-
-"Connect…" = "Connect…";
-
-"Show model-specific weekly usage" = "Show model-specific weekly usage";
-"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
-
-// Native gauge settings and states.
-"Approve in Login Items…" = "Approve in Login Items…";
-"Available services" = "Available services";
-"Configured services" = "Configured services";
-"Redesign" = "Redesign";
-"Combine into one icon" = "Combine into one icon";
-"With 4 or more services" = "With 4 or more services";
-"Always" = "Always";
-"Manage services in the sidebar." = "Manage services in the sidebar.";
-"Enabled services" = "Enabled services";
-"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
-"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
-"Original" = "Original";
-"Local agents" = "Local agents";
-"No usage access" = "No usage access";
-"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
-"Provider disabled" = "Provider disabled";
-"Search services and active accounts" = "Search services and active accounts";
-"Service maintenance" = "Service maintenance";
-"Service outage" = "Service outage";
-"Sign in required" = "Sign in required";
-"Design" = "Design";
-"Usage delayed or service degraded" = "Usage delayed or service degraded";
-"Usage pace" = "Usage pace";
-"Usage unknown" = "Usage unknown";
-
-/* Settings search and provider ordering */
-"Search settings" = "Search settings";
-"Used providers first" = "Used providers first";
-"No matching settings" = "No matching settings";
-"Settings" = "Settings";
-
-// Native orbit popup
-"Available" = "Tersedia";
-"24h" = "24h";
-"No history yet" = "Belum ada riwayat";
-"Recorded available usage" = "Penggunaan tersedia yang tercatat";
-
-"Switch when exhausted" = "Switch when exhausted";
-"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
-"Automatic account switching" = "Automatic account switching";
-"Automatic switching on" = "Automatic switching on";
-"Automatic switching off" = "Automatic switching off";
-
-"Local usage totals" = "Local usage totals";
-
-"Time period" = "Periode";
-
-"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Periode riwayat, token, dan pengeluaran semua akun. Indikator kuota menunjukkan ketersediaan saat ini.";
-
-"Active %@ account" = "Akun %@ aktif";
-
-"Use in %@" = "Gunakan di %@";
-
-"Use this account in %@" = "Gunakan akun ini di %@";
-
-"Use %@ in %@" = "Gunakan %@ di %@";
-
-"Last updated %@" = "Terakhir diperbarui %@";
-
-"No observations" = "Belum ada pengamatan";
-
-"History begins with recorded usage. Missing time is left empty." = "Riwayat dimulai dengan data penggunaan yang tercatat. Periode tanpa data dibiarkan kosong.";
-
-"native_orbit_range_help" = "Rentang untuk riwayat, token, dan pengeluaran";
-
-"1d" = "1 hari";
-"<1m ago" = "<1m lalu";
-"Auto switch" = "Beralih otomatis";
-
-"Switch" = "Beralih";
-
-"Switch accounts automatically" = "Beralih akun secara otomatis";
-
-"native_auto_switch_settings_detail" = "Saat akun aktif habis, Codex CLI beralih ke akun yang masih punya kuota. Peralihan manual menjeda ini selama 10 menit.";
-"Now" = "Sekarang";
-"Updating…" = "Memperbarui…";
-
-"Local Claude archive" = "Arsip Claude lokal";
-
-"Account not recorded" = "Akun tidak tercatat";
-
-"Anonymous observations from this provider. No account identity was recorded." = "Pengamatan anonim dari penyedia ini. Identitas akun tidak tercatat.";
-
-"History begins with recorded usage." = "Riwayat dimulai dari penggunaan yang tercatat.";
-
-"%d observations · %d/%d days" = "%d pengamatan · %d/%d hari";
-
-"No observations in this period" = "Tidak ada pengamatan dalam periode ini";
-
-"Last observed %@" = "Terakhir diamati %@";
-
-"First observed %@" = "Pertama diamati %@";
-
-"Connecting lines hold the last recorded value." = "Garis penghubung mempertahankan nilai terakhir yang tercatat.";
-
-"Local Codex archive" = "Arsip Codex lokal";
-
-"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Log sesi dapat mengulang pembacaan kuota yang tersimpan dalam cache. Identitas akunnya tidak tercatat.";
-
-"%ds ago" = "%ddtk lalu";
-
-"Local Kimi archive" = "Arsip Kimi lokal";
-"Lines connect nearby observations. Gaps have no recorded data." = "Garis menghubungkan pengukuran yang berdekatan waktunya. Celah tidak memiliki data yang tercatat.";
-"native_refresh_timed_out" = "Penyegaran memakan waktu lebih lama dari perkiraan. Proses berlanjut di latar belakang.";
-"native_refresh_claude_swap_paced" = "claude-swap memperbarui akun ini setiap beberapa menit agar tetap dalam batas laju Anthropic.";
-"native_refresh_issue_stale" = "Usang";
-"native_refresh_issue_slow" = "Lambat";
-"native_orbit_range_day" = "H";
-"native_orbit_range_week" = "M";
-"native_orbit_range_month" = "B";
-"Last 7 days" = "7 hari terakhir";
-
-"Use" = "Gunakan";
-
-/* Combined account paging (English fallback). */
-"Account pages" = "Account pages";
 "Back" = "Kembali";
 "Forward" = "Maju";
 
@@ -2887,3 +2761,134 @@
 "Show this Mac's recorded OpenCode usage in Codex history. Off by default; scoped or alternate CODEX_HOME locations always stay excluded." = "Menampilkan penggunaan OpenCode yang tercatat di Mac ini dalam riwayat Codex. Nonaktif secara bawaan; lokasi CODEX_HOME dengan cakupan terbatas atau lokasi alternatif selalu dikecualikan.";
 "Auto uses the active saved session, otherwise an API key or browser cookies." = "Otomatis menggunakan sesi tersimpan yang aktif, atau kunci API atau cookie browser jika tidak ada sesi yang aktif.";
 "Store multiple Command Code subscription sessions." = "Simpan beberapa sesi langganan Command Code.";
+
+"codex_reset_credit_expiry_notifications_title" = "Kedaluwarsa kredit reset Codex";
+
+"codex_reset_credit_expiry_notifications_subtitle" = "Menambahkan pengingat saat penggunaan diperbarui, 1 hari dan 1 jam sebelum kedaluwarsa.";
+/* OpenDesign */
+"OpenDesign" = "OpenDesign";
+"Show OpenDesign usage" = "Tampilkan penggunaan OpenDesign";
+"Sign in to OpenDesign, then refresh CodexBar." = "Masuk ke OpenDesign, lalu segarkan CodexBar.";
+"OpenDesign usage response format changed." = "Format respons penggunaan OpenDesign telah berubah.";
+"OpenDesign billing access was denied." = "Akses penagihan OpenDesign ditolak.";
+"OpenDesign request failed. Try again later." = "Permintaan OpenDesign gagal. Coba lagi nanti.";
+"OpenDesign subscription usage is unavailable for this workspace." = "Penggunaan langganan OpenDesign tidak tersedia untuk ruang kerja ini.";
+"upcoming_reset_notifications_title" = "Peringatan reset mendatang";
+"upcoming_reset_notifications_subtitle" = "Memperingatkan Codex sebelum batas mingguan direset selagi kuota masih ada yang belum terpakai.";
+"upcoming_reset_notification_title" = "Batas %2$@ %1$@ segera direset";
+"upcoming_reset_notification_body" = "%1$@ kuota masih belum terpakai. Batas direset dalam %2$@ dan kuota yang belum terpakai akan hilang.";
+"upcoming_reset_notification_body_with_account" = "Akun %1$@. %2$@ kuota masih belum terpakai. Batas direset dalam %3$@ dan kuota yang belum terpakai akan hilang.";
+"Sign in to DeepSeek Platform in a Chromium-based browser for detailed usage." = "Masuk ke DeepSeek Platform di browser berbasis Chromium untuk melihat rincian penggunaan.";
+"Select a DeepSeek browser profile in Settings." = "Pilih profil browser DeepSeek di Pengaturan.";
+"menu_bar_layout_token_separator_glyph_accessibility" = "Pemisah %@";
+"menu_bar_layout_separator_pipe" = "Garis vertikal";
+"menu_bar_layout_separator_slash" = "Garis miring";
+"menu_bar_layout_separator_hyphen" = "Tanda hubung";
+"menu_bar_layout_separator_bullet" = "Bulatan";
+"menu_bar_layout_separator_diamond" = "Wajik terisi";
+"menu_bar_layout_separator_hollowDiamond" = "Wajik kosong";
+"menu_bar_layout_separator_tilde" = "Tilde";
+"menu_bar_layout_separator_doubleBar" = "Garis vertikal ganda";
+"Rename" = "Ubah nama";
+"Rename account" = "Ubah nama akun";
+"Account name" = "Nama akun";
+"Leave blank to use the default name." = "Biarkan kosong untuk menggunakan nama bawaan.";
+"Rewards" = "Hadiah";
+"Reward expiry" = "Kedaluwarsa hadiah";
+
+/* Native redesign */
+"Chrome profile" = "Profil Chrome";
+"Sign in to DeepSeek Platform in Chrome for detailed usage." = "Masuk ke DeepSeek Platform di Chrome untuk melihat rincian penggunaan.";
+"Select a DeepSeek Chrome profile in Settings." = "Pilih profil Chrome DeepSeek di Pengaturan.";
+"Sign In…" = "Sign In…";
+"Connect…" = "Connect…";
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Redesign" = "Redesign";
+"Combine into one icon" = "Combine into one icon";
+"With 4 or more services" = "With 4 or more services";
+"Always" = "Always";
+"Manage services in the sidebar." = "Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Original" = "Original";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Design" = "Design";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+"Available" = "Tersedia";
+"24h" = "24h";
+"No history yet" = "Belum ada riwayat";
+"Recorded available usage" = "Penggunaan tersedia yang tercatat";
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+"Local usage totals" = "Local usage totals";
+"Time period" = "Periode";
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Periode riwayat, token, dan pengeluaran semua akun. Indikator kuota menunjukkan ketersediaan saat ini.";
+"Active %@ account" = "Akun %@ aktif";
+"Use in %@" = "Gunakan di %@";
+"Use this account in %@" = "Gunakan akun ini di %@";
+"Use %@ in %@" = "Gunakan %@ di %@";
+"Last updated %@" = "Terakhir diperbarui %@";
+"No observations" = "Belum ada pengamatan";
+"History begins with recorded usage. Missing time is left empty." = "Riwayat dimulai dengan data penggunaan yang tercatat. Periode tanpa data dibiarkan kosong.";
+"native_orbit_range_help" = "Rentang untuk riwayat, token, dan pengeluaran";
+"1d" = "1 hari";
+"<1m ago" = "<1m lalu";
+"Auto switch" = "Beralih otomatis";
+"Switch" = "Beralih";
+"Switch accounts automatically" = "Beralih akun secara otomatis";
+"native_auto_switch_settings_detail" = "Saat akun aktif habis, Codex CLI beralih ke akun yang masih punya kuota. Peralihan manual menjeda ini selama 10 menit.";
+"Now" = "Sekarang";
+"Updating…" = "Memperbarui…";
+"Local Claude archive" = "Arsip Claude lokal";
+"Account not recorded" = "Akun tidak tercatat";
+"Anonymous observations from this provider. No account identity was recorded." = "Pengamatan anonim dari penyedia ini. Identitas akun tidak tercatat.";
+"History begins with recorded usage." = "Riwayat dimulai dari penggunaan yang tercatat.";
+"%d observations · %d/%d days" = "%d pengamatan · %d/%d hari";
+"No observations in this period" = "Tidak ada pengamatan dalam periode ini";
+"Last observed %@" = "Terakhir diamati %@";
+"First observed %@" = "Pertama diamati %@";
+"Connecting lines hold the last recorded value." = "Garis penghubung mempertahankan nilai terakhir yang tercatat.";
+"Local Codex archive" = "Arsip Codex lokal";
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Log sesi dapat mengulang pembacaan kuota yang tersimpan dalam cache. Identitas akunnya tidak tercatat.";
+"%ds ago" = "%ddtk lalu";
+"Local Kimi archive" = "Arsip Kimi lokal";
+"Lines connect nearby observations. Gaps have no recorded data." = "Garis menghubungkan pengukuran yang berdekatan waktunya. Celah tidak memiliki data yang tercatat.";
+"native_refresh_timed_out" = "Penyegaran memakan waktu lebih lama dari perkiraan. Proses berlanjut di latar belakang.";
+"native_refresh_claude_swap_paced" = "claude-swap memperbarui akun ini setiap beberapa menit agar tetap dalam batas laju Anthropic.";
+"native_refresh_issue_stale" = "Usang";
+"native_refresh_issue_slow" = "Lambat";
+"native_orbit_range_day" = "H";
+"native_orbit_range_week" = "M";
+"native_orbit_range_month" = "B";
+"Last 7 days" = "7 hari terakhir";
+"Use" = "Gunakan";
+"Account pages" = "Account pages";
+"native_account_use_missing_login" = "Tidak ada login tersimpan. Masuk lagi.";
+"native_account_use_unknown_status" = "Status akun tidak diketahui. Muat ulang dan coba lagi.";
+"native_account_use_read_only" = "Koneksi ini tidak mendukung pergantian akun.";
+"native_account_use_monitor_only" = "Ganti akun ini di aplikasi atau CLI penyedia.";
+"native_account_use_busy" = "Tunggu hingga pergantian akun saat ini selesai.";
+"native_account_use_not_ready" = "Pergantian akun belum siap. Coba lagi sebentar lagi.";
+"native_account_use_unverified_login" = "Login saat ini belum terverifikasi. Muat ulang dan coba lagi.";
+"native_app_update_ready" = "Pembaruan CodexBar siap dipasang.";

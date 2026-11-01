@@ -35,6 +35,13 @@ public enum ProviderAccountCredentialIssue: Sendable, Equatable {
     case wrongAccount
 }
 
+/// Why a source cannot activate an inactive saved account, independent of its usage-fetch diagnostics.
+public enum ProviderAccountActivationUnavailableReason: Sendable, Equatable {
+    case readOnlySource
+    case missingCredentials
+    case unrecognizedStatus
+}
+
 /// Provider-neutral projection of one account's usage, consumed by menus (and,
 /// later, per-account status items) without teaching UI code about any specific
 /// credential source.
@@ -57,6 +64,7 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
     /// Whether the source can activate this slot or explicitly repair its selected credential state.
     /// Activation remains source-owned; CodexBar never handles credential material.
     public let canActivate: Bool
+    public let activationUnavailableReason: ProviderAccountActivationUnavailableReason?
     /// Explicit source permission for unattended rotation; repairable or disabled slots remain manual-only.
     public let autoSwitchEligible: Bool
     /// Whether `snapshot` is a last-known measurement the source served because
@@ -79,6 +87,7 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
         historyAccountKey: String? = nil,
         isActive: Bool,
         canActivate: Bool = false,
+        activationUnavailableReason: ProviderAccountActivationUnavailableReason? = nil,
         autoSwitchEligible: Bool = false,
         usesLastKnownUsage: Bool = false,
         snapshot: UsageSnapshot?,
@@ -96,6 +105,7 @@ public struct ProviderAccountUsageSnapshot: Identifiable, Sendable {
         self.historyAccountKey = historyAccountKey
         self.isActive = isActive
         self.canActivate = canActivate
+        self.activationUnavailableReason = activationUnavailableReason
         self.autoSwitchEligible = autoSwitchEligible
         self.usesLastKnownUsage = usesLastKnownUsage
         self.snapshot = snapshot

@@ -7,6 +7,7 @@ public protocol ClaudeUsageFetching: Sendable {
 }
 
 public struct ClaudeUsageSnapshot: Sendable {
+    public internal(set) var quotaWindowPresence: [String: Bool]?
     public let primary: RateWindow?
     public let secondary: RateWindow?
     public let opus: RateWindow?
@@ -981,30 +982,28 @@ extension ClaudeUsageFetcher {
         let loginMethod = ClaudePlan.oauthLoginMethod(
             subscriptionType: credentials.subscriptionType,
             rateLimitTier: credentials.rateLimitTier)
+        // Each slot describes its own allowance. A missing session is not a second copy of a weekly limit;
+        // keeping it absent lets every presentation adapt when Claude removes or restores the five-hour cap.
         let primary = makeWindow(usage.fiveHour, windowMinutes: 5 * 60)
-            ?? makeWindow(usage.sevenDay, windowMinutes: 7 * 24 * 60)
+        let weekly = makeWindow(usage.sevenDay, windowMinutes: 7 * 24 * 60)
             ?? makeWindow(usage.sevenDayOAuthApps, windowMinutes: 7 * 24 * 60)
-            ?? makeWindow(usage.sevenDaySonnet, windowMinutes: 7 * 24 * 60)
+        let modelSpecific = makeWindow(usage.sevenDaySonnet, windowMinutes: 7 * 24 * 60)
             ?? makeWindow(usage.sevenDayOpus, windowMinutes: 7 * 24 * 60)
-        let treatAsSpendLimit = primary == nil && usage.extraUsage?.isEnabled == true
+        let extraRateWindows = Self.oauthExtraRateWindows(from: usage)
+        let hasQuota = primary != nil || weekly != nil || modelSpecific != nil || !extraRateWindows.isEmpty
+        let treatAsSpendLimit = !hasQuota && usage.extraUsage?.isEnabled == true
         let providerCost = usage.monthlySpend?.cost(updatedAt: Date()) ?? Self.oauthExtraUsageCost(
             usage.extraUsage,
             loginMethod: loginMethod,
             treatAsSpendLimit: treatAsSpendLimit)
 
-        guard primary != nil || providerCost?.spendLimitWindow != nil
+        guard hasQuota || providerCost?.spendLimitWindow != nil
         else {
-            throw ClaudeUsageError.parseFailed("missing session data")
+            throw ClaudeUsageError.parseFailed("missing usage data")
         }
 
-        let weekly = makeWindow(usage.sevenDay, windowMinutes: 7 * 24 * 60)
-        let modelSpecific = makeWindow(
-            usage.sevenDaySonnet ?? usage.sevenDayOpus,
-            windowMinutes: 7 * 24 * 60)
-        let extraRateWindows = Self.oauthExtraRateWindows(from: usage)
-
         let updatedAt = Date()
-        return ClaudeUsageSnapshot(
+        var snapshot = ClaudeUsageSnapshot(
             primary: primary,
             secondary: weekly,
             opus: modelSpecific,
@@ -1021,6 +1020,8 @@ extension ClaudeUsageFetcher {
             oauthHistoryOwnerIdentifier: oauthHistoryOwnerIdentifier,
             oauthCredentialOwner: oauthCredentialOwner,
             oauthKeychainCredentialUnavailable: oauthKeychainCredentialUnavailable)
+        snapshot.quotaWindowPresence = usage.quotaWindowPresence
+        return snapshot
     }
 
     private static func oauthExtraUsageCost(
@@ -1128,7 +1129,7 @@ extension ClaudeUsageFetcher {
                 resetDescription: webData.weeklyResetsAt.map { Self.formatResetDate($0) })
         }
 
-        return ClaudeUsageSnapshot(
+        var snapshot = ClaudeUsageSnapshot(
             primary: primary,
             secondary: secondary,
             opus: opus,
@@ -1146,6 +1147,8 @@ extension ClaudeUsageFetcher {
                 accountUUID: nil,
                 email: webData.accountEmail,
                 organizationUUID: webData.accountOrganizationID) : nil)
+        snapshot.quotaWindowPresence = webData.quotaWindowPresence
+        return snapshot
     }
 
     private static func formatResetDate(_ date: Date) -> String {

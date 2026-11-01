@@ -522,8 +522,12 @@ struct NativeOrbitPopupView: View {
             self.state.inspectionDate = nil
         }
         .onDisappear {
-            self.state.finishStartup(reason: "disappeared")
-            self.state.inspectionDate = nil
+            // Combined pages share a provider's state. Evicting an offscreen account must not interrupt the
+            // startup or inspection of its visible siblings; the combined controller owns that lifecycle.
+            if self.displayedAccountID == nil {
+                self.state.finishStartup(reason: "disappeared")
+                self.state.inspectionDate = nil
+            }
         }
     }
 
@@ -620,7 +624,7 @@ struct NativeOrbitPopupView: View {
                     dataDays: NativeOrbitPopupState.dataDays,
                     startup: self.state.startup)
             }
-            if self.displayedAccountID != nil || self.state.accounts.count > 1
+            if self.showsAccountFooter(account)
                 || (account.updatedAt == nil && self.signIn != nil)
             {
                 self.columnSeparator
@@ -682,14 +686,21 @@ struct NativeOrbitPopupView: View {
         // No stack spacing: a spacer is a child too, so spacing would be reserved on both sides of it even at zero
         // width, and the name would shorten beside room it could have used. The spacer's minimum is the one gap.
         HStack(spacing: 0) {
-            if self.displayedAccountID != nil || self.state.accounts.count > 1 {
-                HStack(spacing: 4) {
-                    // A login nothing identifies shows no name, rather than its service's.
-                    if account.isNamed { self.accountName(account).layoutPriority(1) }
-                    self.planBadge(account)
+            if self.showsAccountFooter(account) {
+                if self.displayedAccountID == nil, self.state.accounts.count == 1,
+                   case .none = account.selection, let signIn = self.signIn, account.updatedAt == nil
+                {
+                    Button(L("Sign In…"), action: signIn).buttonStyle(.plain)
+                        .layoutPriority(1)
+                } else {
+                    HStack(spacing: 4) {
+                        // A login nothing identifies shows no name, rather than its service's.
+                        if account.isNamed { self.accountName(account).layoutPriority(1) }
+                        self.planBadge(account)
+                    }
+                    // The name takes the room it needs before anything else gives.
+                    .layoutPriority(1)
                 }
-                // The name takes the room it needs before anything gives; it shortens only when nothing else can.
-                .layoutPriority(1)
                 Spacer(minLength: 8)
                 self.accountStatus(account)
             } else if let signIn = self.signIn, account.updatedAt == nil {
@@ -701,6 +712,13 @@ struct NativeOrbitPopupView: View {
         .frame(height: 26)
         .padding(.horizontal, 6)
         .padding(.vertical, 6)
+    }
+
+    private func showsAccountFooter(_ account: NativeOrbitAccountPresentation) -> Bool {
+        NativeAccountUsePresentation.showsAccountFooter(
+            account: account,
+            isIndividualColumn: self.displayedAccountID != nil,
+            accountCount: self.state.accounts.count)
     }
 
     @ViewBuilder
@@ -737,39 +755,49 @@ struct NativeOrbitPopupView: View {
 
     @ViewBuilder
     private func accountStatus(_ account: NativeOrbitAccountPresentation) -> some View {
+        let use = NativeAccountUsePresentation.resolve(
+            account: account,
+            inFlightID: self.state.accountSwitch?.inFlightID,
+            switchingUnavailable: self.state.switchingUnavailable,
+            controllerAvailable: self.state.accountSwitch != nil)
         if account.isActive {
             self.accountCapsuleLabel(L("Active"))
                 .glassEffect(.regular.tint(self.state.accent.opacity(0.18)), in: Capsule())
                 .help(L("Active %@ account", self.loginTarget))
                 .accessibilityLabel(L("Active %@ account", self.loginTarget))
                 .accessibilityAddTraits(.isSelected)
-        } else if account.canActivate {
-            let inFlight = self.state.accountSwitch?.inFlightID
-            let switching = inFlight == account.id
+        } else if use.showsUse {
+            let help = use.help(loginTarget: self.loginTarget)
             Button {
                 self.activate(account.id)
             } label: {
                 // The title keeps the button's size while the spinner stands in for it.
                 self.accountCapsuleLabel(L("Use"))
-                    .opacity(switching ? 0 : 1)
+                    .opacity(use.isSwitching ? 0 : 1)
                     .overlay {
-                        if switching {
+                        if use.isSwitching {
                             ProgressView().controlSize(.mini).transition(.opacity)
                         }
                     }
-                    .animation(self.reduceMotion ? nil : .smooth(duration: 0.2), value: switching)
+                    .animation(self.reduceMotion ? nil : .smooth(duration: 0.2), value: use.isSwitching)
             }
             .buttonStyle(.plain)
-            .glassEffect(.regular.interactive(), in: Capsule())
+            .glassEffect(.regular.interactive(use.isEnabled), in: Capsule())
             .controlSize(.small)
             .tint(nil)
             // Another account's switch holds the others; the running one stays undimmed so its spinner reads.
-            .disabled(inFlight != nil && !switching)
-            .opacity(inFlight != nil && !switching ? 0.5 : 1)
-            .allowsHitTesting(!switching)
-            .help(L("Use in %@", self.loginTarget))
+            .disabled(!use.isEnabled)
+            .opacity(use.isEnabled || use.isSwitching ? 1 : 0.45)
+            .overlay {
+                if !use.isEnabled {
+                    // Keep hover help outside the disabled control's hit testing without changing its bounds.
+                    Color.clear.contentShape(Capsule()).help(help).accessibilityHidden(true)
+                }
+            }
+            .help(help)
             .accessibilityLabel(L("Switch to %@", account.label))
-            .accessibilityValue(switching ? L("Switching account…") : "")
+            .accessibilityHint(help)
+            .accessibilityValue(use.isSwitching ? L("Switching account…") : "")
         }
     }
 

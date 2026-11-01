@@ -8,6 +8,7 @@ extension UsageStore {
     /// error nothing else explains lights the reading-failed light, so no failure goes unlit.
     func nativeOrbitWarnings(
         provider: UsageProvider,
+        accountID: String? = nil,
         faultScope: String?,
         updatedAt: Date?,
         metrics: NativeOrbitAccountMetrics,
@@ -26,6 +27,9 @@ extension UsageStore {
             history: history,
             now: now,
             observedAt: updatedAt,
+            preparedHistory: accountID.map {
+                self.nativeOrbitAccountsMemo.warningHistory(provider: provider, accountID: $0, history: history)
+            },
             fuelReserve: self.nativeFuelReserve(provider))
         let system = NativeOrbitSystemSignals.shared
         if system.isOffline == true {

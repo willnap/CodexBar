@@ -4,6 +4,26 @@ import Testing
 
 struct InstallOriginTests {
     @Test
+    func `a stale Homebrew artifact cannot claim a locally built redesign`() throws {
+        try self.withFixture { root, app, artifact in
+            let contents = app.appendingPathComponent("Contents")
+            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            try PropertyListSerialization.data(
+                fromPropertyList: [
+                    "CFBundleIdentifier": "com.example.codexbar.local-fixture",
+                    "CodexBarNativeGauges": true,
+                    "CodexBarTeamID": "NATIVEGAUGE",
+                ],
+                format: .xml,
+                options: 0).write(to: contents.appendingPathComponent("Info.plist"))
+            try FileManager.default.createSymbolicLink(at: artifact, withDestinationURL: app)
+            let caskrooms = [root.appendingPathComponent("brew/Caskroom")]
+            #expect(!InstallOrigin.isHomebrewCask(appBundleURL: app, caskroomURLs: caskrooms))
+            #expect(InstallOrigin.homebrewPrefix(appBundleURL: app, caskroomURLs: caskrooms) == nil)
+        }
+    }
+
+    @Test
     func `detects legacy caskroom paths`() {
         for prefix in ["/opt/homebrew", "/usr/local"] {
             let app = URL(fileURLWithPath: "\(prefix)/Caskroom/codexbar/1.0.0/CodexBar.app")

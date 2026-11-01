@@ -493,7 +493,7 @@ struct NativeOrbitWarningLightTests {
 
     @Test func `claude-swap statuses map to conditions`() {
         let cases: [(ClaudeSwapUsageStatus, ProviderAccountCondition)] = [
-            (.ok, .ok), (.tokenExpired, .credentialProblem), (.reloginRequired, .credentialProblem),
+            (.ok, .ok), (.tokenExpired, .usageUnavailable), (.reloginRequired, .credentialProblem),
             (.keychainUnavailable, .credentialProblem), (.noCredentials, .credentialProblem),
             (.foreignCredential, .credentialProblem), (.unavailable, .usageUnavailable), (.apiKey, .notApplicable),
             (.unknown("new"), .unrecognized),

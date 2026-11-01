@@ -78,9 +78,11 @@ extension UsageStore {
         var extras = newest.extraRateWindows ?? []
         let ids = Set(extras.map(\.id))
         extras += (older.extraRateWindows ?? []).filter { !ids.contains($0.id) }
+        // The newest receipt owns the base quota inventory, including removed limits. Only adjunct readings
+        // are enriched from older payloads; otherwise a disappeared five-hour cap would survive indefinitely.
         return UsageSnapshot(
-            primary: newest.primary ?? older.primary,
-            secondary: newest.secondary ?? older.secondary,
+            primary: newest.primary,
+            secondary: newest.secondary,
             tertiary: newest.tertiary ?? older.tertiary,
             extraRateWindows: extras.isEmpty ? nil : extras,
             providerCost: Self.nativeOrbitClaudeMergedCost(adapter.providerCost, ambient.providerCost),

@@ -192,10 +192,14 @@ extension StatusItemController {
                 },
                 statusPage: { [weak self] in self?.openProviderStatusPage(provider) },
                 availableUpdate: { [weak self] in
-                    guard let status = self?.updater.updateStatus else { return nil }
-                    return status.availableVersion ?? (status.isUpdateReady ? "update" : nil)
+                    guard let self else { return nil }
+                    return NativeAppUpdatePresentation.warning(updater: self.updater)
                 },
-                checkForUpdates: { [weak self] in self?.checkForUpdates() },
+                checkForUpdates: { [weak self] in
+                    guard let self else { return }
+                    self.closeNativeServicePopover()
+                    NativeAppUpdatePresentation.open(updater: self.updater, showAbout: self.showSettingsAbout)
+                },
                 canLaunchLogin: { [weak self] in self?.nativeServiceCanLaunchLogin(provider) == true },
                 didClose: { [weak self] in
                     self?.nativePopoverRefreshScheduler.cancel()

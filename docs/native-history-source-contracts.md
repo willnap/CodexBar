@@ -271,3 +271,33 @@ update: per-account period totals, source availability, reset/balance/spend
 values, history lane counts and reconstructed readings at the first and last
 observations. It contains no credentials, email addresses or account
 identifiers. Normal launches do not write it.
+
+## Quota layout changes
+
+Quota readings retain the label and duration observed with each percentage,
+including an explicitly unknown duration. Changing today's quota layout does
+not rename or retime earlier readings. Existing source fragments keep their
+original cadence when coalesced; already-erased legacy labels or transition
+times cannot be reconstructed from today's settings.
+
+Full Claude OAuth/Web responses and healthy claude-swap measurements carry
+base-window presence separately from utilization. An object without a
+percentage is an existing, unmeasured window; an absent base window is a
+retired window. CLI scraping, cached snapshot decoding and pruned/last-known
+display projections supply no negative authority. Optional adjuncts are not
+retired by a base-only response.
+
+Accepted presence evidence is saved as account-owned quota-schema receipts.
+The covered IDs distinguish an explicit empty inventory from no inventory
+evidence. These receipts bound historical membership, chart interpolation,
+consumption/reset evidence and current forecasts. A removed and later
+returned quota never creates a connecting usage curve, synthetic zero or
+reset during its absence. Old observations remain inspectable in the period
+where that quota existed. Additional providers may supply the same explicit
+presence contract; missing snapshot fields alone are never sufficient.
+
+Quota absence authority additionally requires at least one recognized base
+field containing an object or explicit null. Empty, spend-only and malformed
+scalar-only bodies are not base inventory receipts. Explicit null base fields
+still express a covered empty inventory; a weekly-only base reply can still
+retire a missing session window.

@@ -30,35 +30,37 @@ enum NativeOrbitHistoricalInspection {
             preparedLanes: preparedLanes)
         widget.isProjecting = isProjecting
         let lanes = widget.lanes
-        var restored = windows.map { window in
-            let id = self.historyID(window, provider: account.gauge.provider)
-            let lane = lanes.first { $0.history.name.rawValue == id }
-                ?? lanes.first { $0.history.name.rawValue == window.id }
-            return self.restored(window, point: lane.flatMap { widget.nearest($0, to: date) })
-        }
-        // A no-longer-active session or model allowance may be absent from today's compact gauge. Its recorded
-        // chart samples still describe the past, with the same interpolation and gap rules as visible lanes.
-        var represented = Set(windows.map { self.historyID($0, provider: account.gauge.provider) })
+        let timeline = NativeOrbitQuotaTimeline(history: account.history)
+        let declared = timeline.declaredWindows(at: date)
+        widget.selectedDate = date
         widget.preparedLanes = lanes
         let labels = widget.legendLabels
-        for (index, lane) in lanes.enumerated() where lane.history.name.isNativeQuotaObservation {
-            let key = lane.history.name.rawValue
-            guard !represented.contains(key), let point = widget.nearest(lane, to: date),
-                  point.id.historicalPeriod == nil,
-                  let period = point.period, period.isFinite, period > 0 else { continue }
-            var id = String(key.dropFirst("nativeQuota:".count))
-            // Provider-specific by design: Codex maps primary/secondary history to stable session/weekly IDs.
-            if account.gauge.provider == UsageProvider.codex.rawValue {
-                if id == "primary" { id = "session" }
-                if id == "secondary" { id = "weekly" }
-            }
-            guard !restored.contains(where: { $0.id == id }) else { continue }
-            represented.insert(key)
-            restored.append(self.restored(
-                UsageWindow(id: id, label: labels[index], period: period, used: nil), point: point))
+        var restored: [UsageWindow] = []
+        var represented = Set<String>()
+        // Historical membership comes from the inspected receipt, never from today's compact layout.
+        for (index, lane) in lanes.enumerated() {
+            let key = NativeOrbitQuotaTimeline.quotaID(
+                lane.history, provider: UsageProvider(rawValue: account.gauge.provider)) ?? lane.history.name.rawValue
+            guard !timeline.isAbsent(key, at: date), let point = widget.nearest(lane, to: date),
+                  point.id.historicalPeriod == nil else { continue }
+            let id = self.windowID(key, provider: account.gauge.provider)
+            guard represented.insert(key).inserted else { continue }
+            let definition = declared[key] ?? point.id.quotaDescriptor
+            var window = self.restored(UsageWindow(
+                id: id, label: definition?.label ?? labels[index], period: point.period ?? 1, used: nil), point: point)
+            if let label = definition?.label { window.label = label }
+            restored.append(window)
         }
-        if restored.contains(where: { $0.usedFraction != nil }) {
-            restored.removeAll { $0.usedFraction == nil }
+        // A source may explicitly report an existing quota without reporting its utilization.
+        for (key, definition) in declared.sorted(by: { $0.key < $1.key }) where !represented.contains(key) {
+            restored.append(UsageWindow(
+                id: self.windowID(key, provider: account.gauge.provider),
+                label: definition.label ?? self.historicalLabel(definition),
+                period: definition.period ?? 1,
+                used: nil))
+        }
+        if restored.isEmpty {
+            return [UsageWindow(id: "historical-unknown", label: L("Usage unknown"), period: 1, used: nil)]
         }
         // The symbol accepts three unique lanes. An exhausted historical allowance must remain visible even when
         // the account has accumulated more model-specific lanes than fit in that compact geometry.
@@ -70,6 +72,24 @@ enum NativeOrbitHistoricalInspection {
         var historicalGauge = account.gauge
         historicalGauge.windows = selected
         return historicalGauge.resolvedWindows
+    }
+
+    private static func windowID(_ key: String, provider: String) -> String {
+        let id = key.hasPrefix("nativeQuota:") ? String(key.dropFirst("nativeQuota:".count)) : key
+        // Provider-specific by design: Codex dials use session/weekly IDs for their primary/secondary quota slots.
+        if provider == UsageProvider.codex.rawValue {
+            if id == "primary" { return "session" }
+            if id == "secondary" { return "weekly" }
+        }
+        return id
+    }
+
+    private static func historicalLabel(_ definition: NativeOrbitQuotaDescriptor) -> String {
+        switch definition.windowMinutes {
+        case 300: "Session"
+        case 10080: "Weekly"
+        default: L("Usage unknown")
+        }
     }
 
     private static func restored(_ window: UsageWindow, point: NativeOrbitHistoryWidget.Sample?) -> UsageWindow {
@@ -85,6 +105,8 @@ enum NativeOrbitHistoricalInspection {
             return result
         }
         result.used = (100 - point.available) / 100
+        result.period = point.period ?? 1
+        if let label = point.id.quotaDescriptor?.label { result.label = label }
         result.limit = 1
         result.unit = "fraction"
         if let period = point.period {

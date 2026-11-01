@@ -45,6 +45,14 @@ struct NativeOrbitPreparedWarningHistoryTests {
                 let bounded = NativeOrbitWarningSignals.account(
                     provider: provider, snapshot: nil, metrics: .empty, history: history, now: date)
                 #expect(bounded == original)
+                let cached = NativeOrbitWarningSignals.account(
+                    provider: provider,
+                    snapshot: nil,
+                    metrics: .empty,
+                    history: history,
+                    now: date,
+                    preparedHistory: prepared)
+                #expect(cached == original)
             }
         }
         #expect(prepared.earlyReset(provider: .claude, at: self.now.addingTimeInterval(-3300))?.kind == .early)

@@ -116,13 +116,18 @@ actor CostUsageStore {
 
     static let log = CodexBarLog.logger(LogCategories.tokenCost)
     static let databaseFilename = "cost-usage.sqlite"
-    static let baseSchemaVersion = 3
+    static let baseSchemaVersion = 4
     static let schemaVersion = CostUsageStore.combinedSchemaVersion(
         base: CostUsageStore.baseSchemaVersion,
         parserHash: CodexParserHash.value)
     static let cacheGeneration = "sqlite:\(CostUsageStore.schemaVersion)"
     static let compatiblePredecessorParserHashes: Set<String> = [
-        "e5909f60274b2c47", // Upstream v0.82 before merging the native redesign; Codex rows unchanged by the merge.
+        "6b42e42bafad1922", // Released v0.83 parser; native Claude-only scanner additions leave Codex rows unchanged.
+        "5a2709b815efd588", // Native v0.82 parser; retain rows/checkpoints for upstream revision-14 reconciliation.
+        "f98b2d0afc00443c", // Identified pricing export preserves revision-14 rows and corrected report totals.
+        "0ef5e15cc00e8e25", // Revision 14 refreshes resumed tiers without changing stored token rows.
+        "5a57546c60494379", // Home-scoped main before archived-row retention; rows and checkpoints are unchanged.
+        "e5909f60274b2c47", // Home scoping preserves the released rows and scan checkpoints.
         "c61ad842834df4fa", // Native redesign before merging upstream v0.82; Codex rows unchanged by the merge.
         // Claude-only Hashable conformances (ClaudePathRole, ClaudeUsageRow) in CostUsageScanner.swift changed
         // the hash; Codex row parsing, persisted rows, and scan checkpoints are unchanged.
@@ -197,15 +202,9 @@ actor CostUsageStore {
         "3c984b655688593f", // 0.54.x row-ownership evidence fix; parser and persisted row shape unchanged.
         "5f8507161b23757c", // 0.54.2 tokscale parity + priority evidence; persisted row shape unchanged.
     ]
-    static let incompatibleRetainedReportPredecessorParserHashes: Set<String> = [
-        "865cef15206ea5c0",
-        "d35c9fb00bee059b",
-        "99d920977063318a",
-        "dd19ffa2dcfa8d47",
-        "2d17f4981b78d07f",
-        "8050a4faf4fddb96",
-        "ed735dc27ffa70d9",
-    ]
+    /// Keep corrected report totals; earlier predecessors still need Fast repricing.
+    static let incompatibleRetainedReportPredecessorParserHashes = CostUsageStore.compatiblePredecessorParserHashes
+        .subtracting(["f98b2d0afc00443c"])
 
     /// Connections to one canonical database share a serial queue, preserving the single-writer
     /// contract without letting a busy database stall independent account stores.
@@ -221,6 +220,7 @@ actor CostUsageStore {
     #endif
 
     nonisolated let databaseURL: URL
+    nonisolated let home: String
     private let expectedSchemaVersion: Int32
     private let expectedParserHash: String
     private let busyTimeoutMilliseconds: Int32
@@ -242,11 +242,13 @@ actor CostUsageStore {
 
     init(
         cacheRoot: URL? = nil,
+        home: String = CodexHomeCostStoreScope.key(),
         schemaVersion: Int32 = CostUsageStore.schemaVersion,
         parserHash: String = CodexParserHash.value,
         busyTimeoutMilliseconds: Int32 = 5000)
     {
         self.databaseURL = Self.databaseURL(cacheRoot: cacheRoot)
+        self.home = home
         self.executor = StoreSerialExecutor.shared(for: self.databaseURL)
         self.expectedSchemaVersion = schemaVersion
         self.expectedParserHash = parserHash
@@ -325,7 +327,7 @@ extension CostUsageStore {
                         }
                         #endif
                         snapshots[path] = try Self.readTokenSnapshots(
-                            database, path: path, recorder: store.scopedReadWorkRecorderForTesting)
+                            database, path: path, home: store.home, recorder: store.scopedReadWorkRecorderForTesting)
                         #if DEBUG
                         if let checkpoint = CostUsageStoreTestHooks.current.codexTokenHydrationCheckpoint,
                            checkpoint.databaseURL == store.databaseURL
@@ -720,10 +722,15 @@ extension CostUsageStore {
         let predecessorVersion = Self.combinedSchemaVersion(
             base: Self.baseSchemaVersion,
             parserHash: storedHash)
+        let versionMatches = actualVersion == Int64(predecessorVersion)
+            || actualVersion == Int64(Self.combinedSchemaVersion(base: 3, parserHash: storedHash))
+        let knownParser = Self.compatiblePredecessorParserHashes.contains(storedHash)
+            || storedHash == self.expectedParserHash
+        let preservesArchives = try !isCurrent && versionMatches && !knownParser
+            && Self.readFiles(database).contains { CostUsageScanner.isArchivedCodexRollout($0.path) }
         let canAdoptPredecessor = self.expectedParserHash == CodexParserHash.value
             && self.expectedSchemaVersion == Self.schemaVersion
-            && Self.compatiblePredecessorParserHashes.contains(storedHash)
-            && actualVersion == Int64(predecessorVersion)
+            && versionMatches && (knownParser || preservesArchives)
         return (storedHash, isCurrent, canAdoptPredecessor)
     }
 
@@ -741,21 +748,28 @@ extension CostUsageStore {
     }
 
     private func adoptCompatiblePredecessor(_ database: OpaquePointer, storedHash: String) throws {
-        if Self.incompatibleRetainedReportPredecessorParserHashes.contains(storedHash),
-           var metadata = try Self.readSingleton(
-               CostUsageStoreMetadata.self,
-               database: database,
-               table: "scan_metadata")
+        if try Self.scalarInt(database, "PRAGMA user_version")
+            == Int64(Self.combinedSchemaVersion(base: 3, parserHash: storedHash))
         {
-            metadata.previousReportPayload = nil
-            let payload = try JSONEncoder().encode(metadata)
-            let metadataStatement = try Self.prepare(
-                database,
-                "UPDATE scan_metadata SET payload = ? WHERE id = 1")
-            defer { sqlite3_finalize(metadataStatement) }
-            Self.bind(payload, to: metadataStatement, at: 1)
-            try Self.stepDone(metadataStatement, database: database)
-            guard sqlite3_changes(database) == 1 else { throw StoreError.incompatibleSchema }
+            try self.migrateHomeScope(database)
+        }
+        if storedHash != self.expectedParserHash, !Self.compatiblePredecessorParserHashes.contains(storedHash) {
+            try self.preserveArchivedRowsAfterParserChange(database)
+        }
+        if Self.incompatibleRetainedReportPredecessorParserHashes.contains(storedHash) {
+            let rows = try Self.prepare(database, "SELECT home, payload FROM scan_metadata")
+            defer { sqlite3_finalize(rows) }
+            var result = sqlite3_step(rows)
+            while result == SQLITE_ROW {
+                guard let home = Self.columnText(rows, at: 0), let payload = Self.columnData(rows, at: 1) else {
+                    throw StoreError.invalidData
+                }
+                var metadata = try JSONDecoder().decode(CostUsageStoreMetadata.self, from: payload)
+                metadata.previousReportPayload = nil
+                try Self.writeSingleton(metadata, database: database, table: "scan_metadata", home: home)
+                result = sqlite3_step(rows)
+            }
+            guard result == SQLITE_DONE else { throw StoreError.sqlite(result) }
         }
         let statement = try Self.prepare(database, "UPDATE meta SET value = ? WHERE key = 'parser_hash'")
         defer { sqlite3_finalize(statement) }
@@ -763,6 +777,38 @@ extension CostUsageStore {
         try Self.stepDone(statement, database: database)
         guard sqlite3_changes(database) == 1 else { throw StoreError.incompatibleSchema }
         try Self.execute(database, "PRAGMA user_version = \(self.expectedSchemaVersion)")
+    }
+
+    private func preserveArchivedRowsAfterParserChange(_ database: OpaquePointer) throws {
+        let owner = try Self.prepare(database, "SELECT home FROM files WHERE path = ?")
+        let delete = try Self.prepare(database, "DELETE FROM files WHERE path = ?")
+        defer { sqlite3_finalize(owner); sqlite3_finalize(delete) }
+        var changedHomes: Set<String> = []
+        for file in try Self.readFiles(database)
+            where !file.belongsToOpenCodeLocalHistory && !CostUsageScanner.isArchivedCodexRollout(file.path)
+        {
+            sqlite3_reset(owner)
+            Self.bind(file.path, to: owner, at: 1)
+            guard sqlite3_step(owner) == SQLITE_ROW, let home = Self.columnText(owner, at: 0) else {
+                throw StoreError.invalidData
+            }
+            changedHomes.insert(home)
+            sqlite3_reset(delete)
+            Self.bind(file.path, to: delete, at: 1)
+            try Self.stepDone(delete, database: database)
+        }
+        for home in changedHomes {
+            var metadata = try Self.readSingleton(
+                CostUsageStoreMetadata.self, database: database, table: "scan_metadata", home: home) ?? .empty
+            metadata.lastScanUnixMs = 0
+            metadata.catchUpPending = true
+            metadata.scanInventoryPaths = nil
+            metadata.previousReportPayload = nil
+            try Self.writeSingleton(metadata, database: database, table: "scan_metadata", home: home)
+            try Self.rebuildDayAggregates(database, home: home)
+            try Self.deleteHomeRows(database, table: "discovery_state", home: home)
+            try Self.deleteHomeRows(database, table: "lookback_state", home: home)
+        }
     }
 
     private func createSchema(_ database: OpaquePointer) throws {
@@ -793,9 +839,8 @@ extension CostUsageStore {
         }
     }
 
-    /// The Codex JSON cache is derived data, so the SQLite cutover deliberately rebuilds
-    /// from session files instead of importing an old monolithic snapshot. Keep the legacy
-    /// filename knowledge confined to this one cleanup boundary.
+    /// Discard the legacy JSON snapshot rather than importing it. Existing SQLite history
+    /// remains authoritative, including homes other than the one starting this scan.
     func removeLegacyCodexArtifactIfPresent() -> Bool {
         let directory = self.databaseURL.deletingLastPathComponent()
         let legacyFilename = "codex-v11.json"
@@ -814,7 +859,6 @@ extension CostUsageStore {
         for url in temporaryNames {
             try? FileManager.default.removeItem(at: url)
         }
-        self.rebuildDatabase(reason: "legacy Codex JSON artifact removed")
         return true
     }
 }
@@ -822,17 +866,44 @@ extension CostUsageStore {
 // MARK: - Schema
 
 extension CostUsageStore {
+    static let dayAggregatesSchemaSQL = """
+    CREATE TABLE day_aggregates (
+        home TEXT NOT NULL,
+        day TEXT NOT NULL,
+        model TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL,
+        cached_tokens INTEGER NOT NULL,
+        output_tokens INTEGER NOT NULL,
+        reasoning_tokens INTEGER NOT NULL,
+        request_count INTEGER NOT NULL,
+        authoritative_cost_nanos INTEGER NOT NULL,
+        standard_input_tokens INTEGER NOT NULL,
+        standard_cached_tokens INTEGER NOT NULL,
+        standard_output_tokens INTEGER NOT NULL,
+        priority_input_tokens INTEGER NOT NULL,
+        priority_cached_tokens INTEGER NOT NULL,
+        priority_output_tokens INTEGER NOT NULL,
+        standard_tokens INTEGER NOT NULL,
+        priority_tokens INTEGER NOT NULL,
+        PRIMARY KEY(home, day, model)
+    );
+    CREATE INDEX day_aggregates_home_model_idx ON day_aggregates(home, model, day);
+    """
+
     private static let schemaSQL = """
     CREATE TABLE meta (
         key TEXT PRIMARY KEY NOT NULL,
         value TEXT NOT NULL
     );
     CREATE TABLE scan_metadata (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        payload BLOB NOT NULL
+        home TEXT NOT NULL,
+        id INTEGER NOT NULL CHECK (id = 1),
+        payload BLOB NOT NULL,
+        PRIMARY KEY(home, id)
     );
     CREATE TABLE files (
         id INTEGER PRIMARY KEY,
+        home TEXT NOT NULL,
         path TEXT NOT NULL UNIQUE,
         inode INTEGER,
         mtime_ms INTEGER NOT NULL,
@@ -850,6 +921,7 @@ extension CostUsageStore {
         updated_at_ms INTEGER NOT NULL
     );
     CREATE INDEX files_path_idx ON files(path);
+    CREATE INDEX files_home_path_idx ON files(home, path);
     CREATE INDEX files_session_idx ON files(session_id);
     CREATE INDEX files_coverage_idx ON files(coverage_since_day, coverage_until_day);
     CREATE INDEX files_updated_idx ON files(updated_at_ms);
@@ -901,28 +973,7 @@ extension CostUsageStore {
     );
     CREATE INDEX file_day_aggregates_day_idx ON file_day_aggregates(day);
     CREATE INDEX file_day_aggregates_model_day_idx ON file_day_aggregates(model, day);
-    CREATE TABLE day_aggregates (
-        day TEXT NOT NULL,
-        model TEXT NOT NULL,
-        input_tokens INTEGER NOT NULL,
-        cached_tokens INTEGER NOT NULL,
-        output_tokens INTEGER NOT NULL,
-        reasoning_tokens INTEGER NOT NULL,
-        request_count INTEGER NOT NULL,
-        authoritative_cost_nanos INTEGER NOT NULL,
-        standard_input_tokens INTEGER NOT NULL,
-        standard_cached_tokens INTEGER NOT NULL,
-        standard_output_tokens INTEGER NOT NULL,
-        priority_input_tokens INTEGER NOT NULL,
-        priority_cached_tokens INTEGER NOT NULL,
-        priority_output_tokens INTEGER NOT NULL,
-        standard_tokens INTEGER NOT NULL,
-        priority_tokens INTEGER NOT NULL,
-        PRIMARY KEY(day, model)
-    );
-    CREATE INDEX day_aggregates_day_idx ON day_aggregates(day);
-    CREATE INDEX day_aggregates_model_idx ON day_aggregates(model);
-    CREATE INDEX day_aggregates_model_day_idx ON day_aggregates(model, day);
+    \(CostUsageStore.dayAggregatesSchemaSQL)
     CREATE TABLE fork_lineage (
         file_id INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
         session_id TEXT,
@@ -944,12 +995,16 @@ extension CostUsageStore {
     );
     CREATE INDEX buffered_lines_file_idx ON buffered_lines(file_id, kind, line_index);
     CREATE TABLE discovery_state (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        payload BLOB NOT NULL
+        home TEXT NOT NULL,
+        id INTEGER NOT NULL CHECK (id = 1),
+        payload BLOB NOT NULL,
+        PRIMARY KEY(home, id)
     );
     CREATE TABLE lookback_state (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        payload BLOB NOT NULL
+        home TEXT NOT NULL,
+        id INTEGER NOT NULL CHECK (id = 1),
+        payload BLOB NOT NULL,
+        PRIMARY KEY(home, id)
     );
     CREATE TABLE accumulators (
         file_id INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,

@@ -39,6 +39,27 @@ for source in quickjs.c dtoa.c libregexp.c libunicode.c; do
     cp "${SOURCE_DIR}/${source}" "$STAGE_DIR/$source"
 done
 
+# Keep the public fork's tracked sources below 2 MB without changing the translation unit.
+python3 - "$STAGE_DIR" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+source = root / "quickjs.c"
+original = source.read_bytes()
+boundary = original.index(b"static JSValue js_reflect_apply(JSContext *ctx, JSValueConst this_val,")
+line = original[:boundary].count(b"\n") + 1
+license = original[:original.index(b"*/") + 2] + b"\n"
+marker = (b"/* Continued in an included section to keep each tracked source below 2 MB. */\n"
+          b'#include "quickjs-tail.h"\n')
+header = license + f'\n#line {line} "quickjs.c"\n'.encode()
+source.write_bytes(original[:boundary] + marker)
+tail = root / "quickjs-tail.h"
+tail.write_bytes(header + original[boundary:])
+assert source.read_bytes().removesuffix(marker) + tail.read_bytes()[len(header):] == original
+assert max(source.stat().st_size, tail.stat().st_size) < 2_000_000
+PY
+
 for header in \
     builtin-array-fromasync.h \
     builtin-iterator-zip-keyed.h \
@@ -62,7 +83,7 @@ cp "${SOURCE_DIR}/LICENSE" "$STAGE_DIR/LICENSE"
 
 case "$MODE" in
     check | --check)
-        for file in quickjs.c dtoa.c libregexp.c libunicode.c LICENSE; do
+        for file in quickjs.c quickjs-tail.h dtoa.c libregexp.c libunicode.c LICENSE; do
             cmp "${STAGE_DIR}/${file}" "${TARGET_DIR}/${file}"
         done
         for file in "$STAGE_DIR"/include/*.h; do
@@ -73,12 +94,14 @@ case "$MODE" in
     write | --write)
         rm -f \
             "${TARGET_DIR}/quickjs.c" \
+            "${TARGET_DIR}/quickjs-tail.h" \
             "${TARGET_DIR}/dtoa.c" \
             "${TARGET_DIR}/libregexp.c" \
             "${TARGET_DIR}/libunicode.c" \
             "${TARGET_DIR}/LICENSE"
         mkdir -p "${TARGET_DIR}/include"
         cp "$STAGE_DIR"/*.c "$TARGET_DIR/"
+        cp "$STAGE_DIR"/quickjs-tail.h "$TARGET_DIR/"
         cp "$STAGE_DIR"/LICENSE "$TARGET_DIR/"
         cp "$STAGE_DIR"/include/*.h "$TARGET_DIR/include/"
         echo "wrote ${TARGET_DIR} from quickjs-ng ${QUICKJS_TAG} (${EXPECTED_SHA256})"

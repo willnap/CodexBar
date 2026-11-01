@@ -1393,11 +1393,12 @@ struct SpendDashboardModel: Equatable, Sendable {
     }
 
     static func dayCount(in interval: ClosedRange<Date>?, calendar: Calendar) -> Int {
-        guard let interval,
-              let first = calendar.ordinality(of: .day, in: .era, for: interval.lowerBound),
-              let last = calendar.ordinality(of: .day, in: .era, for: interval.upperBound)
-        else { return 0 }
-        return last - first + 1
+        guard let interval else { return 0 }
+        // A clock change can move the start of a day to 01:00. Compare matching wall-clock hours instead.
+        let first = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: interval.lowerBound)
+        let last = calendar.date(bySettingHour: 12, minute: 0, second: 0, of: interval.upperBound)
+        guard let first, let last else { return 0 }
+        return calendar.dateComponents([.day], from: first, to: last).day.map { $0 + 1 } ?? 0
     }
 
     private static func day(

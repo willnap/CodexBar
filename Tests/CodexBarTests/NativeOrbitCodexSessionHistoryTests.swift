@@ -328,7 +328,12 @@ struct NativeOrbitCodexSessionHistoryTests {
             await store.backfillNativeCodexSessionHistory(projection: projection, now: self.now)
         }
         #expect(store.planUtilizationHistory[.codex]?.accounts[key] == [history])
-        #expect(store.planUtilizationHistory[.codex]?.unscoped == [history])
+        let archived = try #require(store.planUtilizationHistory[.codex]?.unscoped.first)
+        #expect(archived.entries.count == 1)
+        #expect(archived.entries.first?.capturedAt == self.now)
+        #expect(archived.entries.first?.usedPercent == 37)
+        #expect(archived.entries.first?.resetsAt == reset)
+        #expect(archived.entries.first?.quotaDescriptor?.windowMinutes == 300)
     }
 
     @Test func `source overage stays raw while malformed and negative measurements remain invalid`() throws {

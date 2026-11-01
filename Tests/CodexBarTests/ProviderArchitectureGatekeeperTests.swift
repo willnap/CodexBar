@@ -159,9 +159,9 @@ struct ProviderArchitectureGatekeeperTests {
         // Codex uses the sampled violet body from its shipped app icon in both widgets.
         #expect(CodexProviderDescriptor.descriptor.branding.widgetColor == ProviderColor(hex: 0x3935F5))
         #expect(CodexProviderDescriptor.descriptor.branding.burnDownWidgetColor == ProviderColor(hex: 0x3935F5))
-        // Codex's violet and abliteration.ai's entry are the only changes to upstream's audited palette.
-        #expect(widgetFingerprint == 18_157_289_686_474_803_277)
-        #expect(burnDownFingerprint == 15_745_998_815_817_842_633)
+        // Preserve the native Codex violet and abliteration.ai alongside upstream's new OpenDesign entry.
+        #expect(widgetFingerprint == 9_197_463_525_792_464_514)
+        #expect(burnDownFingerprint == 16_495_602_612_565_145_363)
     }
 
     @Test
@@ -2613,9 +2613,9 @@ struct ProviderArchitectureGatekeeperTests {
             path: "Sources/CodexBar/UsageStore/UsageStore+QuotaWarnings.swift",
             anchor: "guard provider != .claude || window != .session || Self.isSessionWindow(rateWindow) else { return }",
             expectedProviderIDs: ["claude"],
-            expectedReferenceCount: 2,
-            expectedReferenceFingerprint: ["claude@0", "claude@5"],
-            reason: "Claude preserves session history across weekly promotion and reconciles unresolved warning owners."),
+            expectedReferenceCount: 3,
+            expectedReferenceFingerprint: ["claude@0", "claude@4", "claude@9"],
+            reason: "Claude preserves warning episodes across missing quotas and legacy weekly promotion, and reconciles unresolved owners."),
         AllowedProviderConstruct(
             path: "Sources/CodexBar/UsageStore/UsageStore+Refresh.swift",
             anchor: "let codexExplicitPAT = provider == .codex && self.settings.codexUsageDataSource == .pat",
@@ -2850,13 +2850,14 @@ struct ProviderArchitectureGatekeeperTests {
             occurrence: 2,
             anchor: "self.lastFetchAttempts[.codex] = outcome.attempts",
             expectedProviderIDs: ["codex"],
-            expectedReferenceCount: 11,
+            expectedReferenceCount: 12,
             expectedReferenceFingerprint: [
                 "codex@0",
                 "codex@3",
                 "codex@5",
                 "codex@7",
                 "codex@8",
+                "codex@12",
                 "codex@16",
                 "codex@18",
                 "codex@24",

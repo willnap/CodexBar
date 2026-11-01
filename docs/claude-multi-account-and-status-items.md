@@ -76,7 +76,9 @@ envelope. CodexBar does not need
 - The optional top-level `supportsAccountSwitching` boolean defaults to `true` for schema-v1 compatibility.
   With `false`, account cards and chips remain inspectable but never offer switching or re-authentication actions.
   A present non-boolean value (including `null` or a number) is rejected as a malformed capability.
-- Bound runtime and stdout, terminate on timeout, and retain the last successful snapshot with a stale marker.
+- Bound stdout and retain the last successful snapshot with a stale marker. A `cswap --list --json` pass can rotate
+  saved OAuth credentials: once launched, let it finish without forced timeout or termination on caller cancellation,
+  then discard a cancelled result. Read-only tcr lists and version probes keep bounded runtimes.
 - Parse only slot number, email, `organizationUuid`, active state, usage status, 5-hour/7-day percentages, optional `usage.scoped` display names
   and percentages, reset timestamps, display-only `organizationName` (always present, may be empty), and optional
   display-only `alias` when non-empty. Ignore malformed or unknown scoped rows without discarding valid account-wide
@@ -135,8 +137,12 @@ last refresh, adapter errors, and a link to the upstream project; CodexBar shoul
   and a known switch error remains visible beside progress. This feedback does not diagnose or shorten a slow refresh.
 - Configuration invalidation clears visible progress without cancelling the transaction. Returning to the same
   executable path cannot revive the old phase or error, and another activation waits for the original task to drain.
-- Keep expired, missing, unknown, and Keychain-inaccessible credential slots non-actionable. Never auto-switch, launch
-  sessions, add/import/export/purge accounts, or mutate credentials directly.
+- Keep explicit switching available for saved slots with expired tokens, re-login requirements, or temporarily
+  unreadable Keychain storage. These usage states do not remove the saved login. Missing credentials, unknown states,
+  and read-only sources stay non-actionable. A rejected refresh grant still requires a fresh sign-in after selecting
+  the account. Never auto-switch, launch sessions, add/import/export/purge accounts, or mutate credentials directly.
+- The native popup retains a disabled “Use” control when activation is unavailable, with a concise reason on hover
+  and the same explanation as its accessibility hint. Keep source capability reasons separate from usage errors.
 
 ## Provider-neutral account model
 

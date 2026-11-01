@@ -1,4 +1,5 @@
 /* English localization for CodexBar (base/fallback) */
+"Copilot subscription ended" = "Das Copilot-Abonnement ist abgelaufen";
 
 /* iCloud Sync */
 "+ %d more" = "+ %d weitere";
@@ -175,6 +176,7 @@
 "Top-up credits" = "Aufgeladene Credits";
 "Remaining" = "Übrig";
 "Credits history" = "Credits-Geschichte";
+"Cursor app session expired — open Cursor to sign in again, or sign in to cursor.com in your browser." = "Die Sitzung der Cursor-App ist abgelaufen — öffne Cursor, um dich erneut anzumelden, oder melde dich im Browser bei cursor.com an.";
 "Cursor login failed" = "Die Cursor-Anmeldung ist fehlgeschlagen";
 "Custom" = "Benutzerdefiniert";
 "Custom Path" = "Benutzerdefinierter Pfad";
@@ -1347,11 +1349,8 @@
 "Share Stats…" = "Statistiken teilen…";
 "Stats copied" = "Statistiken kopiert";
 "DeepSeek this month token usage trend" = "Trend der DeepSeek-Token-Nutzung in diesem Monat";
-"Chrome profile" = "Chrome-Profil";
 "Choose which signed-in DeepSeek Platform session supplies detailed usage." = "Wähle aus, welche angemeldete DeepSeek-Platform-Sitzung detaillierte Nutzungsdaten liefert.";
 "Detailed usage unavailable." = "Detaillierte Nutzung nicht verfügbar.";
-"Sign in to DeepSeek Platform in Chrome for detailed usage." = "Melde dich für detaillierte Nutzungsdaten in Chrome bei DeepSeek Platform an.";
-"Select a DeepSeek Chrome profile in Settings." = "Wähle in den Einstellungen ein DeepSeek-Chrome-Profil aus.";
 "Select profile…" = "Profil auswählen…";
 
 "%@: %@" = "%@: %@";
@@ -2544,131 +2543,6 @@
 "Pace sign" = "Vorzeichen des Nutzungstempos";
 "Ahead of pace is +" = "Über dem Solltempo ist +";
 "Reserve is +" = "Reserve ist +";
-
-"Sign In…" = "Sign In…";
-
-"Connect…" = "Connect…";
-
-"Show model-specific weekly usage" = "Show model-specific weekly usage";
-"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
-
-// Native gauge settings and states.
-"Approve in Login Items…" = "Approve in Login Items…";
-"Available services" = "Available services";
-"Configured services" = "Configured services";
-"Redesign" = "Redesign";
-"Combine into one icon" = "Combine into one icon";
-"With 4 or more services" = "With 4 or more services";
-"Always" = "Always";
-"Manage services in the sidebar." = "Manage services in the sidebar.";
-"Enabled services" = "Enabled services";
-"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
-"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
-"Original" = "Original";
-"Local agents" = "Local agents";
-"No usage access" = "No usage access";
-"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
-"Provider disabled" = "Provider disabled";
-"Search services and active accounts" = "Search services and active accounts";
-"Service maintenance" = "Service maintenance";
-"Service outage" = "Service outage";
-"Sign in required" = "Sign in required";
-"Design" = "Design";
-"Usage delayed or service degraded" = "Usage delayed or service degraded";
-"Usage pace" = "Usage pace";
-"Usage unknown" = "Usage unknown";
-
-/* Settings search and provider ordering */
-"Search settings" = "Search settings";
-"Used providers first" = "Used providers first";
-"No matching settings" = "No matching settings";
-"Settings" = "Settings";
-
-// Native orbit popup
-"Available" = "Verfügbar";
-"24h" = "24h";
-"No history yet" = "Noch kein Verlauf";
-"Recorded available usage" = "Aufgezeichnete verfügbare Nutzung";
-
-"Switch when exhausted" = "Switch when exhausted";
-"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
-"Automatic account switching" = "Automatic account switching";
-"Automatic switching on" = "Automatic switching on";
-"Automatic switching off" = "Automatic switching off";
-
-"Local usage totals" = "Local usage totals";
-
-"Time period" = "Zeitraum";
-
-"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Zeitraum für Verlauf, Tokens und Ausgaben aller Konten. Die Kontingentanzeigen zeigen die aktuelle Verfügbarkeit.";
-
-"Active %@ account" = "Aktives %@-Konto";
-
-"Use in %@" = "In %@ verwenden";
-
-"Use this account in %@" = "Dieses Konto in %@ verwenden";
-
-"Use %@ in %@" = "%@ in %@ verwenden";
-
-"Last updated %@" = "Zuletzt aktualisiert %@";
-
-"No observations" = "Keine Messwerte";
-
-"History begins with recorded usage. Missing time is left empty." = "Der Verlauf beginnt mit aufgezeichneten Nutzungsdaten. Fehlende Zeiträume bleiben leer.";
-
-"native_orbit_range_help" = "Zeitraum für Verlauf, Tokens und Ausgaben";
-
-"1d" = "1d";
-"<1m ago" = "Vor <1Min";
-"Auto switch" = "Automatisch wechseln";
-
-"Switch" = "Wechseln";
-
-"Switch accounts automatically" = "Konten automatisch wechseln";
-
-"native_auto_switch_settings_detail" = "Wenn das aktive Konto aufgebraucht ist, wechselt die Codex CLI zu einem mit verbleibendem Kontingent. Ein manueller Wechsel pausiert dies für 10 Minuten.";
-"Now" = "Jetzt";
-"Updating…" = "Wird aktualisiert…";
-
-"Local Claude archive" = "Lokales Claude-Archiv";
-
-"Account not recorded" = "Konto nicht aufgezeichnet";
-
-"Anonymous observations from this provider. No account identity was recorded." = "Anonyme Messwerte dieses Anbieters. Die Kontoidentität wurde nicht aufgezeichnet.";
-
-"History begins with recorded usage." = "Der Verlauf beginnt mit der aufgezeichneten Nutzung.";
-
-"%d observations · %d/%d days" = "%d Messungen · %d/%d Tage";
-
-"No observations in this period" = "Keine Messungen in diesem Zeitraum";
-
-"Last observed %@" = "Zuletzt erfasst %@";
-
-"First observed %@" = "Zuerst erfasst %@";
-
-"Connecting lines hold the last recorded value." = "Verbindungslinien halten den zuletzt erfassten Wert.";
-
-"Local Codex archive" = "Lokales Codex-Archiv";
-
-"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Sitzungsprotokolle können zwischengespeicherte Kontingentwerte wiederholen. Die Kontoidentität wird nicht erfasst.";
-
-"%ds ago" = "Vor %ds";
-
-"Local Kimi archive" = "Lokales Kimi-Archiv";
-"Lines connect nearby observations. Gaps have no recorded data." = "Linien verbinden zeitlich nahe Messwerte. Für Lücken sind keine Daten aufgezeichnet.";
-"native_refresh_timed_out" = "Die Aktualisierung dauert länger als erwartet. Sie wird im Hintergrund fortgesetzt.";
-"native_refresh_claude_swap_paced" = "claude-swap aktualisiert dieses Konto alle paar Minuten, um das Ratenlimit von Anthropic einzuhalten.";
-"native_refresh_issue_stale" = "Veraltet";
-"native_refresh_issue_slow" = "Langsam";
-"native_orbit_range_day" = "T";
-"native_orbit_range_week" = "W";
-"native_orbit_range_month" = "M";
-"Last 7 days" = "Letzte 7 Tage";
-
-"Use" = "Verwenden";
-
-/* Combined account paging (English fallback). */
-"Account pages" = "Account pages";
 "Back" = "Zurück";
 "Forward" = "Vorwärts";
 
@@ -2883,3 +2757,134 @@
 "Show this Mac's recorded OpenCode usage in Codex history. Off by default; scoped or alternate CODEX_HOME locations always stay excluded." = "Zeigt die auf diesem Mac erfasste OpenCode-Nutzung im Codex-Verlauf. Standardmäßig deaktiviert; CODEX_HOME-Verzeichnisse mit eingeschränktem Geltungsbereich sowie alternative Verzeichnisse bleiben immer ausgeschlossen.";
 "Auto uses the active saved session, otherwise an API key or browser cookies." = "Auto verwendet die aktive gespeicherte Sitzung, andernfalls einen API-Schlüssel oder Browser-Cookies.";
 "Store multiple Command Code subscription sessions." = "Speichern Sie mehrere Command Code-Abonnementsitzungen.";
+
+"codex_reset_credit_expiry_notifications_title" = "Ablauf von Codex-Reset-Guthaben";
+
+"codex_reset_credit_expiry_notifications_subtitle" = "Erinnert bei der Nutzungsaktualisierung 1 Tag und 1 Stunde vor Ablauf.";
+/* OpenDesign */
+"OpenDesign" = "OpenDesign";
+"Show OpenDesign usage" = "OpenDesign-Nutzung anzeigen";
+"Sign in to OpenDesign, then refresh CodexBar." = "Melde dich bei OpenDesign an und aktualisiere dann CodexBar.";
+"OpenDesign usage response format changed." = "Das Format der OpenDesign-Nutzungsantwort hat sich geändert.";
+"OpenDesign billing access was denied." = "Der Zugriff auf die OpenDesign-Abrechnung wurde verweigert.";
+"OpenDesign request failed. Try again later." = "Die OpenDesign-Anfrage ist fehlgeschlagen. Versuche es später erneut.";
+"OpenDesign subscription usage is unavailable for this workspace." = "Die OpenDesign-Abonnementnutzung ist für diesen Arbeitsbereich nicht verfügbar.";
+"upcoming_reset_notifications_title" = "Warnungen vor anstehenden Resets";
+"upcoming_reset_notifications_subtitle" = "Warnt für Codex, bevor das Wochenlimit zurückgesetzt wird, solange das Kontingent noch ungenutzt ist.";
+"upcoming_reset_notification_title" = "%1$@: Reset steht bevor (%2$@)";
+"upcoming_reset_notification_body" = "%1$@ des Kontingents ist noch ungenutzt. Es wird in %2$@ zurückgesetzt; ungenutztes Kontingent verfällt.";
+"upcoming_reset_notification_body_with_account" = "Konto %1$@. %2$@ des Kontingents ist noch ungenutzt. Es wird in %3$@ zurückgesetzt; ungenutztes Kontingent verfällt.";
+"Sign in to DeepSeek Platform in a Chromium-based browser for detailed usage." = "Melde dich für detaillierte Nutzungsdaten in einem Chromium-basierten Browser bei DeepSeek Platform an.";
+"Select a DeepSeek browser profile in Settings." = "Wähle in den Einstellungen ein DeepSeek-Browserprofil aus.";
+"menu_bar_layout_token_separator_glyph_accessibility" = "Trennzeichen %@";
+"menu_bar_layout_separator_pipe" = "Senkrechter Strich";
+"menu_bar_layout_separator_slash" = "Schrägstrich";
+"menu_bar_layout_separator_hyphen" = "Bindestrich";
+"menu_bar_layout_separator_bullet" = "Aufzählungspunkt";
+"menu_bar_layout_separator_diamond" = "Ausgefüllte Raute";
+"menu_bar_layout_separator_hollowDiamond" = "Leere Raute";
+"menu_bar_layout_separator_tilde" = "Tilde";
+"menu_bar_layout_separator_doubleBar" = "Doppelter senkrechter Strich";
+"Rename" = "Umbenennen";
+"Rename account" = "Konto umbenennen";
+"Account name" = "Kontoname";
+"Leave blank to use the default name." = "Leer lassen, um den Standardnamen zu verwenden.";
+"Rewards" = "Prämien";
+"Reward expiry" = "Ablauf der Prämien";
+
+/* Native redesign */
+"Chrome profile" = "Chrome-Profil";
+"Sign in to DeepSeek Platform in Chrome for detailed usage." = "Melde dich für detaillierte Nutzungsdaten in Chrome bei DeepSeek Platform an.";
+"Select a DeepSeek Chrome profile in Settings." = "Wähle in den Einstellungen ein DeepSeek-Chrome-Profil aus.";
+"Sign In…" = "Sign In…";
+"Connect…" = "Connect…";
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Redesign" = "Redesign";
+"Combine into one icon" = "Combine into one icon";
+"With 4 or more services" = "With 4 or more services";
+"Always" = "Always";
+"Manage services in the sidebar." = "Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Original" = "Original";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Design" = "Design";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+"Available" = "Verfügbar";
+"24h" = "24h";
+"No history yet" = "Noch kein Verlauf";
+"Recorded available usage" = "Aufgezeichnete verfügbare Nutzung";
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+"Local usage totals" = "Local usage totals";
+"Time period" = "Zeitraum";
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Zeitraum für Verlauf, Tokens und Ausgaben aller Konten. Die Kontingentanzeigen zeigen die aktuelle Verfügbarkeit.";
+"Active %@ account" = "Aktives %@-Konto";
+"Use in %@" = "In %@ verwenden";
+"Use this account in %@" = "Dieses Konto in %@ verwenden";
+"Use %@ in %@" = "%@ in %@ verwenden";
+"Last updated %@" = "Zuletzt aktualisiert %@";
+"No observations" = "Keine Messwerte";
+"History begins with recorded usage. Missing time is left empty." = "Der Verlauf beginnt mit aufgezeichneten Nutzungsdaten. Fehlende Zeiträume bleiben leer.";
+"native_orbit_range_help" = "Zeitraum für Verlauf, Tokens und Ausgaben";
+"1d" = "1d";
+"<1m ago" = "Vor <1Min";
+"Auto switch" = "Automatisch wechseln";
+"Switch" = "Wechseln";
+"Switch accounts automatically" = "Konten automatisch wechseln";
+"native_auto_switch_settings_detail" = "Wenn das aktive Konto aufgebraucht ist, wechselt die Codex CLI zu einem mit verbleibendem Kontingent. Ein manueller Wechsel pausiert dies für 10 Minuten.";
+"Now" = "Jetzt";
+"Updating…" = "Wird aktualisiert…";
+"Local Claude archive" = "Lokales Claude-Archiv";
+"Account not recorded" = "Konto nicht aufgezeichnet";
+"Anonymous observations from this provider. No account identity was recorded." = "Anonyme Messwerte dieses Anbieters. Die Kontoidentität wurde nicht aufgezeichnet.";
+"History begins with recorded usage." = "Der Verlauf beginnt mit der aufgezeichneten Nutzung.";
+"%d observations · %d/%d days" = "%d Messungen · %d/%d Tage";
+"No observations in this period" = "Keine Messungen in diesem Zeitraum";
+"Last observed %@" = "Zuletzt erfasst %@";
+"First observed %@" = "Zuerst erfasst %@";
+"Connecting lines hold the last recorded value." = "Verbindungslinien halten den zuletzt erfassten Wert.";
+"Local Codex archive" = "Lokales Codex-Archiv";
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Sitzungsprotokolle können zwischengespeicherte Kontingentwerte wiederholen. Die Kontoidentität wird nicht erfasst.";
+"%ds ago" = "Vor %ds";
+"Local Kimi archive" = "Lokales Kimi-Archiv";
+"Lines connect nearby observations. Gaps have no recorded data." = "Linien verbinden zeitlich nahe Messwerte. Für Lücken sind keine Daten aufgezeichnet.";
+"native_refresh_timed_out" = "Die Aktualisierung dauert länger als erwartet. Sie wird im Hintergrund fortgesetzt.";
+"native_refresh_claude_swap_paced" = "claude-swap aktualisiert dieses Konto alle paar Minuten, um das Ratenlimit von Anthropic einzuhalten.";
+"native_refresh_issue_stale" = "Veraltet";
+"native_refresh_issue_slow" = "Langsam";
+"native_orbit_range_day" = "T";
+"native_orbit_range_week" = "W";
+"native_orbit_range_month" = "M";
+"Last 7 days" = "Letzte 7 Tage";
+"Use" = "Verwenden";
+"Account pages" = "Account pages";
+"native_account_use_missing_login" = "Keine gespeicherte Anmeldung. Erneut anmelden.";
+"native_account_use_unknown_status" = "Kontostatus unbekannt. Aktualisieren und erneut versuchen.";
+"native_account_use_read_only" = "Diese Verbindung unterstützt keinen Kontowechsel.";
+"native_account_use_monitor_only" = "Dieses Konto in der App oder CLI des Anbieters wechseln.";
+"native_account_use_busy" = "Warte, bis der aktuelle Kontowechsel abgeschlossen ist.";
+"native_account_use_not_ready" = "Kontowechsel noch nicht bereit. Versuche es gleich erneut.";
+"native_account_use_unverified_login" = "Aktuelle Anmeldung nicht bestätigt. Aktualisieren und erneut versuchen.";
+"native_app_update_ready" = "CodexBar-Update zur Installation bereit.";

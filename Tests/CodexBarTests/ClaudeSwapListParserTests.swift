@@ -247,7 +247,7 @@ struct ClaudeSwapListParserTests {
         let list = try self.parse(json)
         let account = try #require(ClaudeSwapAccountProjection.accountSnapshots(from: list).first)
         #expect(account.error == "Re-login required. Re-authenticate this account in claude-swap.")
-        #expect(account.canActivate == false)
+        #expect(account.canActivate)
     }
 
     @Test

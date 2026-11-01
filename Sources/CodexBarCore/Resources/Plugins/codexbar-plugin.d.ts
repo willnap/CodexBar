@@ -141,6 +141,13 @@ interface CodexBarBalanceSnapshot {
   isWorkspace?: boolean | null;
 }
 
+interface CodexBarMenuBarItem {
+  title: string;
+  iconProvider?: string | null;
+  /** Native extra-window ID. Missing/unmeasured references show unavailable, never another window. */
+  windowID?: string | null;
+}
+
 interface CodexBarUsageSnapshot {
   /** Explicitly declares a successful response with no displayable usage or identity. Other fields are still validated. */
   empty?: boolean;
@@ -155,6 +162,10 @@ interface CodexBarUsageSnapshot {
   /** Exact provider-reported daily spend. The host validates and sums every numeric row. */
   costUsage?: CodexBarCostUsageSnapshot | null;
   identity?: CodexBarIdentitySnapshot | null;
+  /** Built-in provider ID for the menu-bar/switcher logo only. Send only when ctx.env.supportsIconProvider === true. */
+  iconProvider?: string | null;
+  /** Up to 8 ordered logo/percentage pairs in one status item. Requires ctx.env.supportsMenuBarItems === true. */
+  menuBarItems?: CodexBarMenuBarItem[] | null;
   subscriptionRenewsAt?: Date | string | null;
   subscriptionExpiresAt?: Date | string | null;
   subscriptionStatus?: string | null;
@@ -317,6 +328,9 @@ interface CodexBarPluginContext {
   readonly fail: Readonly<CodexBarFailures>;
   readonly env: {
     readonly timeZone: string;
+    /** Older hosts omit this flag and reject the iconProvider snapshot field. */
+    readonly supportsIconProvider?: boolean;
+    readonly supportsMenuBarItems?: boolean;
   };
   readonly cache: {
     get<T = unknown>(key: string): T | undefined;
@@ -344,6 +358,8 @@ interface CodexBarProviderDefinition {
   /** Defaults to true: a switcher tab when Merge Icons is on. False keeps an appended card. */
   topLevel?: boolean;
   endpoints: CodexBarEndpoint[];
+  /** Optional approved browser link; a setting must be plain and resolve to a declared endpoint origin. */
+  dashboardURL?: string | { setting: string };
   auth?: CodexBarAuth;
   settings: CodexBarSetting[];
   /** Grants declared cookie access, HTTP status handling, or bounded non-secret persistent state. */

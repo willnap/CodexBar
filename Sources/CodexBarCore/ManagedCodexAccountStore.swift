@@ -33,6 +33,7 @@ public struct FileManagedCodexAccountStore: ManagedCodexAccountStoring, ManagedC
         case promotionAppend = "promotion-append"
         case promotionRepair = "promotion-repair"
         case promotionRefresh = "promotion-refresh"
+        case loginRenewal = "login-renewal"
         case registryWrite = "registry-write"
     }
 

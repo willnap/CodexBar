@@ -1,4 +1,5 @@
 /* Thai localization for CodexBar */
+"Copilot subscription ended" = "การสมัคร Copilot สิ้นสุดแล้ว";
 
 /* iCloud Sync */
 "+ %d more" = "+ อีก %d รายการ";
@@ -160,6 +161,7 @@
 "Individual credits" = "หน่วยกิตส่วนบุคคล";
 "Workspace" = "พื้นที่ทํางาน";
 "Credits history" = "ประวัติเครดิต";
+"Cursor app session expired — open Cursor to sign in again, or sign in to cursor.com in your browser." = "เซสชันของแอป Cursor หมดอายุแล้ว — เปิด Cursor เพื่อเข้าสู่ระบบอีกครั้ง หรือเข้าสู่ระบบที่ cursor.com ในเบราว์เซอร์ของคุณ";
 "Cursor login failed" = "การเข้าสู่ระบบ Cursor ล้มเหลว";
 "Custom" = "กําหนดเอง";
 "Custom Path" = "เส้นทางที่กําหนดเอง";
@@ -1062,10 +1064,7 @@
 "Today cash" = "เงินสดวันนี้";
 "DeepSeek 30 day token usage trend" = "DeepSeek แนวโน้มการใช้โทเค็น 30 วัน";
 "Detailed usage unavailable." = "ไม่มีข้อมูลการใช้งานโดยละเอียด";
-"Sign in to DeepSeek Platform in Chrome for detailed usage." = "ลงชื่อเข้าใช้ DeepSeek Platform ใน Chrome เพื่อดูรายละเอียดการใช้งาน";
-"Select a DeepSeek Chrome profile in Settings." = "เลือกโปรไฟล์ Chrome ของ DeepSeek ในการตั้งค่า";
 "DeepSeek this month token usage trend" = "แนวโน้มการใช้โทเค็น DeepSeek เดือนนี้";
-"Chrome profile" = "โปรไฟล์ Chrome";
 "Choose which signed-in DeepSeek Platform session supplies detailed usage." = "เลือกเซสชัน DeepSeek Platform ที่ลงชื่อเข้าใช้เพื่อแสดงรายละเอียดการใช้งาน";
 "Select profile…" = "เลือกโปรไฟล์…";
 "cache-hit input" = "อินพุต cache-hit";
@@ -2550,131 +2549,6 @@
 "Pace sign" = "เครื่องหมายอัตราการใช้งาน";
 "Ahead of pace is +" = "ใช้เร็วกว่าที่ควรเป็นคือ +";
 "Reserve is +" = "โควตาสำรองคือ +";
-
-"Sign In…" = "Sign In…";
-
-"Connect…" = "Connect…";
-
-"Show model-specific weekly usage" = "Show model-specific weekly usage";
-"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
-
-// Native gauge settings and states.
-"Approve in Login Items…" = "Approve in Login Items…";
-"Available services" = "Available services";
-"Configured services" = "Configured services";
-"Redesign" = "Redesign";
-"Combine into one icon" = "Combine into one icon";
-"With 4 or more services" = "With 4 or more services";
-"Always" = "Always";
-"Manage services in the sidebar." = "Manage services in the sidebar.";
-"Enabled services" = "Enabled services";
-"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
-"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
-"Original" = "Original";
-"Local agents" = "Local agents";
-"No usage access" = "No usage access";
-"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
-"Provider disabled" = "Provider disabled";
-"Search services and active accounts" = "Search services and active accounts";
-"Service maintenance" = "Service maintenance";
-"Service outage" = "Service outage";
-"Sign in required" = "Sign in required";
-"Design" = "Design";
-"Usage delayed or service degraded" = "Usage delayed or service degraded";
-"Usage pace" = "Usage pace";
-"Usage unknown" = "Usage unknown";
-
-/* Settings search and provider ordering */
-"Search settings" = "Search settings";
-"Used providers first" = "Used providers first";
-"No matching settings" = "No matching settings";
-"Settings" = "Settings";
-
-// Native orbit popup
-"Available" = "ใช้ได้";
-"24h" = "24h";
-"No history yet" = "ยังไม่มีประวัติ";
-"Recorded available usage" = "ปริมาณที่ใช้ได้ที่บันทึกไว้";
-
-"Switch when exhausted" = "Switch when exhausted";
-"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
-"Automatic account switching" = "Automatic account switching";
-"Automatic switching on" = "Automatic switching on";
-"Automatic switching off" = "Automatic switching off";
-
-"Local usage totals" = "Local usage totals";
-
-"Time period" = "ช่วงเวลา";
-
-"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "ช่วงเวลาของประวัติ โทเคน และค่าใช้จ่ายของทุกบัญชี มาตรวัดโควตาแสดงปริมาณที่พร้อมใช้ในขณะนี้";
-
-"Active %@ account" = "บัญชี %@ ที่ใช้งานอยู่";
-
-"Use in %@" = "ใช้ใน %@";
-
-"Use this account in %@" = "ใช้บัญชีนี้ใน %@";
-
-"Use %@ in %@" = "ใช้ %@ ใน %@";
-
-"Last updated %@" = "อัปเดตล่าสุด %@";
-
-"No observations" = "ยังไม่มีข้อมูลที่บันทึก";
-
-"History begins with recorded usage. Missing time is left empty." = "ประวัติเริ่มจากข้อมูลการใช้งานที่บันทึกไว้ ช่วงเวลาที่ไม่มีข้อมูลจะเว้นว่างไว้";
-
-"native_orbit_range_help" = "ช่วงเวลาของประวัติ โทเค็น และค่าใช้จ่าย";
-
-"1d" = "1 วัน";
-"<1m ago" = "ไม่ถึง 1 นาทีที่แล้ว";
-"Auto switch" = "สลับอัตโนมัติ";
-
-"Switch" = "สลับ";
-
-"Switch accounts automatically" = "สลับบัญชีอัตโนมัติ";
-
-"native_auto_switch_settings_detail" = "เมื่อโควตาของบัญชีที่ใช้งานอยู่หมด Codex CLI จะสลับไปใช้บัญชีที่ยังมีโควตาเหลือ การสลับด้วยตนเองจะหยุดการทำงานนี้ไว้ 10 นาที";
-"Now" = "ตอนนี้";
-"Updating…" = "กำลังอัปเดต…";
-
-"Local Claude archive" = "คลังประวัติ Claude ในเครื่อง";
-
-"Account not recorded" = "ไม่ได้บันทึกบัญชี";
-
-"Anonymous observations from this provider. No account identity was recorded." = "ข้อมูลการใช้งานแบบไม่ระบุบัญชีจากผู้ให้บริการนี้ ไม่ได้บันทึกข้อมูลระบุบัญชี";
-
-"History begins with recorded usage." = "ประวัติเริ่มต้นจากการใช้งานที่บันทึกไว้";
-
-"%d observations · %d/%d days" = "%d ครั้งที่บันทึก · %d/%d วัน";
-
-"No observations in this period" = "ไม่มีข้อมูลที่บันทึกในช่วงนี้";
-
-"Last observed %@" = "บันทึกล่าสุด %@";
-
-"First observed %@" = "บันทึกครั้งแรก %@";
-
-"Connecting lines hold the last recorded value." = "เส้นเชื่อมคงค่าที่บันทึกล่าสุดไว้";
-
-"Local Codex archive" = "คลัง Codex ในเครื่อง";
-
-"Session logs can repeat cached quota readings. Their account identity is not recorded." = "บันทึกเซสชันอาจมีค่าโควตาจากแคชซ้ำกัน โดยไม่มีการบันทึกตัวตนของบัญชี";
-
-"%ds ago" = "%d วินาทีที่แล้ว";
-
-"Local Kimi archive" = "คลัง Kimi ในเครื่อง";
-"Lines connect nearby observations. Gaps have no recorded data." = "เส้นเชื่อมค่าที่วัดในช่วงเวลาใกล้กัน ช่องว่างไม่มีข้อมูลที่บันทึกไว้";
-"native_refresh_timed_out" = "การรีเฟรชใช้เวลานานกว่าที่คาดไว้ และจะดำเนินต่อในเบื้องหลัง";
-"native_refresh_claude_swap_paced" = "claude-swap อัปเดตบัญชีนี้ทุกไม่กี่นาทีเพื่อไม่ให้เกินขีดจำกัดอัตราของ Anthropic";
-"native_refresh_issue_stale" = "ไม่อัปเดต";
-"native_refresh_issue_slow" = "ช้า";
-"native_orbit_range_day" = "ว";
-"native_orbit_range_week" = "ส";
-"native_orbit_range_month" = "ด";
-"Last 7 days" = "7 วันที่ผ่านมา";
-
-"Use" = "ใช้";
-
-/* Combined account paging (English fallback). */
-"Account pages" = "Account pages";
 "Back" = "ย้อนกลับ";
 "Forward" = "ไปข้างหน้า";
 
@@ -2887,3 +2761,134 @@
 "Show this Mac's recorded OpenCode usage in Codex history. Off by default; scoped or alternate CODEX_HOME locations always stay excluded." = "แสดงการใช้งาน OpenCode ที่บันทึกไว้บน Mac เครื่องนี้ในประวัติ Codex ปิดอยู่ตามค่าเริ่มต้น โดยจะไม่รวมตำแหน่ง CODEX_HOME ที่จำกัดขอบเขตหรือตำแหน่งอื่นเสมอ";
 "Auto uses the active saved session, otherwise an API key or browser cookies." = "อัตโนมัติจะใช้เซสชันที่บันทึกไว้ซึ่งกำลังใช้งาน หากไม่มี จะใช้คีย์ API หรือคุกกี้ของเบราว์เซอร์";
 "Store multiple Command Code subscription sessions." = "จัดเก็บเซสชันการสมัครสมาชิก Command Code หลายรายการ";
+
+"codex_reset_credit_expiry_notifications_title" = "การหมดอายุเครดิตรีเซ็ต Codex";
+
+"codex_reset_credit_expiry_notifications_subtitle" = "เพิ่มการแจ้งเตือนเมื่อรีเฟรชการใช้งาน 1 วันและ 1 ชั่วโมงก่อนหมดอายุ";
+/* OpenDesign */
+"OpenDesign" = "OpenDesign";
+"Show OpenDesign usage" = "แสดงการใช้งาน OpenDesign";
+"Sign in to OpenDesign, then refresh CodexBar." = "ลงชื่อเข้าใช้ OpenDesign แล้วรีเฟรช CodexBar";
+"OpenDesign usage response format changed." = "รูปแบบการตอบกลับข้อมูลการใช้งาน OpenDesign เปลี่ยนไป";
+"OpenDesign billing access was denied." = "การเข้าถึงข้อมูลการเรียกเก็บเงินของ OpenDesign ถูกปฏิเสธ";
+"OpenDesign request failed. Try again later." = "คำขอ OpenDesign ล้มเหลว โปรดลองอีกครั้งภายหลัง";
+"OpenDesign subscription usage is unavailable for this workspace." = "ไม่มีข้อมูลการใช้งานการสมัครสมาชิก OpenDesign สำหรับพื้นที่ทำงานนี้";
+"upcoming_reset_notifications_title" = "คำเตือนก่อนรีเซ็ต";
+"upcoming_reset_notifications_subtitle" = "เตือนสำหรับ Codex ก่อนที่ขีดจำกัดรายสัปดาห์จะรีเซ็ตขณะที่โควตายังไม่ถูกใช้";
+"upcoming_reset_notification_title" = "ขีดจำกัด%2$@ของ %1$@ จะรีเซ็ตเร็ว ๆ นี้";
+"upcoming_reset_notification_body" = "ยังมีโควตา %1$@ ที่ไม่ได้ใช้ จะรีเซ็ตในอีก %2$@ และโควตาที่ไม่ได้ใช้จะหายไป";
+"upcoming_reset_notification_body_with_account" = "บัญชี %1$@ ยังมีโควตา %2$@ ที่ไม่ได้ใช้ จะรีเซ็ตในอีก %3$@ และโควตาที่ไม่ได้ใช้จะหายไป";
+"Sign in to DeepSeek Platform in a Chromium-based browser for detailed usage." = "ลงชื่อเข้าใช้ DeepSeek Platform ในเบราว์เซอร์ที่ใช้ Chromium เพื่อดูรายละเอียดการใช้งาน";
+"Select a DeepSeek browser profile in Settings." = "เลือกโปรไฟล์เบราว์เซอร์ของ DeepSeek ในการตั้งค่า";
+"menu_bar_layout_token_separator_glyph_accessibility" = "ตัวคั่น %@";
+"menu_bar_layout_separator_pipe" = "ขีดตั้ง";
+"menu_bar_layout_separator_slash" = "เครื่องหมายทับ";
+"menu_bar_layout_separator_hyphen" = "ยัติภังค์";
+"menu_bar_layout_separator_bullet" = "จุดนำรายการ";
+"menu_bar_layout_separator_diamond" = "ข้าวหลามตัดทึบ";
+"menu_bar_layout_separator_hollowDiamond" = "ข้าวหลามตัดโปร่ง";
+"menu_bar_layout_separator_tilde" = "เครื่องหมายตัวหนอน";
+"menu_bar_layout_separator_doubleBar" = "ขีดตั้งคู่";
+"Rename" = "เปลี่ยนชื่อ";
+"Rename account" = "เปลี่ยนชื่อบัญชี";
+"Account name" = "ชื่อบัญชี";
+"Leave blank to use the default name." = "เว้นว่างไว้เพื่อใช้ชื่อเริ่มต้น";
+"Rewards" = "รางวัล";
+"Reward expiry" = "วันหมดอายุของรางวัล";
+
+/* Native redesign */
+"Sign in to DeepSeek Platform in Chrome for detailed usage." = "ลงชื่อเข้าใช้ DeepSeek Platform ใน Chrome เพื่อดูรายละเอียดการใช้งาน";
+"Select a DeepSeek Chrome profile in Settings." = "เลือกโปรไฟล์ Chrome ของ DeepSeek ในการตั้งค่า";
+"Chrome profile" = "โปรไฟล์ Chrome";
+"Sign In…" = "Sign In…";
+"Connect…" = "Connect…";
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Redesign" = "Redesign";
+"Combine into one icon" = "Combine into one icon";
+"With 4 or more services" = "With 4 or more services";
+"Always" = "Always";
+"Manage services in the sidebar." = "Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Original" = "Original";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Design" = "Design";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+"Available" = "ใช้ได้";
+"24h" = "24h";
+"No history yet" = "ยังไม่มีประวัติ";
+"Recorded available usage" = "ปริมาณที่ใช้ได้ที่บันทึกไว้";
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+"Local usage totals" = "Local usage totals";
+"Time period" = "ช่วงเวลา";
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "ช่วงเวลาของประวัติ โทเคน และค่าใช้จ่ายของทุกบัญชี มาตรวัดโควตาแสดงปริมาณที่พร้อมใช้ในขณะนี้";
+"Active %@ account" = "บัญชี %@ ที่ใช้งานอยู่";
+"Use in %@" = "ใช้ใน %@";
+"Use this account in %@" = "ใช้บัญชีนี้ใน %@";
+"Use %@ in %@" = "ใช้ %@ ใน %@";
+"Last updated %@" = "อัปเดตล่าสุด %@";
+"No observations" = "ยังไม่มีข้อมูลที่บันทึก";
+"History begins with recorded usage. Missing time is left empty." = "ประวัติเริ่มจากข้อมูลการใช้งานที่บันทึกไว้ ช่วงเวลาที่ไม่มีข้อมูลจะเว้นว่างไว้";
+"native_orbit_range_help" = "ช่วงเวลาของประวัติ โทเค็น และค่าใช้จ่าย";
+"1d" = "1 วัน";
+"<1m ago" = "ไม่ถึง 1 นาทีที่แล้ว";
+"Auto switch" = "สลับอัตโนมัติ";
+"Switch" = "สลับ";
+"Switch accounts automatically" = "สลับบัญชีอัตโนมัติ";
+"native_auto_switch_settings_detail" = "เมื่อโควตาของบัญชีที่ใช้งานอยู่หมด Codex CLI จะสลับไปใช้บัญชีที่ยังมีโควตาเหลือ การสลับด้วยตนเองจะหยุดการทำงานนี้ไว้ 10 นาที";
+"Now" = "ตอนนี้";
+"Updating…" = "กำลังอัปเดต…";
+"Local Claude archive" = "คลังประวัติ Claude ในเครื่อง";
+"Account not recorded" = "ไม่ได้บันทึกบัญชี";
+"Anonymous observations from this provider. No account identity was recorded." = "ข้อมูลการใช้งานแบบไม่ระบุบัญชีจากผู้ให้บริการนี้ ไม่ได้บันทึกข้อมูลระบุบัญชี";
+"History begins with recorded usage." = "ประวัติเริ่มต้นจากการใช้งานที่บันทึกไว้";
+"%d observations · %d/%d days" = "%d ครั้งที่บันทึก · %d/%d วัน";
+"No observations in this period" = "ไม่มีข้อมูลที่บันทึกในช่วงนี้";
+"Last observed %@" = "บันทึกล่าสุด %@";
+"First observed %@" = "บันทึกครั้งแรก %@";
+"Connecting lines hold the last recorded value." = "เส้นเชื่อมคงค่าที่บันทึกล่าสุดไว้";
+"Local Codex archive" = "คลัง Codex ในเครื่อง";
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "บันทึกเซสชันอาจมีค่าโควตาจากแคชซ้ำกัน โดยไม่มีการบันทึกตัวตนของบัญชี";
+"%ds ago" = "%d วินาทีที่แล้ว";
+"Local Kimi archive" = "คลัง Kimi ในเครื่อง";
+"Lines connect nearby observations. Gaps have no recorded data." = "เส้นเชื่อมค่าที่วัดในช่วงเวลาใกล้กัน ช่องว่างไม่มีข้อมูลที่บันทึกไว้";
+"native_refresh_timed_out" = "การรีเฟรชใช้เวลานานกว่าที่คาดไว้ และจะดำเนินต่อในเบื้องหลัง";
+"native_refresh_claude_swap_paced" = "claude-swap อัปเดตบัญชีนี้ทุกไม่กี่นาทีเพื่อไม่ให้เกินขีดจำกัดอัตราของ Anthropic";
+"native_refresh_issue_stale" = "ไม่อัปเดต";
+"native_refresh_issue_slow" = "ช้า";
+"native_orbit_range_day" = "ว";
+"native_orbit_range_week" = "ส";
+"native_orbit_range_month" = "ด";
+"Last 7 days" = "7 วันที่ผ่านมา";
+"Use" = "ใช้";
+"Account pages" = "Account pages";
+"native_account_use_missing_login" = "ไม่มีข้อมูลการเข้าสู่ระบบที่บันทึกไว้ โปรดเข้าสู่ระบบอีกครั้ง";
+"native_account_use_unknown_status" = "ไม่ทราบสถานะบัญชี โปรดรีเฟรชแล้วลองอีกครั้ง";
+"native_account_use_read_only" = "การเชื่อมต่อนี้ไม่รองรับการสลับบัญชี";
+"native_account_use_monitor_only" = "สลับบัญชีนี้ในแอปหรือ CLI ของผู้ให้บริการ";
+"native_account_use_busy" = "รอให้การสลับบัญชีปัจจุบันเสร็จสิ้น";
+"native_account_use_not_ready" = "ยังไม่พร้อมสลับบัญชี โปรดลองอีกครั้งในอีกสักครู่";
+"native_account_use_unverified_login" = "ยังไม่ได้ยืนยันการเข้าสู่ระบบปัจจุบัน โปรดรีเฟรชแล้วลองอีกครั้ง";
+"native_app_update_ready" = "การอัปเดต CodexBar พร้อมติดตั้งแล้ว";

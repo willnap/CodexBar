@@ -181,6 +181,7 @@ final class UsageStore {
     @ObservationIgnored var nativeTokenAccountRefreshAttempts:
         [ProviderInstanceID: [UUID: NativeTokenAccountRefreshAttempt]] = [:]
     @ObservationIgnored var nativeCodexAccountRefreshAttempts: [String: NativeCodexAccountRefreshAttempt] = [:]
+    @ObservationIgnored var managedCodexLoginRenewalAttempts: [UUID: Date] = [:]
     @ObservationIgnored var widgetVerifiedTokenSnapshots: WidgetVerifiedTokenSnapshots = [:]
     @ObservationIgnored let widgetAccountSnapshotStore: (any WidgetAccountSnapshotStoring)?
     var tokenAccountLiveStateProviders: Set<ProviderInstanceID> = []

@@ -399,7 +399,7 @@ extension UsageStore {
     {
         guard !samples.isEmpty else { return nil }
 
-        let coalesced = self.nativeOrbitCoalescedQuotaHistories(existingHistories)
+        let coalesced = self.nativeOrbitCoalescedQuotaHistories(existingHistories, preservingDescriptors: true)
         var historiesByKey: [PlanUtilizationSeriesKey: PlanUtilizationSeriesHistory] = [:]
         var didChange = coalesced != existingHistories
         for history in coalesced {
@@ -466,7 +466,7 @@ extension UsageStore {
         _ existing: PlanUtilizationSeriesHistory,
         sample: PlanUtilizationSeriesSample) -> PlanUtilizationSeriesHistory
     {
-        if sample.name.rawValue == "nativeMetric:usage",
+        if ["nativeMetric:usage", "nativeMetric:quotaSchema"].contains(sample.name.rawValue),
            let last = existing.entries.last,
            last.nativeMetrics == sample.entry.nativeMetrics,
            Calendar.current.isDate(last.capturedAt, inSameDayAs: sample.entry.capturedAt) { return existing }
@@ -474,7 +474,16 @@ extension UsageStore {
         // (and its storage) rather than copying it to an equal one.
         if let last = existing.entries.last, last == sample.entry,
            sample.windowMinutes <= 0 || sample.windowMinutes == existing.windowMinutes { return existing }
-        let merged = self.nativeOrbitMergedRawEntries(existing.entries, [sample.entry])
+        let quota = sample.name.isNativeQuotaObservation
+        let incoming = quota ? sample.entry.withQuotaDescriptor(.init(
+            label: nil, windowMinutes: sample.windowMinutes > 0 ? sample.windowMinutes : nil)) : sample.entry
+        let prior = quota && sample.windowMinutes != existing.windowMinutes ? existing.entries.map {
+            $0.withQuotaDescriptor(.init(
+                label: nil,
+                windowMinutes: existing.windowMinutes > 0
+                    ? existing.windowMinutes : nil))
+        } : existing.entries
+        let merged = self.nativeOrbitMergedRawEntries(prior, [incoming])
         let entries = sample.name.rawValue == "nativeMetric:usage" ? Array(merged.suffix(4096)) : merged
         let cutoff = (entries.last?.capturedAt ?? sample.entry.capturedAt).addingTimeInterval(-32 * 86400)
         let minutes = sample.windowMinutes > 0 && sample.entry.capturedAt >= (existing.latestCapturedAt ?? .distantPast)
@@ -1677,7 +1686,7 @@ extension UsageStore {
                 name: key.name,
                 windowMinutes: key.windowMinutes,
                 entries: entries)
-        })
+        }, preservingDescriptors: true)
     }
 }
 

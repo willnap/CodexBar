@@ -55,12 +55,46 @@ struct ClaudeSwapAccountReaderTests {
     }
 
     @Test
-    func `terminates executables that exceed the timeout`() async throws {
+    func `terminates read only adapters that exceed the timeout`() async throws {
         let path = try self.makeFakeExecutable("sleep 30")
 
         await #expect(throws: (any Error).self) {
-            try await ClaudeSwapAccountReader.readAccountList(executablePath: path, timeout: 0.5)
+            try await ClaudeSwapAccountReader.readAccountList(executablePath: path, source: .tcr, timeout: 0.5)
         }
+    }
+
+    @Test
+    func `started account list persists a rotated login before observing cancellation`() async throws {
+        let path = try self.makeFakeExecutable("""
+        touch "$0.rotated"
+        sleep 0.3
+        touch "$0.persisted"
+        echo '{"schemaVersion":1,"activeAccountNumber":null,"accounts":[]}'
+        """)
+        defer { try? FileManager.default.removeItem(at: URL(fileURLWithPath: path).deletingLastPathComponent()) }
+        let task = Task { try await ClaudeSwapAccountReader.readAccountList(executablePath: path) }
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !FileManager.default.fileExists(atPath: path + ".rotated"), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(FileManager.default.fileExists(atPath: path + ".rotated"))
+        task.cancel()
+
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(FileManager.default.fileExists(atPath: path + ".persisted"))
+    }
+
+    @Test
+    func `account list credential refresh outlives a read probe timeout`() async throws {
+        let path = try self.makeFakeExecutable("""
+        sleep 0.3
+        touch "$0.persisted"
+        echo '{"schemaVersion":1,"activeAccountNumber":null,"accounts":[]}'
+        """)
+        defer { try? FileManager.default.removeItem(at: URL(fileURLWithPath: path).deletingLastPathComponent()) }
+        let list = try await ClaudeSwapAccountReader.readAccountList(executablePath: path, timeout: 0.05)
+        #expect(list.accounts.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: path + ".persisted"))
     }
 
     @Test

@@ -14,7 +14,7 @@ struct ClaudeSwapRichUsageCardTests {
             #expect(model.subtitleText.contains("Token expired"))
             #expect(model.lastKnownUsageText?.contains("last-known usage") == true)
             #expect(model.planEmphasis == .none)
-            #expect(model.planText == nil)
+            #expect(model.planText == L("Switch Account..."))
             #expect(!model.usesLiveSubtitle)
             let later = try fixture.model(for: "2", now: ClaudeSwapRichUsageFixture.now.addingTimeInterval(3600))
             #expect(later.lastKnownUsageText != model.lastKnownUsageText)

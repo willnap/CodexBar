@@ -94,11 +94,12 @@ extension NativeOrbitResetEvent {
         peerHistories: [[PlanUtilizationSeriesHistory]] = [],
         now: Date) -> [Self]
     {
-        let scan = self.scan(quotaHistories, now: now)
+        let scan = self.scan(quotaHistories, timeline: .init(history: metricHistories), provider: provider, now: now)
         var events = self.merged(scan.natural)
         var pool = self.redemptions(in: metricHistories)
         let inventory = self.inventoryDates(metricHistories)
-        let peerDrops = peerHistories.flatMap { self.scan($0, now: now).drops }
+        let peerDrops = peerHistories
+            .flatMap { self.scan($0, timeline: .init(history: $0), provider: provider, now: now).drops }
             .filter { $0.upper.timeIntervalSince($0.lower) <= self.providerWideBracket }
         let skew = NativeOrbitAccountMetrics.sameRefreshSkew
         for drop in self.grouped(scan.drops) {
@@ -205,16 +206,25 @@ extension NativeOrbitResetEvent {
             .filter { $0.nativeMetrics?.resets != nil }.map(\.capturedAt)
     }
 
-    private static func scan(_ histories: [PlanUtilizationSeriesHistory], now: Date) -> LaneScan {
+    private static func scan(
+        _ histories: [PlanUtilizationSeriesHistory],
+        timeline: NativeOrbitQuotaTimeline,
+        provider: UsageProvider?,
+        now: Date) -> LaneScan
+    {
         var result = LaneScan()
         for history in histories where !history.name.isNativeMetricObservation {
             let laneID = history.name.rawValue
+            let timelineID = NativeOrbitQuotaTimeline.quotaID(history, provider: provider) ?? laneID
             // Server period totals are aggregates, not instants; entries are already in capture order.
             let entries = history.entries.filter {
                 $0.historicalPeriod == nil && $0.usedPercent.isFinite && $0.usedPercent >= 0 && $0.capturedAt <= now
             }
             for (before, after) in zip(entries, entries.dropFirst()) where after.capturedAt > before.capturedAt {
-                guard let schedule = before.resetsAt, schedule > before.capturedAt else { continue }
+                guard timeline.canJoin(timelineID, from: before.capturedAt, to: after.capturedAt),
+                      let schedule = before.resetsAt, schedule > before.capturedAt else { continue }
+                if let first = before.quotaDescriptor, let second = after.quotaDescriptor,
+                   first.windowMinutes != second.windowMinutes { continue }
                 let dropped = self.isResetDrop(from: before.usedPercent, to: after.usedPercent)
                 if schedule <= after.capturedAt
                     || (dropped && schedule.timeIntervalSince(after.capturedAt) <= self.sameInstant)
@@ -223,8 +233,9 @@ extension NativeOrbitResetEvent {
                         result.natural.append(Self(kind: .natural, date: schedule, earliest: nil, laneIDs: [laneID]))
                     }
                 } else if dropped {
-                    let started = after.resetsAt.map { $0.addingTimeInterval(-Double(history.windowMinutes) * 60) }
-                    let start = started.flatMap { history.windowMinutes > 0
+                    let minutes = after.quotaDescriptor.map { $0.windowMinutes ?? 0 } ?? history.windowMinutes
+                    let started = after.resetsAt.map { $0.addingTimeInterval(-Double(minutes) * 60) }
+                    let start = started.flatMap { minutes > 0
                         && $0 >= before.capturedAt && $0 <= after.capturedAt ? $0 : nil
                     } ?? after.capturedAt
                     result.drops.append(Drop(
@@ -233,7 +244,8 @@ extension NativeOrbitResetEvent {
             }
             // A countdown that has run out is a reset even before the next observation arrives.
             if let last = entries.last, let schedule = last.resetsAt, schedule > last.capturedAt, schedule <= now,
-               last.usedPercent > 0
+               last.usedPercent > 0,
+               timeline.canJoin(timelineID, from: last.capturedAt, to: schedule)
             {
                 result.natural.append(Self(kind: .natural, date: schedule, earliest: nil, laneIDs: [laneID]))
             }

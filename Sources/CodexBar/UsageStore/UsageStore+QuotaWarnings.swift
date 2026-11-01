@@ -154,10 +154,11 @@ extension UsageStore {
             return
         }
         guard let rateWindow else {
-            self.quotaWarningState.removeValue(forKey: key)
+            // Provider-specific by design: a missing Claude quota is not recovery and must not rearm its alerts.
+            if provider != .claude { self.quotaWarningState.removeValue(forKey: key) }
             return
         }
-        // Claude promotes weekly usage to primary when its session payload is missing.
+        // Legacy Claude snapshots may contain a promoted weekly lane; it is never a session measurement.
         guard provider != .claude || window != .session || Self.isSessionWindow(rateWindow) else { return }
         guard !rateWindow.isSyntheticPlaceholder else { return }
 

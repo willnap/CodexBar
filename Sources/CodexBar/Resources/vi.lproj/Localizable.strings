@@ -1,4 +1,5 @@
 /* English localization for CodexBar (base/fallback) */
+"Copilot subscription ended" = "Gói đăng ký Copilot đã kết thúc";
 
 /* iCloud Sync */
 "+ %d more" = "+ %d nữa";
@@ -177,6 +178,7 @@
 "Individual credits" = "Tín dụng cá nhân";
 "Workspace" = "Không gian làm việc";
 "Credits history" = "Lịch sử tín dụng";
+"Cursor app session expired — open Cursor to sign in again, or sign in to cursor.com in your browser." = "Phiên ứng dụng Cursor đã hết hạn — mở Cursor để đăng nhập lại hoặc đăng nhập vào cursor.com trong trình duyệt.";
 "Cursor login failed" = "Đăng nhập con trỏ không thành công";
 "Custom" = "Tùy chỉnh";
 "Custom Path" = "Đường dẫn tùy chỉnh";
@@ -1346,11 +1348,8 @@
 "Share Stats…" = "Chia sẻ số liệu…";
 "Stats copied" = "Đã sao chép số liệu";
 "DeepSeek this month token usage trend" = "Xu hướng sử dụng token DeepSeek trong tháng này";
-"Chrome profile" = "Hồ sơ Chrome";
 "Choose which signed-in DeepSeek Platform session supplies detailed usage." = "Chọn phiên DeepSeek Platform đã đăng nhập để cung cấp thông tin sử dụng chi tiết.";
 "Detailed usage unavailable." = "Không có thông tin sử dụng chi tiết.";
-"Sign in to DeepSeek Platform in Chrome for detailed usage." = "Đăng nhập vào DeepSeek Platform trong Chrome để xem thông tin sử dụng chi tiết.";
-"Select a DeepSeek Chrome profile in Settings." = "Chọn một hồ sơ Chrome cho DeepSeek trong Cài đặt.";
 "Select profile…" = "Chọn hồ sơ…";
 
 "%@: %@" = "%@: %@";
@@ -2547,131 +2546,6 @@
 "Pace sign" = "Dấu nhịp sử dụng";
 "Ahead of pace is +" = "Vượt nhịp là +";
 "Reserve is +" = "Dự trữ là +";
-
-"Sign In…" = "Sign In…";
-
-"Connect…" = "Connect…";
-
-"Show model-specific weekly usage" = "Show model-specific weekly usage";
-"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
-
-// Native gauge settings and states.
-"Approve in Login Items…" = "Approve in Login Items…";
-"Available services" = "Available services";
-"Configured services" = "Configured services";
-"Redesign" = "Redesign";
-"Combine into one icon" = "Combine into one icon";
-"With 4 or more services" = "With 4 or more services";
-"Always" = "Always";
-"Manage services in the sidebar." = "Manage services in the sidebar.";
-"Enabled services" = "Enabled services";
-"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
-"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
-"Original" = "Original";
-"Local agents" = "Local agents";
-"No usage access" = "No usage access";
-"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
-"Provider disabled" = "Provider disabled";
-"Search services and active accounts" = "Search services and active accounts";
-"Service maintenance" = "Service maintenance";
-"Service outage" = "Service outage";
-"Sign in required" = "Sign in required";
-"Design" = "Design";
-"Usage delayed or service degraded" = "Usage delayed or service degraded";
-"Usage pace" = "Usage pace";
-"Usage unknown" = "Usage unknown";
-
-/* Settings search and provider ordering */
-"Search settings" = "Search settings";
-"Used providers first" = "Used providers first";
-"No matching settings" = "No matching settings";
-"Settings" = "Settings";
-
-// Native orbit popup
-"Available" = "Khả dụng";
-"24h" = "24h";
-"No history yet" = "Chưa có lịch sử";
-"Recorded available usage" = "Mức sử dụng khả dụng đã ghi";
-
-"Switch when exhausted" = "Switch when exhausted";
-"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
-"Automatic account switching" = "Automatic account switching";
-"Automatic switching on" = "Automatic switching on";
-"Automatic switching off" = "Automatic switching off";
-
-"Local usage totals" = "Local usage totals";
-
-"Time period" = "Khoảng thời gian";
-
-"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Khoảng thời gian cho lịch sử, token và chi phí của mọi tài khoản. Đồng hồ hạn mức hiển thị mức khả dụng hiện tại.";
-
-"Active %@ account" = "Tài khoản %@ đang hoạt động";
-
-"Use in %@" = "Sử dụng trong %@";
-
-"Use this account in %@" = "Sử dụng tài khoản này trong %@";
-
-"Use %@ in %@" = "Sử dụng %@ trong %@";
-
-"Last updated %@" = "Cập nhật lần cuối %@";
-
-"No observations" = "Chưa có quan sát";
-
-"History begins with recorded usage. Missing time is left empty." = "Lịch sử bắt đầu từ dữ liệu sử dụng được ghi lại. Khoảng thời gian thiếu dữ liệu được để trống.";
-
-"native_orbit_range_help" = "Khoảng thời gian cho lịch sử, token và chi tiêu";
-
-"1d" = "1d";
-"<1m ago" = "<1phút trước đây";
-"Auto switch" = "Tự động chuyển";
-
-"Switch" = "Chuyển";
-
-"Switch accounts automatically" = "Tự động chuyển tài khoản";
-
-"native_auto_switch_settings_detail" = "Khi tài khoản đang dùng hết hạn mức, Codex CLI chuyển sang tài khoản còn hạn mức. Chuyển thủ công sẽ tạm dừng tính năng này trong 10 phút.";
-"Now" = "Bây giờ";
-"Updating…" = "Đang cập nhật…";
-
-"Local Claude archive" = "Lịch sử Claude cục bộ";
-
-"Account not recorded" = "Chưa ghi lại tài khoản";
-
-"Anonymous observations from this provider. No account identity was recorded." = "Dữ liệu đo ẩn danh từ nhà cung cấp này. Chưa ghi lại danh tính tài khoản.";
-
-"History begins with recorded usage." = "Lịch sử bắt đầu từ mức sử dụng được ghi lại.";
-
-"%d observations · %d/%d days" = "%d lần ghi nhận · %d/%d ngày";
-
-"No observations in this period" = "Không có dữ liệu ghi nhận trong khoảng này";
-
-"Last observed %@" = "Ghi nhận cuối %@";
-
-"First observed %@" = "Ghi nhận đầu %@";
-
-"Connecting lines hold the last recorded value." = "Các đường nối giữ nguyên giá trị được ghi nhận gần nhất.";
-
-"Local Codex archive" = "Kho lưu Codex cục bộ";
-
-"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Nhật ký phiên có thể lặp lại các giá trị hạn mức trong bộ nhớ đệm. Danh tính tài khoản không được ghi lại.";
-
-"%ds ago" = "%dgiây trước";
-
-"Local Kimi archive" = "Kho lưu Kimi cục bộ";
-"Lines connect nearby observations. Gaps have no recorded data." = "Các đường nối những lần đo gần nhau về thời gian. Các khoảng trống không có dữ liệu được ghi lại.";
-"native_refresh_timed_out" = "Quá trình làm mới lâu hơn dự kiến. Quá trình này tiếp tục ở chế độ nền.";
-"native_refresh_claude_swap_paced" = "claude-swap cập nhật tài khoản này vài phút một lần để không vượt quá giới hạn tốc độ của Anthropic.";
-"native_refresh_issue_stale" = "Cũ";
-"native_refresh_issue_slow" = "Chậm";
-"native_orbit_range_day" = "N";
-"native_orbit_range_week" = "T";
-"native_orbit_range_month" = "Th";
-"Last 7 days" = "7 ngày qua";
-
-"Use" = "Dùng";
-
-/* Combined account paging (English fallback). */
-"Account pages" = "Account pages";
 "Back" = "Quay lại";
 "Forward" = "Tiếp";
 
@@ -2886,3 +2760,134 @@
 "Show this Mac's recorded OpenCode usage in Codex history. Off by default; scoped or alternate CODEX_HOME locations always stay excluded." = "Hiển thị mức sử dụng OpenCode được ghi lại trên máy Mac này trong lịch sử Codex. Mặc định tắt; luôn loại trừ các vị trí CODEX_HOME có phạm vi giới hạn hoặc vị trí thay thế.";
 "Auto uses the active saved session, otherwise an API key or browser cookies." = "Tự động sử dụng phiên đã lưu đang hoạt động, nếu không thì sử dụng khóa API hoặc cookie trình duyệt.";
 "Store multiple Command Code subscription sessions." = "Lưu trữ nhiều phiên đăng ký Command Code.";
+
+"codex_reset_credit_expiry_notifications_title" = "Hạn sử dụng tín dụng đặt lại Codex";
+
+"codex_reset_credit_expiry_notifications_subtitle" = "Thêm lời nhắc khi làm mới mức sử dụng, 1 ngày và 1 giờ trước khi hết hạn.";
+/* OpenDesign */
+"OpenDesign" = "OpenDesign";
+"Show OpenDesign usage" = "Hiển thị mức sử dụng OpenDesign";
+"Sign in to OpenDesign, then refresh CodexBar." = "Đăng nhập vào OpenDesign, sau đó làm mới CodexBar.";
+"OpenDesign usage response format changed." = "Định dạng phản hồi mức sử dụng OpenDesign đã thay đổi.";
+"OpenDesign billing access was denied." = "Quyền truy cập thông tin thanh toán OpenDesign bị từ chối.";
+"OpenDesign request failed. Try again later." = "Yêu cầu OpenDesign thất bại. Vui lòng thử lại sau.";
+"OpenDesign subscription usage is unavailable for this workspace." = "Không có dữ liệu sử dụng gói đăng ký OpenDesign cho không gian làm việc này.";
+"upcoming_reset_notifications_title" = "Cảnh báo trước khi đặt lại";
+"upcoming_reset_notifications_subtitle" = "Cảnh báo cho Codex trước khi giới hạn hàng tuần được đặt lại khi hạn mức còn chưa dùng.";
+"upcoming_reset_notification_title" = "%1$@: giới hạn %2$@ sắp được đặt lại";
+"upcoming_reset_notification_body" = "Còn %1$@ hạn mức chưa dùng. Giới hạn sẽ đặt lại sau %2$@ và hạn mức chưa dùng sẽ mất đi.";
+"upcoming_reset_notification_body_with_account" = "Tài khoản %1$@. Còn %2$@ hạn mức chưa dùng. Giới hạn sẽ đặt lại sau %3$@ và hạn mức chưa dùng sẽ mất đi.";
+"Sign in to DeepSeek Platform in a Chromium-based browser for detailed usage." = "Đăng nhập vào DeepSeek Platform trong trình duyệt dựa trên Chromium để xem thông tin sử dụng chi tiết.";
+"Select a DeepSeek browser profile in Settings." = "Chọn một hồ sơ trình duyệt cho DeepSeek trong Cài đặt.";
+"menu_bar_layout_token_separator_glyph_accessibility" = "Dấu phân cách %@";
+"menu_bar_layout_separator_pipe" = "Gạch đứng";
+"menu_bar_layout_separator_slash" = "Dấu gạch chéo";
+"menu_bar_layout_separator_hyphen" = "Dấu gạch nối";
+"menu_bar_layout_separator_bullet" = "Dấu đầu dòng";
+"menu_bar_layout_separator_diamond" = "Hình thoi đặc";
+"menu_bar_layout_separator_hollowDiamond" = "Hình thoi rỗng";
+"menu_bar_layout_separator_tilde" = "Dấu ngã";
+"menu_bar_layout_separator_doubleBar" = "Gạch đứng kép";
+"Rename" = "Đổi tên";
+"Rename account" = "Đổi tên tài khoản";
+"Account name" = "Tên tài khoản";
+"Leave blank to use the default name." = "Để trống để dùng tên mặc định.";
+"Rewards" = "Phần thưởng";
+"Reward expiry" = "Ngày hết hạn phần thưởng";
+
+/* Native redesign */
+"Chrome profile" = "Hồ sơ Chrome";
+"Sign in to DeepSeek Platform in Chrome for detailed usage." = "Đăng nhập vào DeepSeek Platform trong Chrome để xem thông tin sử dụng chi tiết.";
+"Select a DeepSeek Chrome profile in Settings." = "Chọn một hồ sơ Chrome cho DeepSeek trong Cài đặt.";
+"Sign In…" = "Sign In…";
+"Connect…" = "Connect…";
+"Show model-specific weekly usage" = "Show model-specific weekly usage";
+"Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets." = "Shows model-specific Claude quotas, such as Fable, in menu bar gauges and desktop widgets.";
+"Approve in Login Items…" = "Approve in Login Items…";
+"Available services" = "Available services";
+"Configured services" = "Configured services";
+"Redesign" = "Redesign";
+"Combine into one icon" = "Combine into one icon";
+"With 4 or more services" = "With 4 or more services";
+"Always" = "Always";
+"Manage services in the sidebar." = "Manage services in the sidebar.";
+"Enabled services" = "Enabled services";
+"Folder access could not be saved. Choose the folder again." = "Folder access could not be saved. Choose the folder again.";
+"Keep Mac awake while agents run" = "Keep Mac awake while agents run";
+"Original" = "Original";
+"Local agents" = "Local agents";
+"No usage access" = "No usage access";
+"Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep." = "Prevents idle system sleep. Uses battery power; does not prevent lid-close or display sleep.";
+"Provider disabled" = "Provider disabled";
+"Search services and active accounts" = "Search services and active accounts";
+"Service maintenance" = "Service maintenance";
+"Service outage" = "Service outage";
+"Sign in required" = "Sign in required";
+"Design" = "Design";
+"Usage delayed or service degraded" = "Usage delayed or service degraded";
+"Usage pace" = "Usage pace";
+"Usage unknown" = "Usage unknown";
+"Search settings" = "Search settings";
+"Used providers first" = "Used providers first";
+"No matching settings" = "No matching settings";
+"Settings" = "Settings";
+"Available" = "Khả dụng";
+"24h" = "24h";
+"No history yet" = "Chưa có lịch sử";
+"Recorded available usage" = "Mức sử dụng khả dụng đã ghi";
+"Switch when exhausted" = "Switch when exhausted";
+"Uses an account with available quota. Manual switching pauses this for 10 minutes." = "Uses an account with available quota. Manual switching pauses this for 10 minutes.";
+"Automatic account switching" = "Automatic account switching";
+"Automatic switching on" = "Automatic switching on";
+"Automatic switching off" = "Automatic switching off";
+"Local usage totals" = "Local usage totals";
+"Time period" = "Khoảng thời gian";
+"Time period for every account’s history, tokens and spend. Quota dials show current availability." = "Khoảng thời gian cho lịch sử, token và chi phí của mọi tài khoản. Đồng hồ hạn mức hiển thị mức khả dụng hiện tại.";
+"Active %@ account" = "Tài khoản %@ đang hoạt động";
+"Use in %@" = "Sử dụng trong %@";
+"Use this account in %@" = "Sử dụng tài khoản này trong %@";
+"Use %@ in %@" = "Sử dụng %@ trong %@";
+"Last updated %@" = "Cập nhật lần cuối %@";
+"No observations" = "Chưa có quan sát";
+"History begins with recorded usage. Missing time is left empty." = "Lịch sử bắt đầu từ dữ liệu sử dụng được ghi lại. Khoảng thời gian thiếu dữ liệu được để trống.";
+"native_orbit_range_help" = "Khoảng thời gian cho lịch sử, token và chi tiêu";
+"1d" = "1d";
+"<1m ago" = "<1phút trước đây";
+"Auto switch" = "Tự động chuyển";
+"Switch" = "Chuyển";
+"Switch accounts automatically" = "Tự động chuyển tài khoản";
+"native_auto_switch_settings_detail" = "Khi tài khoản đang dùng hết hạn mức, Codex CLI chuyển sang tài khoản còn hạn mức. Chuyển thủ công sẽ tạm dừng tính năng này trong 10 phút.";
+"Now" = "Bây giờ";
+"Updating…" = "Đang cập nhật…";
+"Local Claude archive" = "Lịch sử Claude cục bộ";
+"Account not recorded" = "Chưa ghi lại tài khoản";
+"Anonymous observations from this provider. No account identity was recorded." = "Dữ liệu đo ẩn danh từ nhà cung cấp này. Chưa ghi lại danh tính tài khoản.";
+"History begins with recorded usage." = "Lịch sử bắt đầu từ mức sử dụng được ghi lại.";
+"%d observations · %d/%d days" = "%d lần ghi nhận · %d/%d ngày";
+"No observations in this period" = "Không có dữ liệu ghi nhận trong khoảng này";
+"Last observed %@" = "Ghi nhận cuối %@";
+"First observed %@" = "Ghi nhận đầu %@";
+"Connecting lines hold the last recorded value." = "Các đường nối giữ nguyên giá trị được ghi nhận gần nhất.";
+"Local Codex archive" = "Kho lưu Codex cục bộ";
+"Session logs can repeat cached quota readings. Their account identity is not recorded." = "Nhật ký phiên có thể lặp lại các giá trị hạn mức trong bộ nhớ đệm. Danh tính tài khoản không được ghi lại.";
+"%ds ago" = "%dgiây trước";
+"Local Kimi archive" = "Kho lưu Kimi cục bộ";
+"Lines connect nearby observations. Gaps have no recorded data." = "Các đường nối những lần đo gần nhau về thời gian. Các khoảng trống không có dữ liệu được ghi lại.";
+"native_refresh_timed_out" = "Quá trình làm mới lâu hơn dự kiến. Quá trình này tiếp tục ở chế độ nền.";
+"native_refresh_claude_swap_paced" = "claude-swap cập nhật tài khoản này vài phút một lần để không vượt quá giới hạn tốc độ của Anthropic.";
+"native_refresh_issue_stale" = "Cũ";
+"native_refresh_issue_slow" = "Chậm";
+"native_orbit_range_day" = "N";
+"native_orbit_range_week" = "T";
+"native_orbit_range_month" = "Th";
+"Last 7 days" = "7 ngày qua";
+"Use" = "Dùng";
+"Account pages" = "Account pages";
+"native_account_use_missing_login" = "Không có thông tin đăng nhập đã lưu. Hãy đăng nhập lại.";
+"native_account_use_unknown_status" = "Không rõ trạng thái tài khoản. Làm mới rồi thử lại.";
+"native_account_use_read_only" = "Kết nối này không hỗ trợ chuyển tài khoản.";
+"native_account_use_monitor_only" = "Chuyển tài khoản này trong ứng dụng hoặc CLI của nhà cung cấp.";
+"native_account_use_busy" = "Chờ quá trình chuyển tài khoản hiện tại hoàn tất.";
+"native_account_use_not_ready" = "Chưa sẵn sàng chuyển tài khoản. Hãy thử lại sau giây lát.";
+"native_account_use_unverified_login" = "Phiên đăng nhập hiện tại chưa được xác minh. Làm mới rồi thử lại.";
+"native_app_update_ready" = "Bản cập nhật CodexBar đã sẵn sàng cài đặt.";

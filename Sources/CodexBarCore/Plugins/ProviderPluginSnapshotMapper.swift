@@ -4,41 +4,6 @@ enum ProviderPluginSnapshotMapper {
     private static let maximumStringBytes = 256
     private static let maximumJavaScriptSafeInteger = 9_007_199_254_740_991.0
 
-    private struct CostUsageParsedEntry {
-        let date: String
-        let inputTokens: Int?
-        let outputTokens: Int?
-        let reasoningTokens: Int?
-        let totalTokens: Int?
-        let requests: Int?
-        let cost: Double?
-        let estimatedCost: Double
-        let hasEstimatedCost: Bool
-        let model: String?
-    }
-
-    private struct CostUsageAccumulator {
-        var inputTokens: Int? = 0
-        var outputTokens: Int? = 0
-        var reasoningTokens = 0
-        var hasReasoningTokens = false
-        var totalTokens: Int? = 0
-        var requests: Int? = 0
-        var cost: Double? = 0
-        var estimatedCost = 0.0
-        var estimatedRequests: Int? = 0
-        var knownCost = 0.0
-        var hasCost = false
-        var hasMissingCost = false
-    }
-
-    private struct CostUsageAggregation {
-        let daily: [CostUsageDailyReport.Entry]
-        let totalTokens: Int?
-        let totalRequests: Int?
-        let totalCost: Double?
-    }
-
     static func map(
         _ value: any ProviderPluginValue,
         provider: ProviderInstanceID,
@@ -53,7 +18,7 @@ enum ProviderPluginSnapshotMapper {
             value,
             allowed: [
                 "primary", "secondary", "tertiary", "extraWindows", "cost", "balance", "costUsage", "details",
-                "identity",
+                "identity", "iconProvider", "menuBarItems",
                 "subscriptionRenewsAt", "subscriptionExpiresAt", "subscriptionStatus", "subscriptionIsActive",
                 "dataConfidence", "empty",
             ],
@@ -73,6 +38,8 @@ enum ProviderPluginSnapshotMapper {
         let costUsage = try self.costUsage(value, now: now)
         let details = try self.details(value)
         let identity = try self.identity(value, provider: provider)
+        let iconProvider = try self.iconProvider(value)
+        let menuBarItems = try self.menuBarItems(value)
         let subscriptionRenewsAt = try self.optionalDate(value, property: "subscriptionRenewsAt")
         let subscriptionStatus = try self.optionalString(value, property: "subscriptionStatus", path: "usage")
         let subscriptionIsActive = try self.optionalBoolean(value, property: "subscriptionIsActive", path: "usage")
@@ -102,6 +69,8 @@ enum ProviderPluginSnapshotMapper {
             providerCost: providerCost,
             costUsage: costUsage,
             details: details,
+            iconProvider: iconProvider,
+            menuBarItems: menuBarItems,
             subscriptionStatus: subscriptionStatus,
             subscriptionIsActive: subscriptionIsActive,
             subscriptionExpiresAt: subscriptionExpiresAt,
@@ -109,6 +78,31 @@ enum ProviderPluginSnapshotMapper {
             updatedAt: now,
             identity: identity,
             dataConfidence: dataConfidence)
+    }
+
+    private static func iconProvider(_ root: any ProviderPluginValue) throws -> UsageProvider? {
+        guard let value = root.property("iconProvider"), !value.isUndefined, !value.isNull else { return nil }
+        guard value.isString, let provider = UsageProvider(rawValue: value.stringValue()) else {
+            throw ProviderPluginError.invalidSnapshot("iconProvider must be a built-in provider ID")
+        }
+        return provider
+    }
+
+    private static func menuBarItems(_ root: any ProviderPluginValue) throws -> [ProviderMenuBarItem] {
+        guard let value = root.property("menuBarItems"), !value.isUndefined, !value.isNull else { return [] }
+        guard value.isArray else { throw ProviderPluginError.invalidSnapshot("menuBarItems must be an array") }
+        let count = try self.boundedArrayCount(value, maximum: ProviderMenuBarItem.maximumItems, path: "menuBarItems")
+        return try (0..<count).map { index in
+            let path = "menuBarItems[\(index)]"
+            guard let item = value.element(at: index), item.isObject, !item.isArray else {
+                throw ProviderPluginError.invalidSnapshot("\(path) must be an object")
+            }
+            try self.object(item, allowed: ["title", "iconProvider", "windowID"], path: path)
+            return try ProviderMenuBarItem(
+                title: self.requiredDetailString(item, property: "title", path: path),
+                iconProvider: self.iconProvider(item),
+                windowID: self.optionalDetailString(item, property: "windowID", path: path))
+        }
     }
 
     private static func hasMeaningfulIdentity(_ identity: ProviderIdentitySnapshot?) -> Bool {
@@ -875,5 +869,42 @@ extension ProviderPluginSnapshotMapper {
             balanceIsWorkspace: workspace,
             usageIsUnavailable: true,
             updatedAt: now)
+    }
+}
+
+extension ProviderPluginSnapshotMapper {
+    private struct CostUsageParsedEntry {
+        let date: String
+        let inputTokens: Int?
+        let outputTokens: Int?
+        let reasoningTokens: Int?
+        let totalTokens: Int?
+        let requests: Int?
+        let cost: Double?
+        let estimatedCost: Double
+        let hasEstimatedCost: Bool
+        let model: String?
+    }
+
+    private struct CostUsageAccumulator {
+        var inputTokens: Int? = 0
+        var outputTokens: Int? = 0
+        var reasoningTokens = 0
+        var hasReasoningTokens = false
+        var totalTokens: Int? = 0
+        var requests: Int? = 0
+        var cost: Double? = 0
+        var estimatedCost = 0.0
+        var estimatedRequests: Int? = 0
+        var knownCost = 0.0
+        var hasCost = false
+        var hasMissingCost = false
+    }
+
+    private struct CostUsageAggregation {
+        let daily: [CostUsageDailyReport.Entry]
+        let totalTokens: Int?
+        let totalRequests: Int?
+        let totalCost: Double?
     }
 }

@@ -33,7 +33,8 @@ enum NativeOrbitActivity {
         for lane in lanes {
             let readings = lane.samples.filter { !$0.isResetEdge && $0.id.historicalPeriod == nil }
             for (before, after) in zip(readings, readings.dropFirst()) where after.date >= threshold {
-                if after.id.usedPercent > before.id.usedPercent + self.minimumIncrease,
+                if before.segment == after.segment,
+                   after.id.usedPercent > before.id.usedPercent + self.minimumIncrease,
                    self.sameWindow(before.id, after.id)
                 {
                     note(after.date)
@@ -56,11 +57,13 @@ enum NativeOrbitActivity {
     /// Every instant where one of the account's quota lanes rose inside its window, across its whole history.
     static func consumptionDates(_ histories: [PlanUtilizationSeriesHistory]) -> [Date] {
         var dates: [Date] = []
+        let timeline = NativeOrbitQuotaTimeline(history: histories)
         for history in histories where history.name.isNativeQuotaObservation {
             // Server period totals are not readings; a rise is between two measured ones.
             let entries = history.entries.filter { $0.historicalPeriod == nil }.sorted { $0.capturedAt < $1.capturedAt }
             for (before, after) in zip(entries, entries.dropFirst())
                 where after.usedPercent > before.usedPercent + self.minimumIncrease && self.sameWindow(before, after)
+                && timeline.canJoin(history.name.rawValue, from: before.capturedAt, to: after.capturedAt)
             {
                 dates.append(after.capturedAt)
             }
@@ -71,6 +74,8 @@ enum NativeOrbitActivity {
     /// A rise is consumption only inside one window. Rolling windows move their reset with the clock, so the reset
     /// may shift by the time between the readings; a window that started over moves it by a whole period.
     static func sameWindow(_ before: PlanUtilizationHistoryEntry, _ after: PlanUtilizationHistoryEntry) -> Bool {
+        if let first = before.quotaDescriptor, let second = after.quotaDescriptor,
+           first.windowMinutes != second.windowMinutes { return false }
         let elapsed = after.capturedAt.timeIntervalSince(before.capturedAt)
         guard let first = before.resetsAt, let second = after.resetsAt else { return elapsed <= self.window }
         return abs(second.timeIntervalSince(first)) <= elapsed + NativeOrbitResetEvent.sameInstant
@@ -262,7 +267,13 @@ struct NativeOrbitAccountProjection {
             history: account.history,
             now: now)
         let lastActivity = [quotaActivity, moneyActivity].compactMap(\.self).max()
-        let projected = lanes.compactMap { self.project($0, now: now, active: lastActivity != nil) }
+        let timeline = NativeOrbitQuotaTimeline(history: account.history)
+        let current = Set(account.quotaWindows.keys)
+        let projected = lanes.filter {
+            !timeline.isAbsent($0.history.name.rawValue, at: now)
+                && !timeline.isUnmeasured($0.history.name.rawValue, at: now)
+                && (current.isEmpty || current.contains($0.history.name.rawValue))
+        }.compactMap { self.project($0, now: now, active: lastActivity != nil) }
         let summary = live.summary(days: days, now: now)
         let elapsed = now.timeIntervalSince(start)
         func rate(_ total: Double?) -> Double? {
@@ -295,7 +306,8 @@ struct NativeOrbitAccountProjection {
               now.timeIntervalSince(latest.date) <= self.maximumReadingAge else { return nil }
         let used = min(100, max(0, 100 - latest.available))
         let minutes = lane.history.windowMinutes
-        let period = latest.period ?? (minutes > 0 ? Double(minutes) * 60 : nil)
+        let period = latest.id.quotaDescriptor != nil ? latest.period
+            : latest.period ?? (minutes > 0 ? Double(minutes) * 60 : nil)
         var reset = latest.id.resetsAt
         if let scheduled = reset, let period, used == 0,
            scheduled.timeIntervalSince(latest.date) >= period - self.unstartedSlack

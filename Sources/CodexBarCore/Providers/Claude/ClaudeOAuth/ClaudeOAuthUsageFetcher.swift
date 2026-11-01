@@ -328,6 +328,7 @@ struct OAuthProfileResponse: Decodable, Sendable {
 }
 
 struct OAuthUsageResponse: Decodable {
+    let quotaWindowPresence: [String: Bool]
     let fiveHour: OAuthUsageWindow?
     let sevenDay: OAuthUsageWindow?
     let sevenDayOAuthApps: OAuthUsageWindow?
@@ -347,6 +348,17 @@ struct OAuthUsageResponse: Decodable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: DynamicCodingKey.self)
+        let session = Self.windowPresence(in: container, key: "five_hour")
+        let weekly = Self.windowPresence(in: container, key: "seven_day")
+        let apps = Self.windowPresence(in: container, key: "seven_day_oauth_apps")
+        let logicalWeekly: Bool? = weekly == true || apps == true ? true
+            : weekly == false && apps == false ? false : nil
+        let hasBaseSchema = ["five_hour", "seven_day", "seven_day_oauth_apps"].contains { name in
+            guard let key = DynamicCodingKey(stringValue: name), container.contains(key) else { return false }
+            return Self.windowPresence(in: container, key: name) != nil
+        }
+        self.quotaWindowPresence = hasBaseSchema
+            ? ["primary": session, "secondary": logicalWeekly].compactMapValues { $0 } : [:]
         self.fiveHour = Self.decodeWindow(in: container, keys: ["five_hour"])
         self.sevenDay = Self.decodeWindow(in: container, keys: ["seven_day"])
         self.sevenDayOAuthApps = Self.decodeWindow(in: container, keys: ["seven_day_oauth_apps"])
@@ -367,6 +379,15 @@ struct OAuthUsageResponse: Decodable {
         self.extraUsage = Self.decodeValue(in: container, keys: ["extra_usage"])
         self.monthlySpend = Self.decodeValue(in: container, keys: ["spend"])
         self.resetStatus = Self.decodeValue(in: container, keys: ["cedar_ember"])
+    }
+
+    private static func windowPresence(
+        in container: KeyedDecodingContainer<DynamicCodingKey>, key name: String) -> Bool?
+    {
+        guard let key = DynamicCodingKey(stringValue: name) else { return nil }
+        guard container.contains(key) else { return false }
+        if (try? container.decodeNil(forKey: key)) == true { return false }
+        return (try? container.nestedContainer(keyedBy: DynamicCodingKey.self, forKey: key)) != nil ? true : nil
     }
 
     private static func decodeWindow(

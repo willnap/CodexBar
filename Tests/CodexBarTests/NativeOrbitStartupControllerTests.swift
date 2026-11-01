@@ -7,6 +7,18 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct NativeOrbitStartupControllerTests {
+    @Test func `preparing combined account data does not construct a hidden standalone popup`() throws {
+        let fixture = try self.fixture(launch: NativeOrbitStartupLaunch(), installView: false)
+        defer { self.cleanUp(fixture) }
+        #expect(!fixture.controller.isViewLoaded)
+        fixture.controller.prepare()
+        #expect(!fixture.controller.orbitState.accounts.isEmpty)
+        #expect(!fixture.controller.isViewLoaded)
+        fixture.controller.beginCombinedPresentation()
+        #expect(!fixture.controller.isViewLoaded)
+        fixture.controller.endCombinedPresentation()
+    }
+
     @Test func `notifications without a popup do not arm or consume the launch`() throws {
         let launch = NativeOrbitStartupLaunch()
         let fixture = try self.fixture(launch: launch)
@@ -84,7 +96,7 @@ struct NativeOrbitStartupControllerTests {
         let statusItem: NSStatusItem
     }
 
-    private func fixture(launch: NativeOrbitStartupLaunch) throws -> Fixture {
+    private func fixture(launch: NativeOrbitStartupLaunch, installView: Bool = true) throws -> Fixture {
         _ = NSApplication.shared
         let settings = testSettingsStore(
             suiteName: "NativeOrbitStartupController",
@@ -124,7 +136,7 @@ struct NativeOrbitStartupControllerTests {
             hasDashboard: { false },
             startupLaunch: launch)
         // Exercise AppKit's delegate lifecycle without invoking the content-loading path.
-        controller.view = NSView(frame: CGRect(x: 0, y: 0, width: 240, height: 480))
+        if installView { controller.view = NSView(frame: CGRect(x: 0, y: 0, width: 240, height: 480)) }
         return Fixture(controller: controller, statusItem: statusItem)
     }
 

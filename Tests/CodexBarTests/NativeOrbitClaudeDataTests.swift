@@ -7,6 +7,26 @@ import Testing
 struct NativeOrbitClaudeDataTests {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
+    @Test(arguments: [false, true], [false, true])
+    func `latest Claude quota inventory does not resurrect removed base limits`(
+        ambientIsNewer: Bool, keepWeekly: Bool) throws
+    {
+        let session = RateWindow(usedPercent: 25, windowMinutes: 300, resetsAt: nil, resetDescription: nil)
+        let weekly = RateWindow(usedPercent: 42, windowMinutes: 10080, resetsAt: nil, resetDescription: nil)
+        let older = UsageSnapshot(primary: session, secondary: weekly, updatedAt: self.now)
+        let newer = UsageSnapshot(
+            primary: keepWeekly ? nil : session,
+            secondary: keepWeekly ? weekly : nil,
+            updatedAt: self.now.addingTimeInterval(60))
+        let merged = try #require(UsageStore.nativeOrbitClaudeMergedSnapshot(
+            adapter: ambientIsNewer ? older : newer,
+            ambient: ambientIsNewer ? newer : older))
+        #expect(merged.primary == (keepWeekly ? nil : session))
+        #expect(merged.secondary == (keepWeekly ? weekly : nil))
+        let gauge = NativeUsageGaugeProjection.state(provider: .claude, snapshot: merged)
+        #expect(gauge.resolvedWindows.map(\.id) == [keepWeekly ? "secondary" : "primary"])
+    }
+
     @Test func `Claude adjuncts require one matching active owner and reject foreign organizations`() throws {
         let owner = self.account()
         let ambient = self.snapshot()

@@ -6,6 +6,12 @@ enum InstallOrigin {
         URL(fileURLWithPath: "/usr/local/Caskroom"),
     ]
 
+    /// The native workspace installer marks its own bundles; a leftover cask link is not their update source.
+    static func isLocalBuild(appBundleURL: URL) -> Bool {
+        Bundle(url: appBundleURL.resolvingSymlinksInPath())?
+            .object(forInfoDictionaryKey: "CodexBarTeamID") as? String == "NATIVEGAUGE"
+    }
+
     static func isHomebrewCask(
         appBundleURL: URL,
         caskroomURLs: [URL] = Self.caskroomURLs) -> Bool
@@ -22,6 +28,7 @@ enum InstallOrigin {
     }
 
     private static func homebrewPrefixes(appBundleURL: URL, caskroomURLs: [URL]) -> [URL] {
+        guard !self.isLocalBuild(appBundleURL: appBundleURL) else { return [] }
         let resolved = appBundleURL.resolvingSymlinksInPath().standardizedFileURL
         var prefixes: [URL] = []
         let legacyCask = resolved.deletingLastPathComponent().deletingLastPathComponent()
