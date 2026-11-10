@@ -128,6 +128,7 @@ enum ProviderPluginHTTPResponse {
                     for: request.primary,
                     transport: request.transport(transport, session: request.primarySession),
                     retryPolicy: request.retryPolicy,
+                    contextOptions: contextOptions,
                     beforeAttempt: { request in
                         try await contextOptions.beforeHTTPAttempt?(request)
                         started.yield(.now)
@@ -140,6 +141,7 @@ enum ProviderPluginHTTPResponse {
                         for: optional,
                         transport: request.transport(transport, session: request.optionalSession),
                         retryPolicy: .disabled,
+                        contextOptions: contextOptions,
                         beforeAttempt: contextOptions.beforeHTTPAttempt))
                 }
                 group.addTask {
@@ -327,16 +329,21 @@ enum ProviderPluginHTTPResponse {
         for request: URLRequest,
         transport: any ProviderHTTPTransport,
         retryPolicy: ProviderHTTPRetryPolicy,
+        contextOptions: ProviderPluginContextOptions = .production,
         beforeAttempt: (@Sendable (URLRequest) async throws -> Void)? = nil) async throws -> ProviderHTTPResponse
     {
         let bounded = ProviderHTTPTransportHandler { request in
             try Task.checkCancellation()
             let (starts, started) = AsyncStream<ContinuousClock.Instant>.makeStream()
+            let cancellation = AdmissionCancellation()
             let task = Task {
                 defer { started.finish() }
-                try await beforeAttempt?(request)
+                try cancellation.check()
                 try Task.checkCancellation()
+                try await beforeAttempt?(request)
                 started.yield(.now)
+                try cancellation.check()
+                try Task.checkCancellation()
                 return try await transport.data(for: request)
             }
             return try await withTaskCancellationHandler {
@@ -345,18 +352,47 @@ enum ProviderPluginHTTPResponse {
                 let startedAt = await iterator.next()
                 try Task.checkCancellation()
                 guard let startedAt else { return try await task.value }
-                let deadline = startedAt.advanced(by: .seconds(request.timeoutInterval))
-                let remaining = ContinuousClock.now.duration(to: deadline)
-                return switch await BoundedTaskJoin(sourceTask: task).value(joinGrace: remaining) {
-                case let .value(response): response
-                case let .failure(error): throw error
-                case .timedOut: throw URLError(.timedOut)
+                let budget = Duration.seconds(request.timeoutInterval)
+                let sleep = BoundedTaskJoinTiming.sleep
+                let remaining = contextOptions.waitForHTTPDeadline == nil
+                    ? ContinuousClock.now.duration(to: startedAt.advanced(by: budget)) : budget
+                let wait: @Sendable (Duration) async throws -> Void = { _ in
+                    if let wait = contextOptions.waitForHTTPDeadline {
+                        try await wait(startedAt, budget)
+                    } else {
+                        try await sleep(remaining)
+                    }
+                }
+                return try await BoundedTaskJoinTiming.$sleep.withValue(wait) {
+                    switch await BoundedTaskJoin(sourceTask: task).value(joinGrace: remaining) {
+                    case let .value(response): response
+                    case let .failure(error): throw error
+                    case .timedOut: throw URLError(.timedOut)
+                    }
                 }
             } onCancel: {
-                task.cancel()
+                cancellation.cancel()
+                // A transport cancellation handler can block; don't hold the caller's
+                // cancellation path or task-group coordinator while requesting it.
+                DispatchQueue.global().async { task.cancel() }
             }
         }
-        return try await bounded.response(for: request, retryPolicy: retryPolicy)
+        return try await ProviderHTTPRetryTiming.$sleep.withValue(contextOptions.sleepBeforeRetry) {
+            try await bounded.response(for: request, retryPolicy: retryPolicy)
+        }
+    }
+
+    private final class AdmissionCancellation: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cancelled = false
+
+        func cancel() {
+            self.lock.withLock { self.cancelled = true }
+        }
+
+        func check() throws {
+            if self.lock.withLock({ self.cancelled }) { throw CancellationError() }
+        }
     }
 
     struct StatusFailure: LocalizedError {

@@ -17,7 +17,7 @@ extension CodexBarCLI {
 
     private static func runStandardCost(_ values: ParsedValues, output: CLIOutputPreferences) async {
         let config = CodexBarCLI.loadConfig(output: output)
-        let selection = CodexBarCLI.decodeProvider(from: values, config: config)
+        let selection = CodexBarCLI.decodeProvider(from: values, config: config, output: output)
         let providers = Self.costProviders(from: selection)
         let unsupported = selection.asList.filter { !Self.costSupportedProviders.contains($0) }
         if !unsupported.isEmpty {
@@ -848,7 +848,14 @@ extension CodexBarCLI {
                 output: CLIOutputPreferences.from(values: values),
                 kind: .args)
         }
-        if let raw = values.options["days"]?.last, let days = Int(raw) {
+        if let raw = values.options["days"]?.last {
+            guard let days = Int(raw) else {
+                Self.exit(
+                    code: .failure,
+                    message: "Error: --days must be an integer.",
+                    output: CLIOutputPreferences.from(values: values),
+                    kind: .args)
+            }
             return .rolling(days: max(1, min(365, days)))
         }
         let period = values.options["period"]?.last.flatMap(CostReportingPeriod.init(rawValue:)) ?? saved

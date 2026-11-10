@@ -369,6 +369,9 @@ extension StatusItemController {
               matches[0].canActivate,
               self.store.claudeSwapLastError == nil
         else { return .unavailable("This Claude account cannot be activated. Refresh the accounts and try again.") }
+        // The desktop app's login is filed under the account Claude Code is leaving.
+        let outgoing = self.store.claudeSwapAccountSnapshots.filter(\.isActive)
+        let outgoingEmail = outgoing.count == 1 ? outgoing[0].accountEmail : nil
         let previousRefresh = self.store.claudeSwapLastRefreshAt
         self.store.switchClaudeSwapAccount(target)
         guard let task = self.store.claudeSwapTransientState.task else {
@@ -389,6 +392,19 @@ extension StatusItemController {
                   target,
                   accounts: self.store.claudeSwapAccountSnapshots)
         else { return .failed("The active Claude login could not be verified after switching. Refresh the accounts.") }
-        return .activated
+        // Claude Code has switched. The desktop app keeps its own login, so it follows as a second step; only the
+        // explicit "Use in …" action may quit it, exactly as for the Codex desktop app.
+        let desktop = await NativeClaudeDesktopHandoff().follow(
+            outgoingEmail: outgoingEmail,
+            incomingEmail: expected.accountEmail,
+            mayQuit: NativeCodexDesktopHandoff.quitPolicy == .askToQuit)
+        switch desktop {
+        case .notApplicable, .leftOpen, .restored, .sessionsRunning, .signedOut:
+            // Claude Code switched, which is what was asked. An app left open because it is running sessions,
+            // or reopened signed out the first time an account is used, is not a failed switch.
+            return .activated
+        case let .failed(reason):
+            return .failed("Switched Claude Code. \(reason)")
+        }
     }
 }

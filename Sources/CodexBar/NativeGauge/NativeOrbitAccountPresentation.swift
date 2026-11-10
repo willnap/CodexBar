@@ -96,6 +96,59 @@ final class NativeOrbitAccountsMemo {
 
     func retainWarningHistories(provider: UsageProvider, accountIDs: Set<String>) {
         self.warningHistories[provider] = self.warningHistories[provider]?.filter { accountIDs.contains($0.key) }
+        self.currentHistories[provider] = self.currentHistories[provider]?.filter { accountIDs.contains($0.key) }
+        self.consumptionDates[provider] = self.consumptionDates[provider]?.filter { accountIDs.contains($0.key) }
+    }
+
+    private struct CurrentHistory {
+        let source: [PlanUtilizationSeriesHistory]
+        let samples: [UsageStore.PlanUtilizationSeriesSample]
+        let merged: [PlanUtilizationSeriesHistory]
+    }
+
+    private struct ConsumptionDates {
+        let source: [PlanUtilizationSeriesHistory]
+        let dates: [Date]
+    }
+
+    private var currentHistories: [UsageProvider: [String: CurrentHistory]] = [:]
+    private var consumptionDates: [UsageProvider: [String: ConsumptionDates]] = [:]
+
+    /// An account's stored history with its current reading in place. A refresh rebuilds every row each time any
+    /// account publishes, and regrouping, merging and sorting one account's thousands of readings is most of a
+    /// row's cost, so the result stands while that account's own history and reading are what they were.
+    func historyIncludingCurrentSnapshot(
+        provider: UsageProvider,
+        accountID: String,
+        history: [PlanUtilizationSeriesHistory],
+        snapshot: UsageSnapshot?,
+        credits: CreditsSnapshot? = nil) -> [PlanUtilizationSeriesHistory]
+    {
+        guard let snapshot else { return history }
+        let samples = UsageStore.nativeOrbitHistorySamples(provider: provider, snapshot: snapshot, credits: credits)
+        if let cached = self.currentHistories[provider]?[accountID], cached.samples == samples,
+           cached.source == history
+        {
+            return cached.merged
+        }
+        let merged = UsageStore.nativeOrbitHistory(history, provider: provider, including: samples)
+        self.currentHistories[provider, default: [:]][accountID] = .init(
+            source: history, samples: samples, merged: merged)
+        return merged
+    }
+
+    /// `NativeOrbitActivity.consumptionDates` for an account, kept while its history is unchanged.
+    func consumptionDates(
+        provider: UsageProvider,
+        accountID: String,
+        history: [PlanUtilizationSeriesHistory]) -> [Date]
+    {
+        if let cached = self.consumptionDates[provider]?[accountID], cached.source == history {
+            return cached.dates
+        }
+        let dates = NativeOrbitActivity.consumptionDates(history)
+        self.consumptionDates[provider, default: [:]][accountID] = .init(source: history, dates: dates)
+        return dates
     }
 
     func generation(_ provider: UsageProvider) -> Generation {
@@ -476,13 +529,17 @@ extension UsageStore {
         let usageLastKnownAt = reports.local.flatMap { local in
             ambientLocal?.lastKnownAt.flatMap { local.snapshot.updatedAt == $0 ? $0 : nil }
         }
+        let accountID = automatic ? "\(provider.rawValue):automatic"
+            : presentation.accountID ?? "\(provider.rawValue):automatic"
+        let memo = self.nativeOrbitAccountsMemo
         let ambientMetrics = NativeOrbitAccountMetrics.make(
             provider: provider,
             snapshot: snapshot,
             usage: reports.usage,
             now: Date(),
             localUsage: reports.local,
-            quotaHistory: sourceHistory)
+            quotaHistory: sourceHistory,
+            quotaConsumption: memo.consumptionDates(provider: provider, accountID: accountID, history: sourceHistory))
         // Without an email, the name the service gives the login (a Kimi phone login's nickname).
         let accountName = self.settings.hidePersonalInfo ? nil
             : snapshot?.identity(for: provider.instanceID)?.accountName
@@ -490,8 +547,7 @@ extension UsageStore {
             ? accountName ?? self.metadata(for: provider).displayName
             : presentation.model.email
         return NativeOrbitAccountPresentation(
-            id: automatic ? "\(provider.rawValue):automatic"
-                : presentation.accountID ?? "\(provider.rawValue):automatic",
+            id: accountID,
             label: automatic ? L("Automatic") : accountLabel,
             email: self.settings.hidePersonalInfo ? nil : presentation.model.email,
             isNamed: automatic || !presentation.model.email.isEmpty || accountName != nil,
@@ -501,9 +557,10 @@ extension UsageStore {
             canActivate: false,
             gauge: presentation.gauge,
             updatedAt: snapshot?.updatedAt,
-            history: Self.nativeOrbitHistoryIncludingCurrentSnapshot(
-                Self.nativeOrbitHistoryDroppingMachineLocalReceipts(sourceHistory, provider: provider),
+            history: memo.historyIncludingCurrentSnapshot(
                 provider: provider,
+                accountID: accountID,
+                history: Self.nativeOrbitHistoryDroppingMachineLocalReceipts(sourceHistory, provider: provider),
                 snapshot: snapshot),
             odometer: nil,
             odometerHelp: nil,
@@ -599,7 +656,10 @@ extension UsageStore {
             status: self.statusIndicator(for: provider),
             isEnabled: self.settings.isProviderEnabledCached(
                 provider: provider,
-                metadataByProvider: self.providerMetadata))
+                metadataByProvider: self.providerMetadata),
+            // Provider-specific by design: only Claude hides unused model allowances, so only its recent use matters.
+            modelLaneHistory: provider == .claude ? history : [],
+            now: input.now)
         var metrics = NativeOrbitAccountMetrics.make(
             provider: provider,
             snapshot: snapshot,
@@ -610,7 +670,9 @@ extension UsageStore {
             now: input.now,
             credits: credits,
             localUsage: localUsage,
-            quotaHistory: history)
+            quotaHistory: history,
+            quotaConsumption: self.nativeOrbitAccountsMemo.consumptionDates(
+                provider: provider, accountID: id, history: history))
         metrics.accountUsageHistory = accountUsageHistory
         let total = metrics.summary(days: 30, now: input.now)
         // Provider-specific by design: Codex's verified account-paired credit cap may be the account's only
@@ -640,8 +702,8 @@ extension UsageStore {
             canActivate: canActivate,
             gauge: gauge,
             updatedAt: snapshot?.updatedAt,
-            history: Self.nativeOrbitHistoryIncludingCurrentSnapshot(
-                history, provider: provider, snapshot: historySnapshot, credits: credits),
+            history: self.nativeOrbitAccountsMemo.historyIncludingCurrentSnapshot(
+                provider: provider, accountID: id, history: history, snapshot: historySnapshot, credits: credits),
             odometer: tokens.map { $0.formatted() + " tokens" },
             odometerHelp: tokens == nil ? nil : tokenScope + " · last 30 days"
                 + (total.isPartial ? " · Partial data" : ""),

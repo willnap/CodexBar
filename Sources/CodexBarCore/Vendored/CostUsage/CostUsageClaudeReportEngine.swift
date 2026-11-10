@@ -103,7 +103,9 @@ extension CostUsageScanner {
             cache: CostUsageCache,
             range: CostUsageDayRange,
             pricingResolver: CostUsagePricing.ClaudeResolver,
-            includeRequestCounts: Bool) -> (report: CostUsageDailyReport, days: [String: [String: [Int]]])?
+            includeRequestCounts: Bool,
+            replayingUnchangedRows: Bool = false)
+            -> (report: CostUsageDailyReport, days: [String: [String: [Int]]])?
         {
             if self.organizationID == nil,
                cache.files.isEmpty || cache.files.values.contains(where: { $0.claudeRows == nil }) { return nil }
@@ -116,14 +118,15 @@ extension CostUsageScanner {
                     untilKey: range.untilKey,
                     timeZoneIdentifier: range.calendar.timeZone.identifier)
                 if configuration != self.configuration { self.reset(configuration) }
-                var touched = self.applyChanges(cache: cache, range: range)
+                var touched = self.applyChanges(
+                    cache: cache, range: range, replayingUnchangedRows: replayingUnchangedRows)
                 let hasRows = self.files.values.contains(where: \.hasRows)
                 // Rows are priced only when there are rows, as a full rebuild loads the catalogue.
                 if hasRows {
                     let catalog = pricingResolver.prepareCatalog()
                     if let priced = self.catalog, priced != catalog {
                         self.reset(configuration)
-                        touched = self.applyChanges(cache: cache, range: range)
+                        touched = self.applyChanges(cache: cache, range: range, replayingUnchangedRows: false)
                     }
                     self.catalog = catalog
                 }
@@ -155,11 +158,29 @@ extension CostUsageScanner {
         }
 
         /// Replays the transcripts whose rows differ from the last scan's and returns the buckets they touch.
-        private func applyChanges(cache: CostUsageCache, range: CostUsageDayRange) -> Touched {
+        /// Whether `rows` are what was already replayed for `path`, so nothing about it needs redoing.
+        private func keepsState(path: String, rows: [ClaudeUsageRow], replayingUnchangedRows: Bool) -> Bool {
+            guard let state = self.files[path] else { return false }
+            if state.isSame(as: rows) { return true }
+            // The cache was read from disk again: the same rows in new storage. Replaying them would withdraw
+            // and re-add every request of every transcript, so only take over the new storage, which also lets
+            // the previous copy go. A forced rescan asked for everything to be redone.
+            guard !replayingUnchangedRows, state.rows == rows else { return false }
+            self.files[path] = FileState(rows: rows, included: state.included)
+            return true
+        }
+
+        private func applyChanges(
+            cache: CostUsageCache,
+            range: CostUsageDayRange,
+            replayingUnchangedRows: Bool) -> Touched
+        {
             var replaced: [String: FileState?] = [:]
             for (path, file) in cache.files {
                 let rows = file.claudeRows ?? []
-                if let state = self.files[path], state.isSame(as: rows) { continue }
+                if self.keepsState(path: path, rows: rows, replayingUnchangedRows: replayingUnchangedRows) {
+                    continue
+                }
                 let included = self.organizationID.map { organization in
                     rows.indices.filter { rows[$0].organizationID == organization }
                 }

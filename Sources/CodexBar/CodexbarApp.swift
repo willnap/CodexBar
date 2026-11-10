@@ -21,6 +21,7 @@ enum CodexBarLaunchMode: Equatable {
 enum CodexBarEntryPoint {
     @MainActor
     static func main() {
+        self.removeAllocatorEnvironmentOverride()
         if CommandLine.arguments.contains("--native-symbol-smoke") {
             exit(NativeSymbolSmoke.run())
         }
@@ -33,6 +34,16 @@ enum CodexBarEntryPoint {
         if CodexBarCoreResourceSmoke.isRequested() {
             exit(CodexBarCoreResourceSmoke.run())
         }
+        // A separate cold process exercises real maintenance, outside the test-process safety guard.
+        if ProcessInfo.processInfo.environment["CODEXBAR_WEBKIT_SMOKE"] == "1" {
+            Task { @MainActor in
+                guard await OpenAIDashboardWebsiteDataStore.clearNetworkCaches() == 1 else { exit(1) }
+                print("CODEXBAR_WEBKIT_SMOKE_OK")
+                exit(0)
+            }
+            RunLoop.main.run()
+            return
+        }
         #if DEBUG
         if MenuBarLayoutNativeProof.runIfRequested() {
             return
@@ -43,6 +54,11 @@ enum CodexBarEntryPoint {
         }
         TerminalLauncher().cleanUpAbandonedConfigs()
         CodexBarApp.main()
+    }
+
+    static func removeAllocatorEnvironmentOverride() {
+        // malloc consumes its startup policy before main. Keep it out of provider CLIs and helpers.
+        unsetenv("MallocLargeCache")
     }
 }
 
@@ -501,6 +517,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         WidgetExtensionRecovery.launch(reload: UsageStore.reloadWidgetTimelines)
         self.dockIconController.start()
         self.memoryPressureMonitor.start()
+        CostUsageLongRunningProcess.adopt()
+        Task { await OpenAIDashboardWebsiteDataStore.clearNetworkCaches() }
         #if DEBUG
         self.installDebugMemoryPressureObserverIfNeeded()
         #endif

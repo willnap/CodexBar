@@ -507,4 +507,19 @@ private actor FixedTimerLoopHarness {
     func maximumConcurrentRefreshes() -> Int {
         self.maximumActiveRefreshes
     }
+
+    @Test
+    func `a wait under way only ever shortens when its signals are read again`() {
+        let started = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let scheduled = started.addingTimeInterval(120)
+        // The menu left the fast cadence part-way through: the refresh stays where it was scheduled.
+        #expect(UsageStore.adaptiveTimerDueDate(
+            scheduledAt: scheduled, startedAt: started, liveDelay: 300) == scheduled)
+        // The person came back to the Mac during a half-hour wait: the refresh moves up.
+        #expect(UsageStore.adaptiveTimerDueDate(
+            scheduledAt: started.addingTimeInterval(1800), startedAt: started, liveDelay: 300)
+            == started.addingTimeInterval(300))
+        #expect(UsageStore.adaptiveTimerDueDate(
+            scheduledAt: nil, startedAt: started, liveDelay: 300) == started.addingTimeInterval(300))
+    }
 }

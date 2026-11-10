@@ -328,7 +328,6 @@ actor CLIServeResponseCache {
         now: Date) -> CLILocalHTTPResponse?
     {
         guard staleTTL > 0 else { return nil }
-        self.pruneExpiredEntries(now: now)
         guard let entry = self.lastGood[key],
               now.timeIntervalSince(entry.recordedAt) <= staleTTL
         else {
@@ -348,6 +347,7 @@ actor CLIServeResponseCache {
         now: Date,
         shouldCache: Bool) -> CLILocalHTTPResponse
     {
+        self.pruneExpiredEntries(now: now)
         let staleResponse = self.staleResponse(for: key, staleTTL: policy.staleTTL, now: now)
         let usageMerge = self.mergeLastGoodUsageItems(
             into: response,
@@ -1618,8 +1618,7 @@ extension CodexBarCLI {
         config: CodexBarConfig) throws -> ProviderSelection
     {
         guard let rawProvider, !rawProvider.isEmpty else {
-            return providerSelection(
-                rawOverride: nil,
+            return defaultProviderSelection(
                 enabled: config.enabledProviders().compactMap(\.firstPartyProvider))
         }
         guard let selection = ProviderSelection(argument: rawProvider) else {

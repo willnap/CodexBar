@@ -118,6 +118,7 @@ extension CostUsageScanner {
         organizationID: String? = nil,
         preserveCumulativeChunks: Bool = false,
         initialOrganizationsBySession: [String: String] = [:],
+        recordDay: ((String) -> Void)? = nil,
         checkCancellation: CancellationCheck? = nil) throws -> ClaudeParseResult
     {
         func toInt(_ v: Any?) -> Int {
@@ -189,6 +190,7 @@ extension CostUsageScanner {
                         else { return }
                         let timestamp = parsedTimestamp.date
                         let dayKey = parsedTimestamp.dayKey
+                        recordDay?(dayKey)
                         guard CostUsageDayRange.isInRange(
                             dayKey: dayKey,
                             since: range.scanSinceKey,
@@ -679,14 +681,14 @@ extension CostUsageScanner {
     private struct ClaudeScanState {
         var cache: CostUsageCache
         var sourceFileIDs: [String: String]
+        var sourceDayBounds: [String: CostUsageClaudeDayBounds]
+        let previousWindow: (since: String, until: String)?
         let range: CostUsageDayRange
         let providerFilter: ClaudeLogProviderFilter
         let forceFullScan: Bool
         let changedPaths: Set<String>
         let pricingResolver: CostUsagePricing.ClaudeResolver
         let checkCancellation: CancellationCheck?
-        /// The window's end moved forward: only files that skipped later-dated rows can gain rows.
-        var reparseRowsAfterPreviousWindow = false
     }
 
     private static func processClaudeFile(
@@ -697,19 +699,28 @@ extension CostUsageScanner {
         try state.checkCancellation?()
         let cached = state.cache.files[path]
         let sameFile = state.sourceFileIDs[path] == stamp.fileID
-        let skippedLaterRows = state.reparseRowsAfterPreviousWindow && cached?.claudeExcludedRowsAfterScanWindow == true
 
         if let cached, sameFile,
            cached.mtimeUnixMs == stamp.mtimeUnixMs,
            cached.size == stamp.size,
-           !state.forceFullScan,
-           !skippedLaterRows,
            !state.changedPaths.contains(path)
         {
-            return
+            if !state.forceFullScan { return }
+            if let previous = state.previousWindow, let bounds = state.sourceDayBounds[path] {
+                if bounds.isOutside(since: state.range.scanSinceKey, until: state.range.scanUntilKey) {
+                    state.cache.files[path]?.claudeRows = []
+                    return
+                }
+                // A narrower window can uncover discarded duplicates unless both windows selected the whole file.
+                if bounds.isInside(since: previous.since, until: previous.until),
+                   bounds.isInside(since: state.range.scanSinceKey, until: state.range.scanUntilKey)
+                {
+                    return
+                }
+            }
         }
 
-        let startOffset: Int64 = if let cached, sameFile, !state.forceFullScan, !skippedLaterRows,
+        let startOffset: Int64 = if let cached, sameFile, !state.forceFullScan,
                                     stamp.size > cached.size,
                                     cached.claudeRows != nil,
                                     let parsedBytes = cached.parsedBytes, parsedBytes > 0, parsedBytes <= stamp.size
@@ -724,6 +735,7 @@ extension CostUsageScanner {
         Self.recordClaudeScanWork(.transcriptParse(startOffset: startOffset))
         #endif
         let resumed = startOffset > 0 ? cached : nil
+        var dayBounds = startOffset > 0 ? state.sourceDayBounds[path] : CostUsageClaudeDayBounds()
         let parsed = try Self.parseClaudeFileCancellable(
             fileURL: URL(fileURLWithPath: path),
             range: state.range,
@@ -731,6 +743,7 @@ extension CostUsageScanner {
             startOffset: startOffset,
             pricingResolver: state.pricingResolver,
             initialOrganizationsBySession: resumed?.claudeOrganizationsBySession ?? [:],
+            recordDay: { dayBounds?.include($0) },
             checkCancellation: state.checkCancellation)
         let rows = startOffset > 0 ? Self.mergeClaudeRows(existing: cached?.claudeRows ?? [], delta: parsed.rows)
             : parsed.rows
@@ -748,6 +761,9 @@ extension CostUsageScanner {
         usage.claudeExcludedRowsAfterScanWindow = excluded ? true : nil
         state.cache.files[path] = usage
         state.sourceFileIDs[path] = stamp.fileID
+        // Only a complete source scan can certify that no filtered timestamp lies beyond these bounds.
+        let sourceKey = state.sourceFileIDs.index(forKey: path).map { state.sourceFileIDs[$0].key } ?? path
+        state.sourceDayBounds[sourceKey] = parsed.parsedBytes == stamp.size ? dayBounds : nil
     }
 
     private static func inventoryClaudeRoots(
@@ -772,7 +788,7 @@ extension CostUsageScanner {
             }
             var enumerationError: Error?
             guard let enumerator = FileManager.default.enumerator(
-                at: existingRoot,
+                at: existingRoot.resolvingSymlinksInPath(),
                 includingPropertiesForKeys: nil,
                 options: [.skipsHiddenFiles, .skipsPackageDescendants],
                 errorHandler: { _, error in
@@ -849,14 +865,11 @@ extension CostUsageScanner {
         var cache = artifact.usage
         let nowMs = Int64(now.timeIntervalSince1970 * 1000)
         let refreshMs = Int64(max(0, options.refreshMinIntervalSeconds) * 1000)
-        // A day rollover extends a certified window's end. Rows dated after the old end cannot have been written
-        // before it was scanned unless a file recorded skipping them, so only those files are reparsed.
-        let windowRolledForward = !options.forceRescan
-            && Self.claudeWindowRolledForward(range: range, cache: cache, priorMemo: priorMemo, reportKey: reportKey)
-        let windowExpanded = !windowRolledForward && Self.requestedWindowExpandsCache(range: range, cache: cache)
+        // A day rollover is a window change like any other: each file's recorded day bounds decide whether its
+        // rows can be reused (`processClaudeFile`).
+        let windowExpanded = Self.requestedWindowExpandsCache(range: range, cache: cache)
         // Matching bounds alone cannot prove that legacy partial scans retained each file's narrow-window winner.
-        let hasWindowScopedBaseline = windowRolledForward
-            || priorMemo?.certifiesWindow(reportKey: reportKey, cache: cache) == true
+        let hasWindowScopedBaseline = priorMemo?.certifiesWindow(reportKey: reportKey, cache: cache) == true
         let needsWindowScopedRebuild = reportContext != nil && !hasWindowScopedBaseline
         let sourceInventoryChanged = priorMemo.map { $0.sourceInventory != sourceInventory } ?? false
         let cacheArtifactChanged = priorMemo.map {
@@ -869,7 +882,6 @@ extension CostUsageScanner {
         let shouldMutateCache = options.forceRescan
             || sourceIdentitiesChanged
             || windowExpanded
-            || windowRolledForward
             || needsWindowScopedRebuild
             || sourceInventoryChanged
             || cacheArtifactChanged
@@ -889,6 +901,7 @@ extension CostUsageScanner {
                     lastScanUnixMs: cache.lastScanUnixMs,
                     timeZoneIdentifier: cache.timeZoneIdentifier)
                 artifact.sourceFileIDs = [:]
+                artifact.sourceDayBounds = [:]
             }
             let changedPaths: Set<String> = if let priorMemo {
                 Set(sourceInventory.keys.filter { path in
@@ -897,16 +910,27 @@ extension CostUsageScanner {
             } else {
                 []
             }
+            let previousWindow: (since: String, until: String)? = if reportContext != nil, !options.forceRescan,
+                                                                     let priorMemo,
+                                                                     priorMemo.certifiesStoredWindow(
+                                                                         reportKey: reportKey,
+                                                                         cache: cache)
+            {
+                (since: priorMemo.reportKey.scanSinceKey, until: priorMemo.reportKey.scanUntilKey)
+            } else {
+                nil
+            }
             var scanState = ClaudeScanState(
                 cache: cache,
                 sourceFileIDs: artifact.sourceFileIDs,
+                sourceDayBounds: artifact.sourceDayBounds,
+                previousWindow: previousWindow,
                 range: range,
                 providerFilter: providerFilter,
                 forceFullScan: forceFullScan,
                 changedPaths: changedPaths,
                 pricingResolver: pricingResolver,
-                checkCancellation: checkCancellation,
-                reparseRowsAfterPreviousWindow: windowRolledForward)
+                checkCancellation: checkCancellation)
 
             for path in sourceInventory.keys.sorted() {
                 guard let stamp = sourceInventory[path] else { continue }
@@ -916,6 +940,7 @@ extension CostUsageScanner {
 
             cache = scanState.cache
             artifact.sourceFileIDs = scanState.sourceFileIDs.filter { sourceInventory[$0.key] != nil }
+            artifact.sourceDayBounds = scanState.sourceDayBounds.filter { sourceInventory[$0.key] != nil }
             cache.roots = nil
 
             for key in cache.files.keys where sourceInventory[key] == nil {
@@ -927,7 +952,11 @@ extension CostUsageScanner {
         // only the transcripts that changed since its last scan of this cache.
         let engine = ClaudeReportEngine.Registry.shared.engine(cachePath: canonicalCachePath, organizationID: nil)
         let incremental = engine.report(
-            cache: cache, range: range, pricingResolver: pricingResolver, includeRequestCounts: false)
+            cache: cache,
+            range: range,
+            pricingResolver: pricingResolver,
+            includeRequestCounts: false,
+            replayingUnchangedRows: options.forceRescan)
         let rows = incremental == nil ? Self.reconciledClaudeRows(cache: cache) : []
         if shouldMutateCache {
             if let incremental {
@@ -974,7 +1003,7 @@ extension CostUsageScanner {
             // Keep the window certificate even if pricing was replaced during this pass.
             // The earlier pricing stamp makes report reuse miss and reprice cached rows.
             reportKey.cacheArtifactStamp = finalCacheArtifactStamp
-            memo.store(
+            return memo.store(
                 provider: provider,
                 canonicalCachePath: canonicalCachePath,
                 sourceInventory: sourceInventory,
@@ -983,23 +1012,6 @@ extension CostUsageScanner {
                 hasWindowScopedRows: hasWindowScopedBaseline || (shouldMutateCache && forceFullScan))
         }
         return report
-    }
-
-    private static func claudeWindowRolledForward(
-        range: CostUsageDayRange,
-        cache: CostUsageCache,
-        priorMemo: CostUsageClaudeReportMemo.Entry?,
-        reportKey: CostUsageClaudeReportMemoKey) -> Bool
-    {
-        guard let cachedSince = cache.scanSinceKey, let cachedUntil = cache.scanUntilKey,
-              range.scanSinceKey >= cachedSince, range.scanUntilKey > cachedUntil,
-              let priorMemo, priorMemo.hasWindowScopedRows,
-              priorMemo.reportKey.cacheArtifactStamp == reportKey.cacheArtifactStamp,
-              priorMemo.reportKey.scanConfiguration == reportKey.scanConfiguration,
-              priorMemo.reportKey.scanSinceKey == cachedSince,
-              priorMemo.reportKey.scanUntilKey == cachedUntil
-        else { return false }
-        return true
     }
 
     private static func claudeReportMemoKey(

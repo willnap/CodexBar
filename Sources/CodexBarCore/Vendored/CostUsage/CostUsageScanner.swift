@@ -2372,7 +2372,8 @@ enum CostUsageScanner {
     private static func codexRootsFingerprint(_ roots: [URL]) -> [String: Int64] {
         var out: [String: Int64] = [:]
         for root in roots {
-            out[root.standardizedFileURL.path] = 0
+            // Rediscover inventories that previously skipped a symlinked enumeration root.
+            out[Self.codexResolvedPath(root)] = 0
         }
         return out
     }
@@ -2639,7 +2640,7 @@ enum CostUsageScanner {
 
     private static func listCodexRecentlyModifiedFilesRecursive(root: URL, modifiedSince: Date) -> [URL] {
         guard let enumerator = FileManager.default.enumerator(
-            at: root,
+            at: root.resolvingSymlinksInPath(),
             includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants])
         else { return [] }
@@ -3424,7 +3425,7 @@ enum CostUsageScanner {
     private static func listCodexSessionFilesFlat(root: URL, scanSinceKey: String, scanUntilKey: String) -> [URL] {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
         guard let items = try? FileManager.default.contentsOfDirectory(
-            at: root,
+            at: root.resolvingSymlinksInPath(),
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants])
         else { return [] }
@@ -3443,9 +3444,10 @@ enum CostUsageScanner {
 
     private static func listCodexLegacySessionFilesRecursive(root: URL) -> [URL] {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
-        let rootPath = root.path
+        let resolvedRoot = root.resolvingSymlinksInPath()
+        let rootPath = Self.codexPathKey(resolvedRoot)
         guard let enumerator = FileManager.default.enumerator(
-            at: root,
+            at: resolvedRoot,
             includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants])
         else { return [] }
@@ -3463,7 +3465,7 @@ enum CostUsageScanner {
     }
 
     private static func isCodexDatePartitionAncestor(_ url: URL, rootPath: String) -> Bool {
-        let path = url.path
+        let path = Self.codexPathKey(standardizedPath: url.path)
         guard path.hasPrefix(rootPath + "/") else { return false }
         let relative = path.dropFirst(rootPath.count + 1)
         return !relative.contains("/") && Self.isDatePartitionComponent(String(relative), length: 4)

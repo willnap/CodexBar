@@ -15,7 +15,7 @@ public struct GrokLocalDailyBucket: Sendable, Equatable {
     }
 }
 
-/// Aggregated stats from local `~/.grok/sessions/<encoded_cwd>/<session_id>/signals.json` files.
+/// Aggregated stats from local `~/.grok/sessions/<encoded_cwd>/<session_id>/` usage files.
 /// Used as a local fallback view when the JSON-RPC billing call is unavailable.
 public struct GrokLocalSessionSummary: Sendable {
     public let sessionCount: Int
@@ -120,7 +120,8 @@ public enum GrokLocalSessionScanner {
         return Signals(tokens: beforeCompaction + contextUsed, models: models)
     }
 
-    /// Walk `~/.grok/sessions/<encoded_cwd>/<session_id>/signals.json` and aggregate stats.
+    /// Walk `~/.grok/sessions/<encoded_cwd>/<session_id>/` and aggregate stats. `usage.json` records every turn, so
+    /// it is preferred; `signals.json` only keeps a session-level figure and drops most tokens after compaction.
     public static func summarize(
         env: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default,
@@ -149,9 +150,35 @@ public enum GrokLocalSessionScanner {
 
         while let rootEnum, let sessionURL = rootEnum.nextObject() as? URL {
             guard rootEnum.level == 2 else { continue }
-            // Session artifacts can be large; only the session's own signals file describes its usage.
+            // Session artifacts can be large; only the session's own usage files describe its usage.
             rootEnum.skipDescendants()
             guard (try? sessionURL.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
+            if let turns = Self.usageTurns(in: sessionURL, notBefore: lookbackCutoff) {
+                let turnsInWindow = turns.filter { $0.endedAt >= lookbackCutoff && $0.endedAt < lookbackEnd }
+                guard !turnsInWindow.isEmpty else { continue }
+                sessionCount += 1
+                var sessionDays = Set<String>()
+                for turn in turnsInWindow {
+                    totalTokens += turn.totalTokens
+                    if turn.endedAt > (lastSessionAt ?? Date.distantPast) {
+                        lastSessionAt = turn.endedAt
+                    }
+                    for model in turn.models {
+                        modelCounts[model, default: 0] += 1
+                    }
+                    guard let day = Self.dayKey(for: turn.endedAt, calendar: calendar) else { continue }
+                    dailyTokens[day, default: 0] += turn.totalTokens
+                    sessionDays.insert(day)
+                    for model in turn.models {
+                        dailyModels[day, default: [:]][model, default: 0] += 1
+                    }
+                }
+                for day in sessionDays {
+                    dailySessions[day, default: 0] += 1
+                }
+                continue
+            }
+
             let url = sessionURL.appendingPathComponent("signals.json")
             guard let stamp = FileContentStamp(url), stamp.modified >= lookbackCutoff, stamp.modified < lookbackEnd
             else { continue }
@@ -200,6 +227,36 @@ public enum GrokLocalSessionScanner {
             models: sortedModels,
             daily: daily,
             scannedAt: now)
+    }
+
+    private struct UsageTurn {
+        let endedAt: Date
+        let totalTokens: Int
+        let models: [String]
+    }
+
+    /// Returns nil when `usage.json` is missing, too old for the window, or holds no readable turn.
+    private static func usageTurns(in session: URL, notBefore cutoff: Date) -> [UsageTurn]? {
+        let url = session.appendingPathComponent("usage.json")
+        let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        guard let modified, modified >= cutoff,
+              let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let records = json["turns"] as? [[String: Any]]
+        else { return nil }
+        let turns = records.compactMap { record -> UsageTurn? in
+            guard let timestamp = record["endedAt"] as? String,
+                  let endedAt = CostUsageScanner.dateFromTimestamp(timestamp),
+                  let totalTokens = record["totalTokens"] as? Int, totalTokens >= 0
+            else { return nil }
+            let usageModels = (record["modelUsage"] as? [String: Any]).map { Array($0.keys) } ?? []
+            let primary = (record["primaryModelId"] as? String).map { [$0] } ?? []
+            let models = (usageModels.isEmpty ? primary : usageModels)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            return UsageTurn(endedAt: endedAt, totalTokens: totalTokens, models: models)
+        }
+        return turns.isEmpty ? nil : turns
     }
 
     public static func summarizeOffMainThread(

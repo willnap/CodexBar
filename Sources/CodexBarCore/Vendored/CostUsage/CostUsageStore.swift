@@ -122,7 +122,11 @@ actor CostUsageStore {
         parserHash: CodexParserHash.value)
     static let cacheGeneration = "sqlite:\(CostUsageStore.schemaVersion)"
     static let compatiblePredecessorParserHashes: Set<String> = [
-        "6b42e42bafad1922", // Released v0.83 parser; native Claude-only scanner additions leave Codex rows unchanged.
+        "ad011f05e9ab733a", // Released v0.84 parser; native Claude-only scanner additions leave Codex rows unchanged.
+        "40a72052de40b4c4", // Native redesign before merging upstream v0.84; Codex rows unchanged by the merge.
+        "2dc85fe95af0aa95", // Preserve project-accumulation caches when combined with linked-root discovery.
+        "5454415c8ea2ce7b", // Linked-root discovery preserves native rows, checkpoints, and report totals.
+        "6b42e42bafad1922", // In-place project accumulation preserves native rows, checkpoints, and report totals.
         "5a2709b815efd588", // Native v0.82 parser; retain rows/checkpoints for upstream revision-14 reconciliation.
         "f98b2d0afc00443c", // Identified pricing export preserves revision-14 rows and corrected report totals.
         "0ef5e15cc00e8e25", // Revision 14 refreshes resumed tiers without changing stored token rows.
@@ -204,7 +208,7 @@ actor CostUsageStore {
     ]
     /// Keep corrected report totals; earlier predecessors still need Fast repricing.
     static let incompatibleRetainedReportPredecessorParserHashes = CostUsageStore.compatiblePredecessorParserHashes
-        .subtracting(["f98b2d0afc00443c"])
+        .subtracting(["f98b2d0afc00443c", "6b42e42bafad1922", "2dc85fe95af0aa95", "5454415c8ea2ce7b"])
 
     /// Connections to one canonical database share a serial queue, preserving the single-writer
     /// contract without letting a busy database stall independent account stores.

@@ -45,7 +45,11 @@ extension UsageStore {
         for account: ProviderAccountUsageSnapshot,
         ambient: UsageSnapshot?) -> UsageSnapshot?
     {
-        let current = Self.nativeOrbitClaudeMergedSnapshot(adapter: account.snapshot, ambient: ambient)
+        // claude-swap owns this column, so its reading decides which base limits exist. The ambient login's
+        // payload can lack one (the web reading has come back without the weekly limit), and as the newer of the
+        // two it would otherwise remove a limit the account still has.
+        let current = Self.nativeOrbitClaudeMergedSnapshot(
+            adapter: account.snapshot, ambient: ambient, adapterOwnsBaseLimits: true)
         guard let historyKey = Self.nativeOrbitClaudeHistoryKey(account),
               account.credentialIssue != .wrongAccount,
               self.claudeSwapAccountSnapshots.count(where: { $0.id == account.id }) == 1 else { return current }
@@ -69,7 +73,9 @@ extension UsageStore {
     }
 
     nonisolated static func nativeOrbitClaudeMergedSnapshot(
-        adapter: UsageSnapshot?, ambient: UsageSnapshot?) -> UsageSnapshot?
+        adapter: UsageSnapshot?,
+        ambient: UsageSnapshot?,
+        adapterOwnsBaseLimits: Bool = false) -> UsageSnapshot?
     {
         guard let ambient else { return adapter }
         guard let adapter else { return ambient }
@@ -78,11 +84,18 @@ extension UsageStore {
         var extras = newest.extraRateWindows ?? []
         let ids = Set(extras.map(\.id))
         extras += (older.extraRateWindows ?? []).filter { !ids.contains($0.id) }
-        // The newest receipt owns the base quota inventory, including removed limits. Only adjunct readings
-        // are enriched from older payloads; otherwise a disappeared five-hour cap would survive indefinitely.
+        /// The newest receipt owns the base quota inventory, including removed limits. Only adjunct readings
+        /// are enriched from older payloads; otherwise a disappeared five-hour cap would survive indefinitely.
+        /// Where the adapter owns it instead, a limit exists exactly when the adapter reports it, and the newer
+        /// of the two readings supplies its value.
+        func base(_ keyPath: KeyPath<UsageSnapshot, RateWindow?>) -> RateWindow? {
+            guard adapterOwnsBaseLimits else { return newest[keyPath: keyPath] }
+            guard let owned = adapter[keyPath: keyPath] else { return nil }
+            return newest[keyPath: keyPath] ?? owned
+        }
         return UsageSnapshot(
-            primary: newest.primary,
-            secondary: newest.secondary,
+            primary: base(\.primary),
+            secondary: base(\.secondary),
             tertiary: newest.tertiary ?? older.tertiary,
             extraRateWindows: extras.isEmpty ? nil : extras,
             providerCost: Self.nativeOrbitClaudeMergedCost(adapter.providerCost, ambient.providerCost),

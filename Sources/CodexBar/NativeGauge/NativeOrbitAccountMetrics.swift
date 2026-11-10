@@ -520,10 +520,12 @@ struct NativeOrbitAccountMetrics {
         now: Date,
         credits: CreditsSnapshot? = nil,
         localUsage: NativeOrbitLocalUsage? = nil,
-        quotaHistory: [PlanUtilizationSeriesHistory] = []) -> Self
+        quotaHistory: [PlanUtilizationSeriesHistory] = [],
+        quotaConsumption: [Date]? = nil) -> Self
     {
         var result = Self(usage: usage)
-        result.quotaConsumption = NativeOrbitActivity.consumptionDates(quotaHistory)
+        // A caller that already holds this history's consumption dates passes them instead of deriving them again.
+        result.quotaConsumption = quotaConsumption ?? NativeOrbitActivity.consumptionDates(quotaHistory)
         result.resetInventoryObservedAt = snapshot?.updatedAt
         result.reportedPlan = snapshot?.loginMethod(for: provider)
         // Provider-specific by design: Kimi's subscription expiry is its monthly pool's renewal, which recurs and is

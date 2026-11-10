@@ -19,15 +19,16 @@ Settings omits the Version row because this provider reads web APIs and does not
 
 ## Data sources + fallback order
 
-Manual cookie configuration is always the explicit override. The automatic order is Cursor.app → cached cookie → browser
+Manual cookie configuration is always the explicit override. An empty or whitespace-only Manual header fails without
+trying app credentials, cached sessions, or browser imports. The automatic order is Cursor.app → cached cookie → browser
 cookie import → stored session on macOS, and cached cookie → stored session → Cursor.app token → `cursor-agent` token on
 Linux. Explicit `web` mode never reads local Cursor credentials; macOS uses its cookie ladder, while Linux requires a configured manual cookie.
 
 1) **Cursor.app local auth** (first automatic source on macOS; Linux fallback)
    - Reads Cursor.app's VS Code-style global state DB for `ItemTable` key `cursorAuth/accessToken`.
    - On macOS, supports both plain JWTs and Cursor 3.27's `cursor-safe-storage:v1:` encrypted tokens. Encrypted
-     tokens use the `Cursor Safe Storage` Keychain item (account `Cursor`). Plain token decoding performs no
-     Keychain reads.
+     tokens use the `Cursor Safe Storage` Keychain item, trying account `Cursor Key` first and legacy account
+     `Cursor` if the first key cannot decrypt the token. Plain token decoding performs no Keychain reads.
      Background and settings refreshes never prompt. An explicit manual refresh may request access once, sharing
      that action's prompt allowance with browser imports. Choose **Always Allow** to permit future refreshes without
      another prompt; denying access keeps the six-hour cooldown, including subsequent manual refreshes.
@@ -83,11 +84,11 @@ Manual option:
 - Paste the `Cookie:` header from a cursor.com request.
 
 ## Add and switch account
-- **Add Account** opens `https://authenticator.cursor.sh/` in a supported browser.
+- **Add Account** opens `https://cursor.com/login` in a supported browser.
 - Aside, Opera, and Opera Neon are supported with SweetCookieKit 0.5.5. The selected application's bundle identifier pins login to that browser's cookie store.
 - SweetCookieKit 0.5.11 adds Brave Origin cookie imports and Add/Switch Account support. Its `com.brave.Browser.origin` bundle identifier pins login to the separate `BraveSoftware/Brave-Origin` profile store, using the shared browser import order and Keychain prompt safeguards.
 - SweetCookieKit 0.5.6 adds Ego Lite cookie imports. Add/Switch Account does not offer Ego Lite until its application has a verified, unambiguous bundle-identifier mapping; display names and storage paths are insufficient for interactive login.
-- **Switch Account** opens the same authenticator and waits for a different stable account ID when available, falling back to normalized email when IDs are unavailable.
+- **Switch Account** opens the same Cursor login route and waits for a different stable account ID when available, falling back to normalized email when IDs are unavailable.
 - When the system's HTTPS handler is a supported browser, CodexBar opens the route there automatically. When the handler is an intermediary app, CodexBar asks the user to choose a concrete supported browser before opening the route.
 - CodexBar pins the original HTTPS route to that concrete browser and polls cookies only from the same application. Interactive login never falls back to another browser, a stored session, or Cursor.app; cancelling browser selection or the absence of a supported browser stops before login opens.
 - Login polls every two seconds with a two-minute deadline, and API requests are capped by the remaining time. The timeout
@@ -102,6 +103,20 @@ Manual option:
 - A successful add or switch selects the Automatic cookie source. Saved manual headers and token accounts remain
   stored but passive: they do not override browser fetching, cached usage, quota warnings, or utilization/reset
   ownership. Explicitly selecting a saved token account switches Cursor back to Manual and reactivates it.
+
+## Cursor and Grok account boundaries
+
+- [Shared xAI sign-in](https://docs.x.ai/x-subscription/sign-in) does not merge accounts, change plans, or cancel
+  subscriptions. CodexBar opens Cursor's login route and validates the resulting Cursor session; a Grok credential
+  is not substituted for a Cursor cookie.
+- [Account unification](https://docs.x.ai/x-subscription/unify-accounts) is a separate user decision. CodexBar never
+  initiates it or infers it from matching email addresses, plan names, or seven-day billing cycles.
+- A usable weekly window becomes Cursor's primary shared allowance only when Cursor explicitly reports `isUnified`.
+  This classification survives snapshot caching and supplemental cost updates. Older caches without that evidence
+  remain unclassified until refresh. The marker applies only to Cursor snapshots and does not establish a common
+  billing owner or pool identifier across separate Cursor and Grok accounts.
+- [Legacy SuperGrok/X Premium+ links](https://cursor.com/help/grok-bot/supergrok) grant Grok Bot access without
+  replacing a Cursor subscription. Independent Cursor and Grok Bot percentages remain separate.
 
 ## API endpoints
 - `GET https://cursor.com/api/usage-summary`
@@ -183,7 +198,14 @@ API-list-price estimates are not estimates of actual Cursor charges: they do not
 
 Caching: automatic cost refreshes follow the app's token-cost cadence, with a minimum interval of 15 minutes (30 minutes in Low Power Mode). Snapshots are scoped to the history window, cookie source, and resolved account (manual-cookie hash or auto-mode account fingerprint), so switching accounts or pasting a new cookie invalidates them immediately.
 
-An HTTP 403 from the cost endpoint records a failed cost source with an in-memory retry time at least six hours later, even when no cost snapshot is available. It does not invalidate the working quota session or change local CSV fallback. Manual and menu-open refreshes bypass the cooldown, and a changed account, credential source, history window, timezone, or provider configuration permits a new attempt. Timed-out cost scans keep their normal cooldown without a snapshot; transient failures retain their normal retry behavior. Restarting the app clears this in-memory cooldown.
+An HTTP 403 from the cost endpoint records a failed cost source with an in-memory retry time at least six hours later, even when no cost snapshot is available. It does not invalidate the working quota session. Automatic mode retains the local CSV fallback; Manual mode surfaces the selected credential failure because local CSV files carry no account identity. Manual and menu-open refreshes bypass the cooldown, and a changed account, credential source, history window, timezone, or provider configuration permits a new attempt. Timed-out cost scans keep their normal cooldown without a snapshot; transient failures retain their normal retry behavior. Restarting the app clears this in-memory cooldown.
+
+The local Tokscale CSV fallback supports legacy, `Kind`, and cloud-agent layouts. A `Cloud Agent ID` header identifies
+the cloud-agent layout; trailing billing columns such as `Cost to you` leave the layout unchanged. The existing
+`Total Tokens` and `Cost` fields supply the exported token totals and API-rate cost.
+The reader processes physical lines without retaining a second array of split lines, reducing peak memory for
+large exports. UTF-8 validation, supported newline separators, quoting, and accounting remain unchanged; the
+decoded input and parsed usage rows still stay in memory during the read.
 
 If Auto fetches usage with a cookie that the app still cannot confirm for the current account, the result stays unpublished. An unchanged account scope waits for the next normal or manual refresh instead of repeatedly forcing another request. Real account, history-window, provider, or cost-timezone changes still request a replacement; a successful fetch that confirms its own cookie can publish immediately.
 
@@ -207,6 +229,12 @@ displays `GB 0%` in used mode. Lane percentages are tagged `T` (Total), `C` (Cur
 menus and VoiceOver keep the full names. Auto % ranks usable allowances, including Grok Bot, by depletion
 forecast and then used percentage; an exhausted total or exhaustion of every subquota still takes priority.
 Balance tokens remain independent, and the dropdown keeps its existing reset countdown and paid-weekly pace display.
+
+With a usage snapshot, the layout editor uses the account's window names: **Cursor** for the legacy monthly
+Auto allowance and **Weekly** for the unified weekly pool. Without a snapshot, elements retain their default
+labels or explicit provider overrides. Selecting **Grok Bot %** leaves adjacent reset elements on their
+original windows. An explicit Grok Bot reset element is not available yet; use the provider card to see
+Grok Bot's own reset when the provider reports one.
 
 Named-extra selections are stored in V4 layout keys. A V3 projection omits them while preserving explicit
 reset-window selections for 0.60.x; V2/V1 projections remain available for older releases. An unchanged

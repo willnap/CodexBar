@@ -118,8 +118,31 @@ struct PlanUtilizationHistoryEntry: Codable, Equatable, Hashable, Sendable {
     let usedPercent: Double
     let resetsAt: Date?
     let historicalPeriod: PlanUtilizationHistoricalPeriod?
-    let nativeMetrics: NativeOrbitMetricObservation?
+    /// Only metric receipts carry one. It is several hundred bytes, so it lives out of line: the quota readings
+    /// that make up almost every series, by the thousand, are copied, grouped and sorted on every row build and
+    /// would otherwise each move an empty slot of that size.
+    private let metricsStorage: MetricsStorage?
     let quotaDescriptor: NativeOrbitQuotaDescriptor?
+
+    var nativeMetrics: NativeOrbitMetricObservation? {
+        self.metricsStorage?.value
+    }
+
+    private final class MetricsStorage: Hashable, Sendable {
+        let value: NativeOrbitMetricObservation
+
+        init(_ value: NativeOrbitMetricObservation) {
+            self.value = value
+        }
+
+        static func == (lhs: MetricsStorage, rhs: MetricsStorage) -> Bool {
+            lhs === rhs || lhs.value == rhs.value
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(self.value)
+        }
+    }
 
     private enum CodingKeys: String, CodingKey {
         case capturedAt, usedPercent, resetsAt
@@ -139,7 +162,7 @@ struct PlanUtilizationHistoryEntry: Codable, Equatable, Hashable, Sendable {
         self.usedPercent = usedPercent
         self.resetsAt = resetsAt
         self.historicalPeriod = historicalPeriod
-        self.nativeMetrics = nativeMetrics
+        self.metricsStorage = nativeMetrics.map(MetricsStorage.init)
         self.quotaDescriptor = quotaDescriptor
     }
 
@@ -152,7 +175,8 @@ struct PlanUtilizationHistoryEntry: Codable, Equatable, Hashable, Sendable {
         } else {
             try values.decode(Date.self, forKey: .capturedAt)
         }
-        self.nativeMetrics = try values.decodeIfPresent(NativeOrbitMetricObservation.self, forKey: .nativeMetrics)
+        self.metricsStorage = try values.decodeIfPresent(NativeOrbitMetricObservation.self, forKey: .nativeMetrics)
+            .map(MetricsStorage.init)
         self.quotaDescriptor = try values.decodeIfPresent(NativeOrbitQuotaDescriptor.self, forKey: .quotaDescriptor)
         self.usedPercent = try values.decode(Double.self, forKey: .usedPercent)
         self.historicalPeriod = try values.decodeIfPresent(

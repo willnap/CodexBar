@@ -397,12 +397,24 @@ extension UsageStore {
         credits: CreditsSnapshot? = nil) -> [PlanUtilizationSeriesHistory]
     {
         guard let snapshot else { return histories }
+        return self.nativeOrbitHistory(
+            histories,
+            provider: provider,
+            including: self.nativeOrbitHistorySamples(provider: provider, snapshot: snapshot, credits: credits))
+    }
+
+    /// `histories` with the current reading's `samples` in place. A pure function of its arguments, which is what
+    /// lets `NativeOrbitAccountsMemo` keep the result while neither changes.
+    nonisolated static func nativeOrbitHistory(
+        _ histories: [PlanUtilizationSeriesHistory],
+        provider: UsageProvider,
+        including samples: [PlanUtilizationSeriesSample]) -> [PlanUtilizationSeriesHistory]
+    {
         // A verified current reading is already a real observation, even before asynchronous persistence finishes.
         // Unidentified ambient sources receive this one reading only, never another owner's unscoped timeline.
-        return self.updatedPlanUtilizationHistories(
+        self.updatedPlanUtilizationHistories(
             existingHistories: self.nativeOrbitCanonicalQuotaHistories(provider: provider, histories: histories),
-            samples: self.nativeOrbitHistorySamples(provider: provider, snapshot: snapshot, credits: credits)) ??
-            histories
+            samples: samples) ?? histories
     }
 
     nonisolated static func nativeOrbitQuotaWindowMap(

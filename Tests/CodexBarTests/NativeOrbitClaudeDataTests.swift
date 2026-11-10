@@ -27,6 +27,42 @@ struct NativeOrbitClaudeDataTests {
         #expect(gauge.resolvedWindows.map(\.id) == [keepWeekly ? "secondary" : "primary"])
     }
 
+    @Test func `an ambient reading without the weekly limit cannot remove it from a claude-swap column`() throws {
+        let weekly = RateWindow(usedPercent: 30, windowMinutes: 10080, resetsAt: nil, resetDescription: nil)
+        let fable = NamedRateWindow(
+            id: "claude-weekly-scoped-fixture",
+            title: "Fixture only",
+            window: RateWindow(usedPercent: 36, windowMinutes: 10080, resetsAt: nil, resetDescription: nil))
+        let adapter = UsageSnapshot(
+            primary: nil, secondary: weekly, tertiary: nil, extraRateWindows: [fable], updatedAt: self.now)
+        // The app's own newer reading came back with the model allowance only, and with a session the account
+        // does not have.
+        let session = RateWindow(usedPercent: 36, windowMinutes: 300, resetsAt: nil, resetDescription: nil)
+        let ambient = UsageSnapshot(
+            primary: session,
+            secondary: nil,
+            tertiary: nil,
+            extraRateWindows: [fable],
+            updatedAt: self.now.addingTimeInterval(60))
+        let merged = try #require(UsageStore.nativeOrbitClaudeMergedSnapshot(
+            adapter: adapter, ambient: ambient, adapterOwnsBaseLimits: true))
+        #expect(merged.secondary == weekly)
+        #expect(merged.primary == nil)
+        #expect(merged.updatedAt == ambient.updatedAt)
+        let gauge = NativeUsageGaugeProjection.state(provider: .claude, snapshot: merged)
+        #expect(Set(gauge.resolvedWindows.map(\.id)) == ["secondary", "claude-weekly-scoped-fixture"])
+        // A limit claude-swap itself stops reporting still goes.
+        let dropped = UsageSnapshot(
+            primary: nil,
+            secondary: nil,
+            tertiary: nil,
+            extraRateWindows: [fable],
+            updatedAt: self.now.addingTimeInterval(120))
+        let stale = UsageSnapshot(primary: nil, secondary: weekly, updatedAt: self.now)
+        #expect(UsageStore.nativeOrbitClaudeMergedSnapshot(
+            adapter: dropped, ambient: stale, adapterOwnsBaseLimits: true)?.secondary == nil)
+    }
+
     @Test func `Claude adjuncts require one matching active owner and reject foreign organizations`() throws {
         let owner = self.account()
         let ambient = self.snapshot()

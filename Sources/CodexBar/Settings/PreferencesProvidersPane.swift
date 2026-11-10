@@ -165,7 +165,7 @@ struct ProvidersPane: View {
         displayName: (UsageProvider) -> String,
         supplementarySearchText: (UsageProvider) -> String = { _ in "" }) -> [UsageProvider]
     {
-        let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        let words = SettingsSearch.words(in: query)
         guard !words.isEmpty else { return providers }
         return providers.filter { provider in
             let descriptor = ProviderDescriptorRegistry.descriptor(for: provider)
@@ -176,9 +176,7 @@ struct ProvidersPane: View {
                 descriptor.cli.name,
                 supplementarySearchText(provider),
             ] + descriptor.cli.aliases
-            return words.allSatisfy { word in
-                fields.contains { $0.range(of: word, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
-            }
+            return SettingsSearch.matches(words: words, fields: fields)
         }
     }
 

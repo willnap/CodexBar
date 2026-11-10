@@ -173,18 +173,27 @@ struct NativeOrbitToolbar: View {
         Task { @MainActor in self.refresh() }
     }
 
+    /// The reading the age describes: the oldest among the accounts in use. Saved accounts that are not in use
+    /// are measured on their own slower pace (claude-swap's, or the secondary-account interval) that a press
+    /// cannot hurry, so dating the readout by them left it unchanged after every refresh. A column a load could
+    /// not bring up to date still reports itself through the refresh issue.
+    private var readoutDate: Date? {
+        let inUse = self.state.accounts.filter(\.isActive).compactMap(\.updatedAt)
+        return (inUse.isEmpty ? self.state.accounts.compactMap(\.updatedAt) : inUse).min()
+    }
+
     private func refreshText(at now: Date, compact: Bool) -> String {
-        guard let updated = self.state.accounts.compactMap(\.updatedAt).min() else { return "—" }
+        guard let updated = self.readoutDate else { return "—" }
         return compact ? Self.compactAge(updated, now: now) : Self.age(updated, now: now)
     }
 
     private func refreshAge(at now: Date) -> Double {
-        guard let updated = self.state.accounts.compactMap(\.updatedAt).min() else { return 0 }
+        guard let updated = self.readoutDate else { return 0 }
         return Double(Self.displayAgeSeconds(updated, now: now))
     }
 
     private var refreshHelp: String {
-        guard let updated = self.state.accounts.compactMap(\.updatedAt).min() else { return L("Refresh") }
+        guard let updated = self.readoutDate else { return L("Refresh") }
         return L("Updated %@", NativeOrbitTooltip.moment(updated, now: Date()))
     }
 

@@ -11,6 +11,8 @@ struct AdaptiveRefreshPolicy: Sendable {
         let lastCodingActivityAt: Date?
         let lowPowerModeEnabled: Bool
         let thermalState: ProcessInfo.ThermalState
+        var lastUserActivityAt: Date?
+        var usagePace: Double?
     }
 
     typealias Reason = AdaptiveRefreshPolicyCore.Reason
@@ -27,6 +29,8 @@ struct AdaptiveRefreshPolicy: Sendable {
             now: input.now,
             lastMenuOpenAt: input.lastMenuOpenAt,
             lastCodingActivityAt: input.lastCodingActivityAt,
+            lastUserActivityAt: input.lastUserActivityAt,
+            usagePace: input.usagePace,
             lowPowerModeEnabled: input.lowPowerModeEnabled,
             thermalPressure: Self.isConstrained(input.thermalState) ? .constrained : .nominal))
     }

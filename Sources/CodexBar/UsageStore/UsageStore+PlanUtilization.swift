@@ -72,7 +72,7 @@ extension UsageStore {
         let windowMinutes: Int
     }
 
-    struct PlanUtilizationSeriesSample {
+    struct PlanUtilizationSeriesSample: Equatable {
         let name: PlanUtilizationSeriesName
         let windowMinutes: Int
         let entry: PlanUtilizationHistoryEntry

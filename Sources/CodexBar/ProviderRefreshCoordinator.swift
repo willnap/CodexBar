@@ -126,6 +126,25 @@ final class ProviderRefreshCoordinator<Key: Hashable> {
     }
 }
 
+/// Resumes its continuation exactly once, whichever of several racers arrives first.
+private final class ProviderRefreshWaitGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    init(_ continuation: CheckedContinuation<Void, Never>) {
+        self.continuation = continuation
+    }
+
+    func open() {
+        let continuation = self.lock.withLock {
+            let pending = self.continuation
+            self.continuation = nil
+            return pending
+        }
+        continuation?.resume()
+    }
+}
+
 final class ProviderRefreshTaskState: @unchecked Sendable {
     let generation: UInt64
 
@@ -183,6 +202,24 @@ final class ProviderRefreshTaskState: @unchecked Sendable {
     func waitForTaskCompletion() async {
         let task = self.lock.withLock { self.task }
         await task?.value
+    }
+
+    /// Waits for the task to finish, but never longer than `limit`. A cancelled fetch can take a long time to
+    /// notice (a subprocess, a Keychain read, a web view); a person's refresh must not sit behind one.
+    func waitForTaskCompletion(atMost limit: Duration) async {
+        let task = self.lock.withLock { self.task }
+        guard let task else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let gate = ProviderRefreshWaitGate(continuation)
+            Task {
+                await task.value
+                gate.open()
+            }
+            Task {
+                try? await Task.sleep(for: limit)
+                gate.open()
+            }
+        }
     }
 
     fileprivate var shouldRetry: Bool {

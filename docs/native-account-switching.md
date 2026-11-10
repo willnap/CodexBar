@@ -50,6 +50,34 @@ changes and reopened after. The handoff no longer waits up to 15 s for the reope
 server (`appServerGrace` is 0): every earlier server had exited before the install, so whichever
 starts reads the new login. Ownership verification is unchanged.
 
+## The Claude desktop app
+
+A Claude switch (`cswap --switch-to`) moves Claude Code's login. The Claude desktop app shares nothing with
+it: it is signed in by its own session cookie in `~/Library/Application Support/Claude/Cookies` (or
+`Network/Cookies`), encrypted with a key that belongs to the Mac, not the account. `NativeClaudeDesktopHandoff`
+therefore follows a completed switch as a second step:
+
+1. Quit the app with an ordinary quit, and wait for it and its helpers to exit.
+2. Copy its cookie database into CodexBar's own folder
+   (`~/Library/Application Support/CodexBar/claude-desktop-logins/<hash of the email>`) under the account being
+   left. CodexBar cannot read which account the app is signed in to, so it files the login under the account
+   Claude Code was using.
+3. Put the incoming account's saved database in its place, or remove the database when none was saved yet.
+4. Reopen the app.
+
+CodexBar never opens, decrypts or parses these files; it only moves them while the app is not running. The first
+switch to an account has nothing saved, so the app reopens signed out; signing in there once is what is saved
+the next time that account is switched away from.
+
+The app is left open, and its login left as it was, when:
+
+- it is hosting Claude Code sessions (processes started from `claude-code` or `claude-code-vm` in its profile),
+  which quitting would end; an unreadable process list counts as hosting;
+- the switch did not come from the explicit Use action. Auto Switch never quits it, as with the Codex app.
+
+None of these outcomes fails the switch: Claude Code has changed account either way. Only an app that would not
+quit, or files that could not be moved, is reported.
+
 ## Automatic switching
 
 The Codex-only "Auto switch" toggle left the popup toolbar (it fit only unlabeled, and only for Codex)

@@ -119,6 +119,8 @@ extension UsageStore {
         var accountID: String?
         var suppressGaugeUsage = false
         var unverifiedMonitoringSelection = false
+        // Provider-specific by design: the menu bar gauge keeps a Claude model allowance its account used lately.
+        var modelLaneHistory: [PlanUtilizationSeriesHistory]?
         // Provider-specific by design: Dedicated Codex and ClaudeSwap account owners must never inherit ambient
         // usage when their selected account has no measurement.
         if provider == .codex,
@@ -170,11 +172,13 @@ extension UsageStore {
                     adapterError: self.claudeSwapLastError,
                     switchError: self.claudeSwapTransientState.lastErrorAccountID == account.id
                         ? self.claudeSwapTransientState.lastError : nil)
+                let ambient = self.nativeOrbitClaudeOwnedAmbientSnapshot(for: account)
                 if var accountContext = context.account {
                     accountContext.snapshot = self.nativeOrbitClaudePresentationSnapshot(
-                        for: account, ambient: self.nativeOrbitClaudeOwnedAmbientSnapshot(for: account))
+                        for: account, ambient: ambient)
                     context = .account(accountContext)
                 }
+                modelLaneHistory = self.nativeOrbitClaudeHistory(account, ambient: ambient)
                 suppressGaugeUsage = account.usesLastKnownUsage
                     || self.claudeSwapTransientState.switchPhase != nil
             } else {
@@ -226,7 +230,12 @@ extension UsageStore {
                 && (context.account != nil || input.limitsAvailability?.isUnavailable != true)),
             isAuthenticationFailure: credentialScope.map {
                 self.nativeAuthenticationFailures.contains(.init(provider: provider, account: $0))
-            } == true)
+            } == true,
+            // Provider-specific by design: only Claude hides unused model allowances, so only its recent use matters.
+            modelLaneHistory: provider != .claude ? [] : modelLaneHistory
+                ?? (context.account == nil
+                    ? self.planUtilizationHistorySelection(for: provider, readOnly: true).histories : []),
+            now: input.now)
         return NativeServicePresentation(
             model: model,
             gauge: gauge,

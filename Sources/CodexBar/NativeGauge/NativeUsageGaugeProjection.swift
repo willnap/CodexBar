@@ -4,6 +4,48 @@ import Foundation
 typealias NativeServicePresentationRoute = ServicePopoverRoute<UsageProvider>
 
 enum NativeUsageGaugeProjection {
+    /// A Claude allowance for one model ("Fable only", the Sonnet or Opus week), drawn inside the all-models week.
+    static func isClaudeModelLane(_ id: String) -> Bool {
+        id == "tertiary" || id.hasPrefix("claude-weekly-scoped-")
+    }
+
+    /// How long after its last measured use a model allowance keeps its lane: one of its weekly periods.
+    static let modelLaneRecentUse: TimeInterval = 7 * 86400
+
+    /// A measured model allowance shows while it is in use, or was within the past week.
+    private static func showsClaudeModelLane(
+        _ id: String,
+        window: RateWindow,
+        usageKnown: Bool,
+        history: [PlanUtilizationSeriesHistory],
+        now: Date) -> Bool
+    {
+        guard usageKnown, window.usedPercent.isFinite, window.usedPercent >= 0 else { return false }
+        return window.usedPercent > 0 || self.claudeModelLaneWasUsedRecently(id, history: history, now: now)
+    }
+
+    /// Whether `history` shows the model allowance `id` in use within the past week: a measured reading above
+    /// zero. Server period totals are not readings and never count.
+    static func claudeModelLaneWasUsedRecently(
+        _ id: String,
+        history: [PlanUtilizationSeriesHistory],
+        now: Date) -> Bool
+    {
+        let cutoff = now.addingTimeInterval(-Self.modelLaneRecentUse)
+        for series in history where series.name.rawValue == "nativeQuota:" + id {
+            // Entries are in time order, so only the tail can be recent.
+            for entry in series.entries.reversed() {
+                guard entry.capturedAt >= cutoff else { break }
+                if entry.capturedAt <= now, entry.historicalPeriod == nil, entry.usedPercent.isFinite,
+                   entry.usedPercent > 0
+                {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     static func state(
         provider: UsageProvider,
         snapshot: UsageSnapshot?,
@@ -15,7 +57,9 @@ enum NativeUsageGaugeProjection {
         status: ProviderStatusIndicator = .none,
         isEnabled: Bool = true,
         hasAccess: Bool = true,
-        isAuthenticationFailure: Bool = false) -> ComputeGauge.State
+        isAuthenticationFailure: Bool = false,
+        modelLaneHistory: [PlanUtilizationSeriesHistory] = [],
+        now: Date = Date()) -> ComputeGauge.State
     {
         var state = ComputeGauge.State()
         state.provider = provider.rawValue
@@ -46,8 +90,11 @@ enum NativeUsageGaugeProjection {
         var windows = lanes.compactMap { id, label, candidate, usageKnown -> UsageWindow? in
             guard let window = candidate?.measured else { return nil }
             // Provider-specific by design: both Claude gauges hide unused model allowances and restore them on use.
-            if provider == .claude, id == "tertiary" || id.hasPrefix("claude-weekly-scoped-"),
-               !usageKnown || !window.usedPercent.isFinite || window.usedPercent <= 0
+            // Claude reports whole percentages, so an allowance reads 0 after each weekly reset and until use
+            // reaches 1 %; one the account drew on within the past week stays, empty, instead of coming and going.
+            if provider == .claude, Self.isClaudeModelLane(id),
+               !Self.showsClaudeModelLane(
+                   id, window: window, usageKnown: usageKnown, history: modelLaneHistory, now: now)
             {
                 return nil
             }
@@ -111,10 +158,21 @@ enum NativeUsageGaugeProjection {
         }
         // The symbol supports three lanes. Keep binding/exhausted quotas first when there are more;
         // the usage card continues to show every quota, including lanes beyond the compact symbol.
+        // Provider-specific by design: with a session, a weekly and a used Sonnet allowance, a named model
+        // allowance such as Fable was always the fourth lane and never drawn. The named allowance is the one
+        // its model's use runs into, so it takes the third lane ahead of the Sonnet one.
+        let hasNamedModelLane = provider == .claude
+            && windows.contains { $0.id.hasPrefix("claude-weekly-scoped-") }
+        func yields(_ window: UsageWindow) -> Bool {
+            hasNamedModelLane && window.id == "tertiary"
+        }
         let selected = windows.enumerated().sorted { lhs, rhs in
             let leftExhausted = lhs.element.usedFraction == 1
             let rightExhausted = rhs.element.usedFraction == 1
-            return leftExhausted == rightExhausted ? lhs.offset < rhs.offset : leftExhausted
+            if leftExhausted != rightExhausted { return leftExhausted }
+            let leftYields = yields(lhs.element)
+            let rightYields = yields(rhs.element)
+            return leftYields == rightYields ? lhs.offset < rhs.offset : rightYields
         }.prefix(3).map(\.element)
         state.windows = selected.isEmpty
             ? [UsageWindow(id: "unknown", label: "Usage", period: 1, used: nil, recovery: .none)]

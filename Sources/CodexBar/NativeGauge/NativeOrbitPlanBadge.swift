@@ -1,13 +1,15 @@
 import SwiftUI
 
-/// The plan's differentiator in white type on a small rounded square of the service's colour, the way
-/// `20.square.fill` carries its number: "20×", "5×", "Pro", "Plus". The colour darkens only as far as the type needs to
-/// read, so the badge belongs to its page's ring and capsule.
+/// The plan's differentiator cut out of a small rounded square, the way `20.square.fill` carries its number: "20×",
+/// "5×", "Pro", "Plus". The square is the grey of the account name beside it, as that name looks: a solid shape in
+/// the name's own colour reads darker than its thin strokes, whose rendered ink averages about three quarters of
+/// that colour's contrast, so the square is that much lighter.
 struct NativeOrbitPlanBadge: View {
-    @Environment(\.colorScheme) private var colorScheme
     let text: String
     let plan: String
-    let accent: Color
+
+    /// The account name's colour (`secondary` at 0.85) scaled to how its glyphs render.
+    static let fill = Color.secondary.opacity(0.85 * 0.74)
 
     /// Words that name the plan's kind rather than which plan it is.
     private nonisolated static let generic: Set<String> = ["plan", "subscription", "tier", "membership"]
@@ -31,19 +33,20 @@ struct NativeOrbitPlanBadge: View {
     }
 
     var body: some View {
-        // About 4 pt of colour around the ink on every side: the figures' cap height sits centred in the line.
+        // About 4 pt of grey around the figures on every side: their cap height sits centred in the line. The
+        // figures are cut out, so they show the page behind and read in either appearance.
         Text(verbatim: self.text)
             .font(.system(size: 9.5, weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(.black)
+            .blendMode(.destinationOut)
             .lineLimit(1)
             .padding(.horizontal, 4)
             .padding(.vertical, 1.5)
             .frame(minWidth: 15)
             // The badge keeps its size in a crowded footer; the name beside it shortens instead.
             .fixedSize()
-            .background(
-                NativeOrbitContrast.fill(underWhiteText: self.accent, for: self.colorScheme),
-                in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .background(Self.fill, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .compositingGroup()
             .help(self.plan)
             .accessibilityElement()
             .accessibilityLabel(self.plan)

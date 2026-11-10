@@ -122,16 +122,31 @@ struct ProviderPluginConsoleCapabilitiesTests {
         }
     }
 
-    @Test(arguments: BundledPluginTestSupport.engines)
+    @Test(.timeLimit(.minutes(1)), arguments: BundledPluginTestSupport.engines)
     func `form transport is bounded by its request deadline`(engine: ProviderPluginEngineKind) async throws {
+        let (starts, started) = AsyncStream<Void>.makeStream()
+        let (cancellations, cancelled) = AsyncStream<Bool>.makeStream()
+        defer { started.finish(); cancelled.finish() }
         let runtime = try Self.runtime(engine, body: """
         await ctx.http.post('https://console.example.com/api', { form: {}, timeoutSeconds: 1 });
         return { empty: true };
         """, transport: ProviderHTTPTransportHandler { request in
-            try await Task.sleep(for: .seconds(30))
+            #expect(request.timeoutInterval == 1)
+            started.yield()
+            defer { cancelled.yield(Task.isCancelled) }
+            try await BundledPluginTestSupport.suspendUntilCancelled()
             return Self.response(request, body: "late")
-        })
+        }, contextOptions: ProviderPluginContextOptions(
+            optionalRequestTimeoutSeconds: nil,
+            waitForHTTPDeadline: { _, budget in
+                #expect(budget == .seconds(1))
+                var iterator = starts.makeAsyncIterator()
+                #expect(await iterator.next() != nil)
+                try Task.checkCancellation()
+            }))
         await #expect(throws: URLError(.timedOut)) { try await runtime.fetchUsage() }
+        var iterator = cancellations.makeAsyncIterator()
+        #expect(await iterator.next() == true)
     }
 
     @Test(arguments: BundledPluginTestSupport.engines, ["size", "compression"])
@@ -157,6 +172,7 @@ struct ProviderPluginConsoleCapabilitiesTests {
             Issue.record("Unexpected network request")
             throw URLError(.unsupportedURL)
         },
+        contextOptions: ProviderPluginContextOptions = BundledPluginTestSupport.contextOptions,
         userPolicy: Bool = false,
         responseLimit: Int = 1024) throws -> ProviderPluginRuntime
     {
@@ -166,9 +182,12 @@ struct ProviderPluginConsoleCapabilitiesTests {
               async fetchUsage(ctx) { \(body) }
             });
             """,
+            resourceBundle: CodexBarCoreResources.bundle,
             transport: transport,
+            timeout: BundledPluginTestSupport.timeout,
             responseSizeLimit: responseLimit,
             enforcesUserResponsePolicy: userPolicy,
+            contextOptions: contextOptions,
             engine: engine)
     }
 

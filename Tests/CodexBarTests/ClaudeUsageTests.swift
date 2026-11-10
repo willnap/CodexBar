@@ -912,6 +912,38 @@ extension ClaudeUsageTests {
     }
 }
 
+/// The other OAuth mapping cases live in `ClaudeOAuthUsageMappingTests.swift`.
+struct ClaudeOAuthWeeklyOnlyMaxPlanMappingTests {
+    @Test
+    func `oauth usage for weekly only max plan shows weekly without a session window`() throws {
+        // Captured Max 20x response with no five-hour window; availability follows the payload, not the plan name.
+        let json = """
+        {
+          "five_hour": null,
+          "seven_day": { "utilization": 0.0, "resets_at": "2026-11-09T16:59:59.902585+00:00" },
+          "seven_day_oauth_apps": null,
+          "seven_day_opus": null,
+          "seven_day_sonnet": null,
+          "extra_usage": { "is_enabled": false, "monthly_limit": null, "used_credits": null },
+          "limits": [
+            { "kind": "weekly_all", "group": "weekly", "percent": 0,
+              "resets_at": "2026-11-09T16:59:59.902585+00:00", "scope": null, "is_active": true }
+          ]
+        }
+        """
+        let snapshot = try ClaudeUsageFetcher._mapOAuthUsageForTesting(
+            Data(json.utf8),
+            rateLimitTier: "default_claude_max_20x",
+            subscriptionType: "max")
+        let usage = ClaudeOAuthFetchStrategy._snapshotForTesting(from: snapshot)
+
+        #expect(snapshot.primary == nil)
+        #expect(usage.primary == nil)
+        #expect(usage.secondary?.usedPercent == 0)
+        #expect(usage.secondary?.windowMinutes == 7 * 24 * 60)
+    }
+}
+
 @Suite(.serialized)
 struct ClaudeAutoFetcherCharacterizationTests {
     private final class RequestLog: @unchecked Sendable {

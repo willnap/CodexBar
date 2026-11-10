@@ -74,7 +74,8 @@ extension UsageStore {
         }
     }
 
-    func prepareRefreshState(for provider: UsageProvider? = nil) {
+    func prepareRefreshState(for provider: UsageProvider? = nil, allowDisabled: Bool = false) {
+        self.settings.recoverLegacyCredentials(for: provider, allowDisabled: allowDisabled)
         // Provider-specific by design: Codex active-source correction reconciles managed profile filesystem state.
         guard provider == nil || provider == .codex else { return }
         _ = self.settings.persistResolvedCodexActiveSourceCorrectionIfNeeded()
@@ -131,7 +132,7 @@ extension UsageStore {
     {
         // Codex source reconciliation can persist a settings correction. Perform it before
         // capturing the publication revision so the request cannot invalidate itself.
-        self.prepareRefreshState(for: provider)
+        self.prepareRefreshState(for: provider, allowDisabled: allowDisabled)
         while coalesceIfRefreshing,
               let existingState = self.providerRefreshCoordinator.coalescingState(for: provider.instanceID)
         {
@@ -155,12 +156,20 @@ extension UsageStore {
                 ? self.tokenSnapshotScopeSignature(for: provider)
                 : nil,
             allowDisabled: allowDisabled)
+        // Every provider, not one: a person's refresh replaces the fetch in flight and starts its own at once.
+        // The replaced fetch is already cancelled and can no longer publish (its generation is stale), so the
+        // press only gives it a moment to release what it holds instead of waiting out its slowest step.
+        let userInitiated = ProviderInteractionContext.current == .userInitiated
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             var snapshotUpdatedAtBeforeRefresh: Date?
             var didStartRefresh = false
             for predecessorState in request.predecessorStates {
-                await predecessorState.waitForTaskCompletion()
+                if userInitiated {
+                    await predecessorState.waitForTaskCompletion(atMost: .seconds(2))
+                } else {
+                    await predecessorState.waitForTaskCompletion()
+                }
             }
             if !Task.isCancelled,
                self.providerRefreshCoordinator.isCurrent(request.generation, for: provider.instanceID)

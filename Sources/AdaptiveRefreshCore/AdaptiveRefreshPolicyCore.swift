@@ -8,6 +8,11 @@ package struct AdaptiveRefreshPolicyCore: Sendable {
         package let now: Date
         package let lastMenuOpenAt: Date?
         package let lastCodingActivityAt: Date?
+        /// When the person last used the keyboard or pointer. The gauges sit in the menu bar, so someone at the
+        /// Mac can see them without ever opening the menu; presence keeps readings current on its own.
+        package let lastUserActivityAt: Date?
+        /// The fastest consumption among the quotas in use, relative to their windows (`UsageVelocityTracker`).
+        package let usagePace: Double?
         package let lowPowerModeEnabled: Bool
         package let thermalPressure: ThermalPressure
 
@@ -15,12 +20,16 @@ package struct AdaptiveRefreshPolicyCore: Sendable {
             now: Date,
             lastMenuOpenAt: Date?,
             lastCodingActivityAt: Date? = nil,
+            lastUserActivityAt: Date? = nil,
+            usagePace: Double? = nil,
             lowPowerModeEnabled: Bool,
             thermalPressure: ThermalPressure)
         {
             self.now = now
             self.lastMenuOpenAt = lastMenuOpenAt
             self.lastCodingActivityAt = lastCodingActivityAt
+            self.lastUserActivityAt = lastUserActivityAt
+            self.usagePace = usagePace
             self.lowPowerModeEnabled = lowPowerModeEnabled
             self.thermalPressure = thermalPressure
         }
@@ -34,6 +43,9 @@ package struct AdaptiveRefreshPolicyCore: Sendable {
     package enum Reason: String, Sendable, Equatable {
         case recentInteraction
         case codingActivity
+        case userPresent
+        case usageMoving
+        case usageRacing
         case warm
         case idle
         case longIdle
@@ -61,6 +73,13 @@ package struct AdaptiveRefreshPolicyCore: Sendable {
     private static let longIdleDelay: Duration = .seconds(30 * 60)
     private static let constrainedDelay: Duration = .seconds(30 * 60)
     private static let codingActivityDelayCap: Duration = .seconds(5 * 60)
+    private static let userPresenceThreshold: TimeInterval = 5 * 60
+    private static let userPresenceDelayCap: Duration = .seconds(5 * 60)
+    /// An allowance on course to be gone in half its window is moving; in a twelfth of it, racing.
+    package static let usageMovingPace = 2.0
+    package static let usageRacingPace = 12.0
+    private static let usageMovingDelayCap: Duration = .seconds(2 * 60)
+    private static let usageRacingDelayCap: Duration = .seconds(60)
 
     /// Representative cadence for consumers that need one interval but cannot access live state.
     package static let nominalIntervalForHeuristics: TimeInterval = 5 * 60
@@ -72,13 +91,37 @@ package struct AdaptiveRefreshPolicyCore: Sendable {
             return Decision(delay: Self.constrainedDelay, reason: .constrained)
         }
 
-        let baseDecision = self.menuActivityDecision(for: input)
-        guard let lastCodingActivityAt = input.lastCodingActivityAt,
-              input.now.timeIntervalSince(lastCodingActivityAt) < Self.codingActivityThreshold,
-              baseDecision.delay > Self.codingActivityDelayCap
-        else { return baseDecision }
+        let baseDecision = self.attentionDecision(for: input)
+        // A quota being consumed fast is the reading most worth keeping current, whoever is or is not looking:
+        // it is what decides when to slow down or switch accounts.
+        if let pace = input.usagePace, pace.isFinite {
+            if pace >= Self.usageRacingPace, baseDecision.delay > Self.usageRacingDelayCap {
+                return Decision(delay: Self.usageRacingDelayCap, reason: .usageRacing)
+            }
+            if pace >= Self.usageMovingPace, baseDecision.delay > Self.usageMovingDelayCap {
+                return Decision(delay: Self.usageMovingDelayCap, reason: .usageMoving)
+            }
+        }
+        return baseDecision
+    }
 
-        return Decision(delay: Self.codingActivityDelayCap, reason: .codingActivity)
+    private func attentionDecision(for input: Input) -> Decision {
+        let baseDecision = self.menuActivityDecision(for: input)
+        if let lastCodingActivityAt = input.lastCodingActivityAt,
+           input.now.timeIntervalSince(lastCodingActivityAt) < Self.codingActivityThreshold,
+           baseDecision.delay > Self.codingActivityDelayCap
+        {
+            return Decision(delay: Self.codingActivityDelayCap, reason: .codingActivity)
+        }
+        // Menu opens alone understate attention: the gauges are always on screen. While the person is using
+        // the Mac, never let a reading age past the warm cadence just because the menu stayed closed.
+        if let lastUserActivityAt = input.lastUserActivityAt,
+           input.now.timeIntervalSince(lastUserActivityAt) < Self.userPresenceThreshold,
+           baseDecision.delay > Self.userPresenceDelayCap
+        {
+            return Decision(delay: Self.userPresenceDelayCap, reason: .userPresent)
+        }
+        return baseDecision
     }
 
     private func menuActivityDecision(for input: Input) -> Decision {

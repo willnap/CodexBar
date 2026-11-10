@@ -71,14 +71,8 @@ struct NativeOrbitUsageObservation: Codable, Hashable, Sendable {
               Self.validCount(self.tokens), Self.validCount(self.requests), Self.validMoney(self.cost)
         else { return nil }
         var dates: Set<String> = []
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.isLenient = false
         for day in self.daily {
-            guard day.date.utf8.count == 10, let parsed = formatter.date(from: day.date),
-                  formatter.string(from: parsed) == day.date,
+            guard Self.isCivilDay(day.date),
                   dates.insert(day.date).inserted,
                   Self.validCount(day.tokens), Self.validCount(day.requests), Self.validMoney(day.cost),
                   day.incompleteRequests >= 0, Self.validCount(day.unpricedRequests),
@@ -113,6 +107,26 @@ struct NativeOrbitUsageObservation: Codable, Hashable, Sendable {
                     unmeteredRequestCount: $0.unmeteredRequests,
                     costIsPartial: $0.costPartial)
             }, updatedAt: date)
+    }
+
+    /// Whether `text` is exactly a `yyyy-MM-dd` date that exists in the Gregorian calendar. This runs for every
+    /// day of every receipt each time a row is built, where a date formatter was a sixth of the whole build.
+    static func isCivilDay(_ text: String) -> Bool {
+        let bytes = Array(text.utf8)
+        guard bytes.count == 10, bytes[4] == UInt8(ascii: "-"), bytes[7] == UInt8(ascii: "-") else { return false }
+        func number(_ range: Range<Int>) -> Int? {
+            var value = 0
+            for byte in bytes[range] {
+                guard (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) else { return nil }
+                value = value * 10 + Int(byte - UInt8(ascii: "0"))
+            }
+            return value
+        }
+        guard let year = number(0..<4), let month = number(5..<7), let day = number(8..<10),
+              year >= 1, (1...12).contains(month), day >= 1 else { return false }
+        let isLeap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+        let lengths = [31, isLeap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        return day <= lengths[month - 1]
     }
 
     private static func validCount(_ value: Int?) -> Bool { value.map { $0 >= 0 } ?? true }

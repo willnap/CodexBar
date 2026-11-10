@@ -552,7 +552,8 @@ struct NativeOrbitPopupView: View {
     private var loginTarget: String {
         // Provider-specific by design: ClaudeSwap activates Claude Code, while a Codex switch moves the CLI login and
         // the desktop app that shares it.
-        self.state.accountSwitch?.provider == .claude ? "Claude Code" : NativeCodexDesktopHandoff.loginTargetName
+        self.state.accountSwitch?.provider == .claude
+            ? NativeClaudeDesktopHandoff.loginTargetName : NativeCodexDesktopHandoff.loginTargetName
     }
 
     private func column(_ account: NativeOrbitAccountPresentation) -> some View {
@@ -728,7 +729,7 @@ struct NativeOrbitPopupView: View {
             service: UsageProvider(rawValue: account.gauge.provider)
                 .map { ProviderDescriptorRegistry.descriptor(for: $0).metadata.displayName } ?? "")
         {
-            NativeOrbitPlanBadge(text: text, plan: plan, accent: self.state.accent)
+            NativeOrbitPlanBadge(text: text, plan: plan)
         }
     }
 

@@ -109,6 +109,8 @@ struct NativeCombinedPopupView: View {
     @State private var livePages: Set<String>
     @State private var renderedColumns: ClosedRange<Int>
     @State private var modelMemo = NativeCombinedAccountsMemo()
+    /// Not read by `body`: holding the pending residency pass never invalidates the strip.
+    @State private var residencyTask: Task<Void, Never>?
 
     private var selection: String {
         self.navigation.selectionID
@@ -294,7 +296,17 @@ struct NativeCombinedPopupView: View {
                     transaction.disablesAnimations = true
                     withTransaction(transaction) {
                         self.renderedColumns = viewport.intersecting
-                        self.livePages = Self.residentPages(ids, columns: viewport.intersecting)
+                        if self.toolbar.isScrolling {
+                            // Mid-swipe, building the page beyond the incoming one and tearing down the one just
+                            // left each cost a whole chart host inside the frames that carry the motion. Only
+                            // guarantee the columns actually on screen; `settleResidency` does the rest at rest.
+                            let onScreen = Set(viewport.intersecting.compactMap {
+                                ids.indices.contains($0) ? ids[$0] : nil
+                            })
+                            if !onScreen.isSubset(of: self.livePages) { self.livePages.formUnion(onScreen) }
+                        } else {
+                            self.livePages = Self.residentPages(ids, columns: viewport.intersecting)
+                        }
                         self.synchronizeRange(self.toolbar.days)
                     }
                 }
@@ -326,6 +338,7 @@ struct NativeCombinedPopupView: View {
                 } else if phase == .idle {
                     self.navigation.settle(at: self.scrollID, validIDs: ids)
                 }
+                self.settleResidency(ids: ids, scrolling: phase.isScrolling)
             }
         }
         .frame(width: self.showing.width, height: Self.stripHeight)
@@ -356,11 +369,30 @@ struct NativeCombinedPopupView: View {
             self.livePages = Self.residentPages(ids, columns: self.renderedColumns)
         }
         .onChange(of: self.showing.closedGeneration) {
+            self.residencyTask?.cancel()
+            self.residencyTask = nil
             // The next opening most likely resumes here, so only these pages stay built.
             self.livePages = Self.pagesInView(
                 ids,
                 leadingID: self.showing.leftLeadingID ?? self.showing.openingLeadingID,
                 width: self.showing.width)
+        }
+    }
+
+    /// Page construction and eviction wait for the strip to come to rest, and a moment longer, so a second swipe
+    /// that follows at once is not charged for the first one's housekeeping.
+    private func settleResidency(ids: [String], scrolling: Bool) {
+        self.residencyTask?.cancel()
+        self.residencyTask = nil
+        guard !scrolling else { return }
+        self.residencyTask = Task { @MainActor in
+            do { try await Task.sleep(for: .milliseconds(180)) } catch { return }
+            guard !Task.isCancelled, !self.toolbar.isScrolling else { return }
+            let resident = Self.residentPages(ids, columns: self.renderedColumns)
+            guard resident != self.livePages else { return }
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { self.livePages = resident }
         }
     }
 

@@ -53,7 +53,7 @@ a glance.
 <td width="50%" valign="top">
 <h3>Switching accounts</h3>
 <img src="docs/screenshots/native-showcase/feature-switch.png" width="100%" alt="Two Codex logins side by side; the spare one is marked as reset by OpenAI at 5:49 PM, with Use one click away." />
-<p>CodexBar can already switch your Codex and Claude logins from a submenu. The redesign puts every login side by side with a Use button on each, so switching is one click. Switching Codex also hands the ChatGPT/Codex desktop app over to the new login, so you never have to log out and back in. Resets show who made them, so you can see when OpenAI has reset one of your accounts.</p>
+<p>CodexBar can already switch your Codex and Claude logins from a submenu. The redesign puts every login side by side with a Use button on each, so switching is one click. Switching Codex also hands the ChatGPT/Codex desktop app over to the new login, and switching Claude does the same for the Claude desktop app, so you never have to log out and back in. The Claude app keeps a login of its own: the first time you switch to an account it opens signed out, and once you sign in there CodexBar keeps that login for every later switch. It is left as it is while it is running Claude Code sessions. Resets show who made them, so you can see when OpenAI has reset one of your accounts.</p>
 </td>
 <td width="50%" valign="top">
 <h3>Telling logins apart</h3>
@@ -291,6 +291,8 @@ See [CLI configuration](docs/cli-configuration.md) for the full flow.
 - [Chatbox AI](docs/chatbox.md) — API token
 - [abliteration.ai](docs/abliteration.md) — API key for prepaid USD credits and cumulative usage.
 - [OpenDesign](docs/opendesign.md) — Browser or manual session cookies for the active workspace's five-hour and weekly subscription allowance.
+- [SiliconFlow](docs/siliconflow.md) — API key for the prepaid account balance on the China (CNY) or international (USD) API.
+- [Tripo](docs/tripo.md) — API key for available and reserved account credits from the official account balance endpoint.
 <!-- End generated provider additions -->
 
 ## Icon & Screenshot

@@ -1122,8 +1122,12 @@ extension NativeOrbitHistoryWidget {
         if let point = self.nearest(lane, to: date), point.id.historicalPeriod != nil {
             return .init(date: point.date, available: point.available)
         }
+        // A quota the account's current reading no longer reports ended at its last receipt. As with the
+        // projection, it has no place on the now line; otherwise a lane that stopped (or one false reading of
+        // one) leaves a bead there with no gauge and no line to belong to.
         guard date == self.now, self.selectedDate == nil, let latest = lane.latestMeasuredSample,
-              self.now.timeIntervalSince(latest.date) <= NativeOrbitAccountProjection.maximumReadingAge
+              self.now.timeIntervalSince(latest.date) <= NativeOrbitAccountProjection.maximumReadingAge,
+              self.quotaWindows.isEmpty || self.quotaWindows[lane.history.name.rawValue] != nil
         else { return nil }
         let available = self.drawnProjection?.lane(lane.history.name.rawValue)?.available(at: self.now)
             ?? latest.available

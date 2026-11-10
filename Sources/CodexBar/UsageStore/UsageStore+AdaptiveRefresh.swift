@@ -1,3 +1,5 @@
+import CodexBarCore
+import CoreGraphics
 import Foundation
 
 /// Wiring around `AdaptiveRefreshPolicy` for `UsageStore.startTimer()`: gathering live signals,
@@ -28,6 +30,8 @@ extension UsageStore {
         now: Date,
         lastMenuOpenAt: Date?,
         lastCodingActivityAt: Date? = nil,
+        lastUserActivityAt: Date? = nil,
+        usagePace: Double? = nil,
         lowPowerModeEnabled: Bool,
         thermalState: ProcessInfo.ThermalState,
         policy: AdaptiveRefreshPolicy = AdaptiveRefreshPolicy()) -> AdaptiveRefreshPolicy.Decision
@@ -37,7 +41,125 @@ extension UsageStore {
             lastMenuOpenAt: lastMenuOpenAt,
             lastCodingActivityAt: lastCodingActivityAt,
             lowPowerModeEnabled: lowPowerModeEnabled,
-            thermalState: thermalState))
+            thermalState: thermalState,
+            lastUserActivityAt: lastUserActivityAt,
+            usagePace: usagePace))
+    }
+
+    /// Feeds the readings now in the store to the pace tracker and returns the fastest pace among the quotas in
+    /// use. Every service's current reading counts; an account switched away from stops counting.
+    func currentUsagePace(now: Date) -> Double? {
+        var keys = Set<String>()
+        for (instance, snapshot) in self.snapshots {
+            let account = snapshot.identity?.accountEmail ?? ""
+            var lanes: [(String, RateWindow?)] = [
+                ("primary", snapshot.primary),
+                ("secondary", snapshot.secondary),
+                ("tertiary", snapshot.tertiary),
+            ]
+            lanes += (snapshot.extraRateWindows ?? []).filter(\.usageKnown).map { ($0.id, $0.window) }
+            for (id, candidate) in lanes {
+                guard let window = candidate?.measured, let minutes = window.windowMinutes, minutes > 0
+                else { continue }
+                let key = "\(instance.rawValue)|\(account)|\(id)"
+                keys.insert(key)
+                self.usageVelocity.note(
+                    key: key,
+                    usedPercent: window.usedPercent,
+                    windowSeconds: TimeInterval(minutes) * 60,
+                    at: snapshot.updatedAt)
+            }
+        }
+        self.usageVelocity.retain(keys: keys)
+        return self.usageVelocity.fastestPace(now: now)
+    }
+
+    /// When the person last touched the keyboard or pointer, from the window server's idle clock. It needs no
+    /// permission and identifies nothing about what they did. Tests get nil so the decision table they assert
+    /// never depends on whoever is using the build machine.
+    static func lastUserActivityDate(now: Date = Date()) -> Date? {
+        guard !SettingsStore.isRunningTests, let anyInput = CGEventType(rawValue: ~0) else { return nil }
+        let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput)
+        guard idle.isFinite, idle >= 0 else { return nil }
+        return now.addingTimeInterval(-idle)
+    }
+
+    /// The live decision for `store` at `now`, with the delay the power policy allows.
+    private static func liveAdaptiveDecision(
+        for store: UsageStore,
+        now: Date) -> (decision: AdaptiveRefreshPolicy.Decision, effectiveDelay: TimeInterval)
+    {
+        let decision = Self.adaptiveRefreshDecision(
+            now: now,
+            lastMenuOpenAt: store.lastMenuOpenAt,
+            lastCodingActivityAt: store.settings.adaptiveActivityScanningEnabled
+                ? store.lastCodingActivityAt
+                : nil,
+            lastUserActivityAt: Self.lastUserActivityDate(now: now),
+            usagePace: store.currentUsagePace(now: now),
+            lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
+            thermalState: ProcessInfo.processInfo.thermalState)
+        let requestedDelay = TimeInterval(decision.delay.components.seconds)
+        let effectiveDelay = Self.effectiveAutomaticRefreshInterval(
+            requestedDelay,
+            lowPowerModeEnabled: store.settings.backgroundWorkLowPowerModeEnabled) ?? requestedDelay
+        return (decision, effectiveDelay)
+    }
+
+    /// The adaptive timer never sleeps longer than this in one stretch. A wait decided while idle (up to half an
+    /// hour) is re-read at this pace, so returning to the Mac, waking it, or leaving Low Power Mode shortens the
+    /// wait already under way instead of taking effect one long sleep later.
+    nonisolated static let adaptiveTimerSlice: Duration = .seconds(60)
+
+    /// What is left of the wait that began at `startedAt`, under the decision the live signals give now. Returns
+    /// nil once the store has deallocated, ending the loop.
+    static func remainingAdaptiveTimerSleep(for store: UsageStore?, since startedAt: Date) async -> Duration? {
+        guard let store else { return nil }
+        let now = Date()
+        let live = Self.liveAdaptiveDecision(for: store, now: now)
+        let dueAt = Self.adaptiveTimerDueDate(
+            scheduledAt: store.adaptiveRefreshScheduledAt,
+            startedAt: startedAt,
+            liveDelay: live.effectiveDelay)
+        if store.adaptiveRefreshScheduledAt != dueAt {
+            store.adaptiveRefreshScheduledAt = dueAt
+            store.logAdaptiveRefreshDecision(live.decision)
+        }
+        return .seconds(max(0, dueAt.timeIntervalSince(now)))
+    }
+
+    /// The adaptive timer's loop. `store` is read anew for each brief decision and never held across a sleep, so
+    /// the store can deallocate mid-wait, which ends the loop.
+    nonisolated static func runAdaptiveRefreshTimer(for store: @escaping @Sendable () -> UsageStore?) async {
+        while !Task.isCancelled {
+            let startedAt = Date()
+            guard var sleepDuration = await Self.nextAdaptiveTimerSleepDuration(for: store()) else { return }
+            // A long wait is slept in slices and re-read against the live signals after each one, so it shortens
+            // as soon as the person is back at the Mac.
+            while sleepDuration > Self.adaptiveTimerSlice {
+                try? await Task.sleep(for: Self.adaptiveTimerSlice)
+                guard !Task.isCancelled,
+                      let remaining = await Self.remainingAdaptiveTimerSleep(for: store(), since: startedAt)
+                else { return }
+                sleepDuration = remaining
+            }
+            if sleepDuration > .zero {
+                try? await Task.sleep(for: sleepDuration)
+            }
+            guard !Task.isCancelled else { return }
+            await store()?.refresh(enrichmentMode: .automatic)
+        }
+    }
+
+    /// A wait under way only ever shortens. Re-reading the signals part-way must not push a refresh back: a menu
+    /// opened five minutes ago has by then left the fast cadence it was scheduled on.
+    nonisolated static func adaptiveTimerDueDate(
+        scheduledAt: Date?,
+        startedAt: Date,
+        liveDelay: TimeInterval) -> Date
+    {
+        let live = startedAt.addingTimeInterval(liveDelay)
+        return scheduledAt.map { min($0, live) } ?? live
     }
 
     nonisolated static func shouldAdvanceAdaptiveTimer(scheduledAt: Date?, candidate: Date) -> Bool {
@@ -53,16 +175,7 @@ extension UsageStore {
 
     func advanceAdaptiveTimerIfEarlier(at date: Date) {
         guard self.settings.refreshFrequency.usesAdaptivePolicy else { return }
-        let decision = Self.adaptiveRefreshDecision(
-            now: date,
-            lastMenuOpenAt: self.lastMenuOpenAt,
-            lastCodingActivityAt: self.settings.adaptiveActivityScanningEnabled ? self.lastCodingActivityAt : nil,
-            lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
-            thermalState: ProcessInfo.processInfo.thermalState)
-        let requestedDelay = TimeInterval(decision.delay.components.seconds)
-        let effectiveDelay = Self.effectiveAutomaticRefreshInterval(
-            requestedDelay,
-            lowPowerModeEnabled: self.settings.backgroundWorkLowPowerModeEnabled) ?? requestedDelay
+        let effectiveDelay = Self.liveAdaptiveDecision(for: self, now: date).effectiveDelay
         let candidate = date.addingTimeInterval(effectiveDelay)
         guard Self.shouldAdvanceAdaptiveTimer(
             scheduledAt: self.adaptiveRefreshScheduledAt,
@@ -128,18 +241,9 @@ extension UsageStore {
     static func nextAdaptiveTimerSleepDuration(for store: UsageStore?) async -> Duration? {
         guard let store else { return nil }
         let now = Date()
-        let decision = Self.adaptiveRefreshDecision(
-            now: now,
-            lastMenuOpenAt: store.lastMenuOpenAt,
-            lastCodingActivityAt: store.settings.adaptiveActivityScanningEnabled
-                ? store.lastCodingActivityAt
-                : nil,
-            lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
-            thermalState: ProcessInfo.processInfo.thermalState)
-        let requestedDelay = TimeInterval(decision.delay.components.seconds)
-        let effectiveDelay = Self.effectiveAutomaticRefreshInterval(
-            requestedDelay,
-            lowPowerModeEnabled: store.settings.backgroundWorkLowPowerModeEnabled) ?? requestedDelay
+        let live = Self.liveAdaptiveDecision(for: store, now: now)
+        let decision = live.decision
+        let effectiveDelay = live.effectiveDelay
         #if DEBUG
         store.adaptiveRefreshComputedIntervalForTesting = effectiveDelay
         #endif
@@ -160,14 +264,7 @@ extension UsageStore {
         case .manual:
             nil
         case .adaptive, .adaptiveAgentAware:
-            TimeInterval(Self.adaptiveRefreshDecision(
-                now: Date(),
-                lastMenuOpenAt: self.lastMenuOpenAt,
-                lastCodingActivityAt: self.settings.adaptiveActivityScanningEnabled
-                    ? self.lastCodingActivityAt
-                    : nil,
-                lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
-                thermalState: ProcessInfo.processInfo.thermalState).delay.components.seconds)
+            TimeInterval(Self.liveAdaptiveDecision(for: self, now: Date()).decision.delay.components.seconds)
         default:
             self.settings.refreshFrequency.seconds
         }
