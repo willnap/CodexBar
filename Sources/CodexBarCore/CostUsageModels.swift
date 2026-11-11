@@ -139,28 +139,6 @@ public struct CostUsageHourlyEntry: Sendable, Equatable {
 ///
 /// Unlike ``CostUsageHourlyEntry``, `timestamp` is not rounded to a calendar hour. A nil metric
 /// means that metric is unknown for the event and must not be presented as a complete total.
-public struct CostUsageTimedEntry: Sendable, Equatable {
-    public let timestamp: Date
-    public let totalTokens: Int?
-    public let costUSD: Double?
-    public let tokensAreComplete: Bool
-    public let costIsComplete: Bool
-
-    public init(
-        timestamp: Date,
-        totalTokens: Int?,
-        costUSD: Double?,
-        tokensAreComplete: Bool = true,
-        costIsComplete: Bool = true)
-    {
-        self.timestamp = timestamp
-        self.totalTokens = totalTokens
-        self.costUSD = costUSD
-        self.tokensAreComplete = tokensAreComplete && totalTokens.map { $0 >= 0 } == true
-        self.costIsComplete = costIsComplete && costUSD.map { $0.isFinite && $0 >= 0 } == true
-    }
-}
-
 public struct CostUsageTokenSnapshot: Sendable, Equatable {
     public let sessionTokens: Int?
     public let sessionCostUSD: Double?

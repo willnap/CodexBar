@@ -661,6 +661,11 @@ struct CostUsageScannerClaudeMemoTests {
             row(message: fresh("msg_01ZZZZZZZZZZZZZZZZZZZZZZZZ"), request: nil, session: "short"),
         ]
         #expect(address(decoded[0].messageId) != address(donorRow.messageId))
+        // The same rows as the donor's are the donor's array itself; rows the donor only partly has share strings.
+        let identical = donors.sharing([decoded[0]], path: "/a")
+        #expect(identical == [donorRow])
+        #expect(identical.withUnsafeBufferPointer { $0.baseAddress }
+            == donorFile.usage?.claudeRows?.withUnsafeBufferPointer { $0.baseAddress })
         let shared = donors.sharing(decoded, path: "/a")
         #expect(shared == decoded)
         #expect(address(shared[0].messageId) == address(donorRow.messageId))
@@ -670,6 +675,12 @@ struct CostUsageScannerClaudeMemoTests {
         #expect(address(shared[1].messageId) == address(decoded[1].messageId))
         #expect(address(donors.sharing(decoded, path: "/missing")[0].messageId) == address(decoded[0].messageId))
         #expect(address(donors.sharing(decoded, path: "/empty")[0].messageId) == address(decoded[0].messageId))
+        // An attributed row is never traded for an unattributed one: only its strings are shared.
+        var attributed = decoded[0]
+        attributed.organizationID = "org-0123456789abcdef"
+        let keptAttribution = donors.sharing([attributed], path: "/a")
+        #expect(keptAttribution == [attributed])
+        #expect(address(keptAttribution[0].messageId) == address(donorRow.messageId))
         // Canonically equal spellings are different bytes, and an artifact's bytes stay exactly its own.
         let composed = "session-caf\u{E9}-0123456789abcdef"
         let decomposed = "session-cafe\u{301}-0123456789abcdef"

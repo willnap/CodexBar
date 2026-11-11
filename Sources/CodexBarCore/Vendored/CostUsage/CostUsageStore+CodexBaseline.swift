@@ -81,7 +81,7 @@ extension CostUsageStore {
             // Keep a receipt even on failure so save cannot fall back to accepting unbased content.
             return CostUsageStoreLoad(store: self, cache: CostUsageCache(), receipt: receipt)
         }
-        self.retainedCodexScan = baseline
+        self.retainedCodexScan = self.keepsScanBaselineBetweenScans ? baseline : nil
         self.retainedCodexBaseline = RetainedCodexBaseline(id: receipt.id, baseline: baseline)
         let compatible = baseline.decoded.timeZoneIdentifier == nil
             || baseline.decoded.timeZoneIdentifier == calendar.timeZone.identifier
@@ -233,6 +233,10 @@ extension CostUsageStore {
         {
             try checkpoint.checkpoint()
         }
+    }
+
+    var retainedCodexScanCountForTesting: Int {
+        self.retainedCodexScan == nil ? 0 : 1
     }
 
     var retainedCodexBaselineCountForTesting: Int {

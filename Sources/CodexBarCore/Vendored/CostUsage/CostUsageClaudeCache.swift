@@ -660,6 +660,9 @@ public enum CostUsageLongRunningProcess {
     public static func adopt() {
         CostUsageClaudeReportMemo.shared.setPersistInterval(self.reportMemoPersistInterval)
         CostUsageClaudeFragments.shared.setRetainsDecodedValues(true)
+        // Codex is the other way round: its decoded baseline is not shared with anything, so keeping it between
+        // scans only holds memory.
+        CostUsageStoreAccess.keepsScanBaselineBetweenScans = false
     }
 
     /// Whether a report memo in memory is newer than its file.

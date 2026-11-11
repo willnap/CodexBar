@@ -234,6 +234,11 @@ actor CostUsageStore {
     var retainedCodexBaseline: RetainedCodexBaseline?
     var retainedCodexRead: RetainedCodexRead?
     var retainedCodexScan: CodexDecodedBaseline?
+    /// Whether the decoded scan baseline outlives the scan that read it. It spares the next scan one read of the
+    /// database when nothing was written in between, and holds every file's rows and request ledger meanwhile:
+    /// a couple of hundred megabytes on a large history, for a read that is a small part of a scan. A process
+    /// that scans for hours turns it off; a one-shot process and the tests keep it.
+    let keepsScanBaselineBetweenScans: Bool
     #if DEBUG
     var codexBaselineReleaseObserverForTesting: (@Sendable () -> Void)?
     #endif
@@ -249,8 +254,10 @@ actor CostUsageStore {
         home: String = CodexHomeCostStoreScope.key(),
         schemaVersion: Int32 = CostUsageStore.schemaVersion,
         parserHash: String = CodexParserHash.value,
-        busyTimeoutMilliseconds: Int32 = 5000)
+        busyTimeoutMilliseconds: Int32 = 5000,
+        keepsScanBaselineBetweenScans: Bool = true)
     {
+        self.keepsScanBaselineBetweenScans = keepsScanBaselineBetweenScans
         self.databaseURL = Self.databaseURL(cacheRoot: cacheRoot)
         self.home = home
         self.executor = StoreSerialExecutor.shared(for: self.databaseURL)

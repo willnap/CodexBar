@@ -24,7 +24,8 @@ struct CostUsageTemporalMergeMemoryTests {
         #expect(Self.sharesBuffer(native.quotaSlices, inclusive.quotaSlices))
         // Native accounting and the inclusive result must retain one payload, not two.
         let retainedBuffers = Self.sharesBuffer(native.quotaSlices, inclusive.quotaSlices) ? 1 : 2
-        #expect(retainedBuffers * slices.count * MemoryLayout<CostUsageTimedEntry>.stride == 163_840)
+        // 4,096 entries of 32 bytes; it was 163,840 while an entry was 40.
+        #expect(retainedBuffers * slices.count * MemoryLayout<CostUsageTimedEntry>.stride == 131_072)
     }
 
     @Test

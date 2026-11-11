@@ -184,11 +184,11 @@ struct NativeOrbitRowBuildCacheTests {
     // MARK: Reading size
 
     @Test
-    func `a history reading stays small enough to copy and sort by the thousand`() {
+    func `a history reading stays small enough to copy and sort by the thousand`() throws {
         // Thousands of readings per account are merged, grouped and sorted on every row build, so whatever a
         // reading carries inline is moved each time. Its rarely present payloads live behind references.
         print("stride PlanUtilizationHistoryEntry", MemoryLayout<PlanUtilizationHistoryEntry>.stride)
-        #expect(MemoryLayout<PlanUtilizationHistoryEntry>.stride <= 160)
+        #expect(MemoryLayout<PlanUtilizationHistoryEntry>.stride <= 40)
         // The payload still round-trips and compares by value from behind its reference.
         let metrics = NativeOrbitMetricObservation(spendResetReferenceTime: 12)
         let entry = PlanUtilizationHistoryEntry(
@@ -199,5 +199,22 @@ struct NativeOrbitRowBuildCacheTests {
         #expect(entry == twin)
         #expect(entry.hashValue == twin.hashValue)
         #expect(entry != PlanUtilizationHistoryEntry(capturedAt: self.now, usedPercent: 3, resetsAt: nil))
+        // A named lane's descriptor and a backfilled period come back from there too, alone or together.
+        let descriptor = NativeOrbitQuotaDescriptor(label: "Fable only", windowMinutes: 10080)
+        let named = PlanUtilizationHistoryEntry(
+            capturedAt: self.now, usedPercent: 3, resetsAt: self.now, quotaDescriptor: descriptor)
+        #expect(named.quotaDescriptor == descriptor)
+        #expect(named.nativeMetrics == nil)
+        #expect(named.historicalPeriod == nil)
+        #expect(named == PlanUtilizationHistoryEntry(
+            capturedAt: self.now, usedPercent: 3, resetsAt: self.now, quotaDescriptor: descriptor))
+        #expect(named != PlanUtilizationHistoryEntry(capturedAt: self.now, usedPercent: 3, resetsAt: self.now))
+        let both = PlanUtilizationHistoryEntry(
+            capturedAt: self.now, usedPercent: 3, resetsAt: nil, nativeMetrics: metrics, quotaDescriptor: descriptor)
+        #expect(both.quotaDescriptor == descriptor)
+        #expect(both.nativeMetrics == metrics)
+        #expect(both != named)
+        let encoded = try JSONEncoder().encode([entry, named, both])
+        #expect(try JSONDecoder().decode([PlanUtilizationHistoryEntry].self, from: encoded) == [entry, named, both])
     }
 }

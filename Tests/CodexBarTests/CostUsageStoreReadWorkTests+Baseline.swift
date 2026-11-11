@@ -9,6 +9,26 @@ import CSQLite3
 #endif
 
 extension CostUsageStoreReadWorkTests {
+    @Test(arguments: [true, false])
+    func `a store can be told not to keep its scan baseline between scans`(keeps: Bool) async throws {
+        let fixture = try ReadWorkFixture(fileCount: 2, rowsPerFile: 4)
+        defer { fixture.remove() }
+        // The same database through a store of its own, as the app's shared stores are made.
+        let store = CostUsageStore(
+            cacheRoot: fixture.options.cacheRoot, home: fixture.store.home, keepsScanBaselineBetweenScans: keeps)
+        let first = store.syncLoadCodexScan(calendar: fixture.calendar)
+        #expect(first.cache.files.count == 2)
+        #expect(await store.retainedCodexBaselineCountForTesting == 1)
+        #expect(await store.retainedCodexScanCountForTesting == (keeps ? 1 : 0))
+        first.release()
+        #expect(await store.retainedCodexBaselineCountForTesting == 0)
+        #expect(await store.retainedCodexScanCountForTesting == (keeps ? 1 : 0))
+        // Either way the next scan starts from the same content.
+        let second = store.syncLoadCodexScan(calendar: fixture.calendar)
+        defer { second.release() }
+        #expect(second.cache == first.cache)
+    }
+
     @Test(arguments: [2, 16])
     func `unchanged scan receipt skips persisted histories`(fileCount: Int) async throws {
         let fixture = try ReadWorkFixture(fileCount: fileCount, rowsPerFile: fileCount == 2 ? 4 : 64)

@@ -64,6 +64,31 @@ extension KeyedDecodingContainer {
     }
 }
 
+extension CostUsageClaudeRowDonors {
+    private static func sameBytes(_ lhs: String?, _ rhs: String?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil): true
+        case let (lhs?, rhs?): lhs.utf8.elementsEqual(rhs.utf8)
+        default: false
+        }
+    }
+
+    /// Whether `donor` says everything `row` does, byte for byte, and at most adds the organization.
+    fileprivate static func subsumes(
+        _ donor: CostUsageScanner.ClaudeUsageRow, _ row: CostUsageScanner.ClaudeUsageRow) -> Bool
+    {
+        donor.timestampUnixMs == row.timestampUnixMs && donor.input == row.input && donor.output == row.output
+            && donor.cacheRead == row.cacheRead && donor.cacheCreate == row.cacheCreate
+            && donor.cacheCreate1h == row.cacheCreate1h && donor.costNanos == row.costNanos
+            && donor.costPriced == row.costPriced && donor.isIncomplete == row.isIncomplete
+            && donor.isSidechain == row.isSidechain && donor.pathRole == row.pathRole
+            && self.sameBytes(donor.messageId, row.messageId) && self.sameBytes(donor.requestId, row.requestId)
+            && self.sameBytes(donor.sessionId, row.sessionId) && self.sameBytes(donor.dayKey, row.dayKey)
+            && self.sameBytes(donor.model, row.model)
+            && (row.organizationID == nil || self.sameBytes(donor.organizationID, row.organizationID))
+    }
+}
+
 /// The same transcripts are kept in two artifacts, one for each report window, and each row carries two request
 /// ids of about thirty bytes that no string can hold inline. Decoded separately those ids alone came to more than
 /// a hundred megabytes twice over. The second artifact decoded takes its strings from the first.
@@ -80,6 +105,10 @@ final class CostUsageClaudeRowDonors: @unchecked Sendable {
         guard !rows.isEmpty,
               let donor = self.files.lazy.compactMap({ $0[path]?.usage?.claudeRows }).first(where: { !$0.isEmpty })
         else { return rows }
+        // The whole transcript, when the donor holds the same rows: one array for both artifacts. The donor's rows
+        // may know an organization these do not (the history artifact attributes its rows, the 30-day one's older
+        // rows predate that), never the other way round, so nothing these rows say is lost by taking them.
+        if donor.count == rows.count, zip(rows, donor).allSatisfy({ Self.subsumes($1, $0) }) { return donor }
         var known: [String: String] = [:]
         known.reserveCapacity(donor.count * 2 + 8)
         func offer(_ value: String?) {

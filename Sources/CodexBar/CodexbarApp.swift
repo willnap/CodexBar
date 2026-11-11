@@ -610,13 +610,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func installTerminationSignalHandler() {
         guard self.terminationSignalSource == nil, !SettingsStore.isRunningTests else { return }
         signal(SIGTERM, SIG_IGN)
-        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .global(qos: .userInitiated))
         source.setEventHandler {
-            MainActor.assumeIsolated { NSApp.terminate(nil) }
+            // `terminate` waits in a nested run loop for what is being written, and some of that work runs on the
+            // main actor. Started from a block of the main dispatch queue, the nested loop cannot drain that
+            // queue (it is already inside one of its blocks) and the app hangs half quit. So it is started as a
+            // run-loop block instead, and a quit that still has not finished is ended outright: a process that
+            // was told to stop must never be left standing beside its replacement.
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.terminationGrace) {
+                _exit(EXIT_SUCCESS)
+            }
+            CFRunLoopPerformBlock(CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue) {
+                MainActor.assumeIsolated { NSApp.terminate(nil) }
+            }
+            CFRunLoopWakeUp(CFRunLoopGetMain())
         }
         source.resume()
         self.terminationSignalSource = source
     }
+
+    /// How long a quit asked for by signal may take to write its state before the process exits regardless.
+    private nonisolated static let terminationGrace: TimeInterval = 12
 
     func applicationWillTerminate(_ notification: Notification) {
         NativeOrbitSystemSignals.shared.stop()

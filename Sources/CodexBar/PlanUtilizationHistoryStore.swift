@@ -117,30 +117,77 @@ struct PlanUtilizationHistoryEntry: Codable, Equatable, Hashable, Sendable {
     let capturedAt: Date
     let usedPercent: Double
     let resetsAt: Date?
-    let historicalPeriod: PlanUtilizationHistoricalPeriod?
-    /// Only metric receipts carry one. It is several hundred bytes, so it lives out of line: the quota readings
-    /// that make up almost every series, by the thousand, are copied, grouped and sorted on every row build and
-    /// would otherwise each move an empty slot of that size.
-    private let metricsStorage: MetricsStorage?
-    let quotaDescriptor: NativeOrbitQuotaDescriptor?
+    /// Everything a plain quota reading does not carry: a metric receipt (several hundred bytes), a backfilled
+    /// period, a named lane's descriptor. Inline they made every reading 152 bytes, nearly all of it empty, and
+    /// the readings are held, copied, grouped and sorted by the hundred thousand. Out of line a reading is 40.
+    private let extras: Extras?
 
-    var nativeMetrics: NativeOrbitMetricObservation? {
-        self.metricsStorage?.value
+    var historicalPeriod: PlanUtilizationHistoricalPeriod? {
+        self.extras?.historicalPeriod
     }
 
-    private final class MetricsStorage: Hashable, Sendable {
-        let value: NativeOrbitMetricObservation
+    var nativeMetrics: NativeOrbitMetricObservation? {
+        self.extras?.metrics
+    }
 
-        init(_ value: NativeOrbitMetricObservation) {
-            self.value = value
+    var quotaDescriptor: NativeOrbitQuotaDescriptor? {
+        self.extras?.quotaDescriptor
+    }
+
+    private final class Extras: Hashable, Sendable {
+        let metrics: NativeOrbitMetricObservation?
+        let historicalPeriod: PlanUtilizationHistoricalPeriod?
+        let quotaDescriptor: NativeOrbitQuotaDescriptor?
+
+        init(
+            metrics: NativeOrbitMetricObservation?,
+            historicalPeriod: PlanUtilizationHistoricalPeriod?,
+            quotaDescriptor: NativeOrbitQuotaDescriptor?)
+        {
+            self.metrics = metrics
+            self.historicalPeriod = historicalPeriod
+            self.quotaDescriptor = quotaDescriptor
         }
 
-        static func == (lhs: MetricsStorage, rhs: MetricsStorage) -> Bool {
-            lhs === rhs || lhs.value == rhs.value
+        static func == (lhs: Extras, rhs: Extras) -> Bool {
+            lhs === rhs || (lhs.quotaDescriptor == rhs.quotaDescriptor
+                && lhs.historicalPeriod == rhs.historicalPeriod && lhs.metrics == rhs.metrics)
         }
 
         func hash(into hasher: inout Hasher) {
-            hasher.combine(self.value)
+            hasher.combine(self.metrics)
+            hasher.combine(self.historicalPeriod)
+            hasher.combine(self.quotaDescriptor)
+        }
+
+        /// Every reading of a named lane carries the same descriptor, so those readings share one instance
+        /// instead of each owning a copy. Descriptors are a handful of lane names; the table stops growing
+        /// long before it could matter.
+        private static let shared = Shared()
+
+        private final class Shared: @unchecked Sendable {
+            private let lock = NSLock()
+            private var byDescriptor: [NativeOrbitQuotaDescriptor: Extras] = [:]
+
+            func extras(for descriptor: NativeOrbitQuotaDescriptor) -> Extras {
+                self.lock.withLock {
+                    if let existing = self.byDescriptor[descriptor] { return existing }
+                    let extras = Extras(metrics: nil, historicalPeriod: nil, quotaDescriptor: descriptor)
+                    if self.byDescriptor.count < 4096 { self.byDescriptor[descriptor] = extras }
+                    return extras
+                }
+            }
+        }
+
+        static func make(
+            metrics: NativeOrbitMetricObservation?,
+            historicalPeriod: PlanUtilizationHistoricalPeriod?,
+            quotaDescriptor: NativeOrbitQuotaDescriptor?) -> Extras?
+        {
+            if metrics == nil, historicalPeriod == nil {
+                return quotaDescriptor.map(self.shared.extras(for:))
+            }
+            return Extras(metrics: metrics, historicalPeriod: historicalPeriod, quotaDescriptor: quotaDescriptor)
         }
     }
 
@@ -161,9 +208,8 @@ struct PlanUtilizationHistoryEntry: Codable, Equatable, Hashable, Sendable {
         self.capturedAt = capturedAt
         self.usedPercent = usedPercent
         self.resetsAt = resetsAt
-        self.historicalPeriod = historicalPeriod
-        self.metricsStorage = nativeMetrics.map(MetricsStorage.init)
-        self.quotaDescriptor = quotaDescriptor
+        self.extras = Extras.make(
+            metrics: nativeMetrics, historicalPeriod: historicalPeriod, quotaDescriptor: quotaDescriptor)
     }
 
     init(from decoder: any Decoder) throws {
@@ -175,13 +221,11 @@ struct PlanUtilizationHistoryEntry: Codable, Equatable, Hashable, Sendable {
         } else {
             try values.decode(Date.self, forKey: .capturedAt)
         }
-        self.metricsStorage = try values.decodeIfPresent(NativeOrbitMetricObservation.self, forKey: .nativeMetrics)
-            .map(MetricsStorage.init)
-        self.quotaDescriptor = try values.decodeIfPresent(NativeOrbitQuotaDescriptor.self, forKey: .quotaDescriptor)
         self.usedPercent = try values.decode(Double.self, forKey: .usedPercent)
-        self.historicalPeriod = try values.decodeIfPresent(
-            PlanUtilizationHistoricalPeriod.self,
-            forKey: .historicalPeriod)
+        self.extras = try Extras.make(
+            metrics: values.decodeIfPresent(NativeOrbitMetricObservation.self, forKey: .nativeMetrics),
+            historicalPeriod: values.decodeIfPresent(PlanUtilizationHistoricalPeriod.self, forKey: .historicalPeriod),
+            quotaDescriptor: values.decodeIfPresent(NativeOrbitQuotaDescriptor.self, forKey: .quotaDescriptor))
         self.resetsAt = if let exactReset, exactReset.isFinite {
             Date(timeIntervalSinceReferenceDate: exactReset)
         } else {

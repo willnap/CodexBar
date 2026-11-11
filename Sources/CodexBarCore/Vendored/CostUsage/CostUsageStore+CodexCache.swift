@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 extension CostUsageStore {
     static let defaultRowBudget = 25000
@@ -124,7 +125,7 @@ extension CostUsageStore {
             #endif
             // Keep the stamp established under the writer lock. The next load revalidates
             // it, including external commits or database replacement after COMMIT.
-            if !retained.tokenSnapshotsLoaded {
+            if !retained.tokenSnapshotsLoaded, self.keepsScanBaselineBetweenScans {
                 self.retainedCodexScan = retained
             }
             return result
@@ -1460,7 +1461,10 @@ enum CostUsageStoreAccess {
         private let capacity = 4
 
         func store(cacheRoot: URL?, home: String) -> CostUsageStore {
-            let candidate = CostUsageStore(cacheRoot: cacheRoot, home: home)
+            let candidate = CostUsageStore(
+                cacheRoot: cacheRoot,
+                home: home,
+                keepsScanBaselineBetweenScans: CostUsageStoreAccess.keepsScanBaselineBetweenScans)
             let key = candidate.databaseURL.standardizedFileURL.path
             return self.lock.withLock {
                 let store: CostUsageStore = if let index = self.entries
@@ -1475,6 +1479,14 @@ enum CostUsageStoreAccess {
                 return store
             }
         }
+    }
+
+    private static let scanBaselinePolicy = OSAllocatedUnfairLock(initialState: true)
+
+    /// What the shared stores made from now on are told; see `CostUsageStore.keepsScanBaselineBetweenScans`.
+    static var keepsScanBaselineBetweenScans: Bool {
+        get { self.scanBaselinePolicy.withLock { $0 } }
+        set { self.scanBaselinePolicy.withLock { $0 = newValue } }
     }
 
     private static let sharedReadStores = SharedStoreRegistry()
