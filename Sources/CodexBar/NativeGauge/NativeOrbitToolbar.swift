@@ -96,7 +96,7 @@ struct NativeOrbitToolbar: View {
             .contentShape(Capsule())
         }
         .glassEffect(.regular.interactive(), in: Capsule())
-        .help(self.issue?.detail ?? self.refreshHelp)
+        .overlay { NativeOrbitHoverHelp(text: self.issue?.detail ?? self.refreshHelp) }
         .accessibilityLabel(L("Refresh"))
         .accessibilityValue(self.issue.map { "\($0.label). \($0.detail)" } ?? "")
     }
@@ -105,15 +105,12 @@ struct NativeOrbitToolbar: View {
         TimelineView(.periodic(from: .now, by: 1)) { timeline in
             let now = max(timeline.date, self.state.now)
             // Wide columns read "5m ago"; a single column drops "ago" (or the whole label) before it would
-            // crowd the centered range control. A refresh issue adds its one word ("5m ago · Stale"), which
-            // outlasts the age when room runs out.
+            // crowd the centered range control. A refresh that went wrong changes the arrow, never this text.
             ViewThatFits(in: .horizontal) {
                 self.ageLabel(self.refreshText(at: now, compact: false), now: now)
                 self.ageLabel(self.refreshText(at: now, compact: true), now: now)
-                if self.issue != nil { self.ageLabel(nil, now: now) }
                 Color.clear.frame(width: 0, height: 0)
             }
-            .animation(self.reduceMotion ? nil : .smooth(duration: 0.3), value: self.issue)
             // The age appears with the columns it describes.
             .opacity(self.state.isReady ? 1 : 0)
             .animation(self.reduceMotion ? nil : .smooth(duration: 0.35), value: self.state.isReady)
@@ -133,10 +130,9 @@ struct NativeOrbitToolbar: View {
             // The spinner sits on the arrow's center without widening the label, so the glyph keeps the
             // columns' inset and the age text never shifts.
             .overlay {
-                ProgressView()
-                    .controlSize(.small)
+                NativeOrbitSpinner(isSpinning: self.showingSpinner, size: 13)
                     .opacity(self.showingSpinner ? 1 : 0)
-                    .scaleEffect(self.showingSpinner ? 0.8 : 0.4)
+                    .scaleEffect(self.showingSpinner ? 1 : 0.5)
             }
             .frame(width: Self.refreshGlyphWidth, height: Self.rowHeight)
     }
@@ -146,23 +142,13 @@ struct NativeOrbitToolbar: View {
         self.state.isRefreshing ? nil : self.state.refreshIssue
     }
 
-    /// The age, then the issue's word in the arrow's orange; a nil age shows the word alone.
-    private func ageLabel(_ text: String?, now: Date) -> some View {
-        HStack(spacing: 0) {
-            if let text {
-                Text(text)
-                    .monospacedDigit()
-                    .contentTransition(.numericText(value: self.refreshAge(at: now)))
-                    .animation(self.reduceMotion ? nil : .smooth(duration: 0.3), value: text)
-            }
-            if let issue = self.issue {
-                Text(verbatim: text == nil ? issue.label : " · \(issue.label)")
-                    .foregroundStyle(Color.orange)
-                    .transition(.blurReplace)
-            }
-        }
-        .lineLimit(1)
-        .fixedSize()
+    private func ageLabel(_ text: String, now: Date) -> some View {
+        Text(text)
+            .monospacedDigit()
+            .contentTransition(.numericText(value: self.refreshAge(at: now)))
+            .animation(self.reduceMotion ? nil : .smooth(duration: 0.3), value: text)
+            .lineLimit(1)
+            .fixedSize()
     }
 
     private func pressRefresh() {
@@ -272,7 +258,7 @@ struct NativeOrbitToolbar: View {
     }
 }
 
-/// Why the toolbar's last refresh left a column behind: a word beside the age, and the full account for its help.
+/// What went wrong with the toolbar's last refresh, one entry for each column it left behind.
 struct NativeOrbitRefreshIssue: Equatable {
     enum Kind: Equatable {
         /// A column's own fetch failed.
@@ -283,8 +269,35 @@ struct NativeOrbitRefreshIssue: Equatable {
         case slow
     }
 
+    struct Entry: Equatable {
+        /// The service, where several share the toolbar.
+        var service: String?
+        /// The account, where the service shows several.
+        var account: String?
+        let message: String
+
+        var line: String {
+            let owner = [self.service, self.account].compactMap(\.self).joined(separator: " ")
+            return owner.isEmpty ? self.message : "\(owner): \(self.message)"
+        }
+    }
+
     let kind: Kind
-    let detail: String
+    let entries: [Entry]
+
+    init(kind: Kind, entries: [Entry]) {
+        self.kind = kind
+        self.entries = entries
+    }
+
+    init(kind: Kind, detail: String) {
+        self.init(kind: kind, entries: [.init(message: detail)])
+    }
+
+    /// One plain line for each column: whose reading it is, then why it was left as it was.
+    var detail: String {
+        self.entries.map(\.line).joined(separator: "\n")
+    }
 
     var label: String {
         switch self.kind {
@@ -292,6 +305,54 @@ struct NativeOrbitRefreshIssue: Equatable {
         case .stale: L("native_refresh_issue_stale")
         case .slow: L("native_refresh_issue_slow")
         }
+    }
+
+    /// Several services under one toolbar: every entry names its service, and the worst kind is the toolbar's.
+    static func combined(
+        _ issues: [(service: String, issue: NativeOrbitRefreshIssue?)]) -> NativeOrbitRefreshIssue?
+    {
+        let entries = issues.flatMap { service, issue in
+            (issue?.entries ?? []).map { Entry(service: service, account: $0.account, message: $0.message) }
+        }
+        let kinds = issues.compactMap(\.issue?.kind)
+        guard !entries.isEmpty, let kind = [Kind.failed, .slow, .stale].first(where: kinds.contains)
+        else { return nil }
+        return NativeOrbitRefreshIssue(kind: kind, entries: entries)
+    }
+}
+
+/// The system's indeterminate spinner as a symbol, so it is drawn in the same style as the glyph it stands in for.
+/// `ProgressView`'s AppKit indicator did not follow the glass it sat on: it came out white on light glass.
+struct NativeOrbitSpinner: View {
+    let isSpinning: Bool
+    let size: CGFloat
+
+    var body: some View {
+        Image(systemName: "progress.indicator")
+            .font(.system(size: self.size, weight: .medium))
+            .symbolEffect(.variableColor.iterative, options: .repeat(.continuous), isActive: self.isSpinning)
+            .accessibilityHidden(true)
+    }
+}
+
+/// Hover help held by an AppKit view of its own. The text is set only when it changes, so a label that redraws
+/// every second under the pointer cannot restart the hover delay, and the view takes no clicks from the control
+/// it covers.
+struct NativeOrbitHoverHelp: NSViewRepresentable {
+    let text: String
+
+    final class Anchor: NSView {
+        override func hitTest(_: NSPoint) -> NSView? { nil }
+    }
+
+    func makeNSView(context _: Context) -> Anchor {
+        let view = Anchor()
+        view.toolTip = self.text
+        return view
+    }
+
+    func updateNSView(_ view: Anchor, context _: Context) {
+        if view.toolTip != self.text { view.toolTip = self.text }
     }
 }
 

@@ -179,6 +179,8 @@ final class CostUsageClaudeReportMemo: @unchecked Sendable {
     private var entries: [(key: String, entry: Entry)] = []
     private var lastPersistedAt: [String: Date] = [:]
     private var persistInterval: TimeInterval = 0
+    /// Memos newer in memory than on disk, by key, with the artifact each belongs to.
+    private var unwritten: [String: String] = [:]
 
     /// How long a memo already on disk stands before it is written again. The file holds the whole report with
     /// every request slice (tens of megabytes), and a long-running app that rewrote it after every scan dirtied
@@ -230,11 +232,41 @@ final class CostUsageClaudeReportMemo: @unchecked Sendable {
             report: report,
             hasWindowScopedRows: hasWindowScopedRows)
         let shared = self.lock.withLock { self.installUnlocked(key: key, entry: entry) }
-        // The decoded source rows are released once the report is published, whether or not the memo is written.
-        defer { CostUsageClaudeFragments.shared.evict(at: URL(fileURLWithPath: canonicalCachePath)) }
-        guard self.claimPersist(key: key) else { return shared.report }
+        // The decoded source rows are released once the report is published, whether or not the memo is written
+        // (a process that scans for hours keeps them: see `CostUsageClaudeFragments.setRetainsDecodedValues`).
+        defer { CostUsageClaudeFragments.shared.releaseDecodedValues(at: URL(fileURLWithPath: canonicalCachePath)) }
+        guard self.claimPersist(key: key) else {
+            self.lock.withLock { self.unwritten[key] = canonicalCachePath }
+            return shared.report
+        }
+        self.lock.withLock { self.unwritten[key] = nil }
         Self.persist(shared, canonicalCachePath: canonicalCachePath)
         return shared.report
+    }
+
+    var hasUnwritten: Bool {
+        self.lock.withLock { !self.unwritten.isEmpty }
+    }
+
+    /// Writes every memo that is newer in memory than on disk, and returns how many there were. A memo left
+    /// older than its artifact does not vouch for it at the next launch, and the history report then parses every
+    /// transcript again from the start; so a process that spaces its writes out calls this before it exits.
+    @discardableResult
+    func persistUnwritten() -> Int {
+        let pending = self.lock.withLock { () -> [(entry: Entry, path: String)] in
+            let pending = self.unwritten.compactMap { key, path in
+                self.entries.first(where: { $0.key == key }).map { (entry: $0.entry, path: path) }
+            }
+            for key in self.unwritten.keys {
+                self.lastPersistedAt[key] = Date()
+            }
+            self.unwritten = [:]
+            return pending
+        }
+        for memo in pending {
+            Self.persist(memo.entry, canonicalCachePath: memo.path)
+        }
+        return pending.count
     }
 
     #if DEBUG
@@ -392,8 +424,15 @@ struct CostUsageClaudeCache: Codable {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
+            var usage = try container.decodeIfPresent(CostUsageFileUsage.self, forKey: .usage)
+            // Decoded as a value of the artifact's path dictionary, so the last coding key is this file's path.
+            if let rows = usage?.claudeRows, let path = decoder.codingPath.last?.stringValue,
+               let donors = decoder.userInfo[CostUsageClaudeRowDonors.key] as? CostUsageClaudeRowDonors
+            {
+                usage?.claudeRows = donors.sharing(rows, path: path)
+            }
             try self.init(
-                usage: container.decodeIfPresent(CostUsageFileUsage.self, forKey: .usage),
+                usage: usage,
                 sourceID: container.decodeIfPresent(String.self, forKey: .sourceID),
                 sourceKey: container.decodeIfPresent(String.self, forKey: .sourceKey),
                 dayBounds: container.decodeIfPresent(CostUsageClaudeDayBounds.self, forKey: .dayBounds),
@@ -620,5 +659,28 @@ public enum CostUsageLongRunningProcess {
     /// Call once at launch. A one-shot process never calls it and keeps writing every result at once.
     public static func adopt() {
         CostUsageClaudeReportMemo.shared.setPersistInterval(self.reportMemoPersistInterval)
+        CostUsageClaudeFragments.shared.setRetainsDecodedValues(true)
+    }
+
+    /// Whether a report memo in memory is newer than its file.
+    public static var hasUnwrittenReports: Bool {
+        CostUsageClaudeReportMemo.shared.hasUnwritten
+    }
+
+    /// Call before the process exits: writes the report memos that were held back by `reportMemoPersistInterval`,
+    /// so the next launch finds each one current with its artifact instead of parsing every transcript again.
+    @discardableResult
+    public static func persistBeforeExit() -> Int {
+        CostUsageClaudeReportMemo.shared.persistUnwritten()
+    }
+
+    /// Lets go of the Claude report engines' retained rows and indexes when the system is short of memory.
+    /// Returns how many engines were released. Reports already published are unaffected; the next scan rebuilds
+    /// an engine from the cache on disk, trading one slower scan for the memory.
+    @discardableResult
+    public static func releaseRebuildableScanState() -> Int {
+        // The decoded artifacts are the engines' own rows: both must go for any of it to be freed.
+        CostUsageClaudeFragments.shared.evictAll()
+        return CostUsageScanner.ClaudeReportEngine.Registry.shared.removeAll()
     }
 }

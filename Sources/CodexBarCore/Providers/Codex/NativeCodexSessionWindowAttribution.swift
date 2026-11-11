@@ -27,10 +27,10 @@ public struct NativeCodexSessionWindowTimeline: Sendable, Equatable {
     public init(observations: [NativeCodexQuotaSessionObservation], coverageStart: Date, coverageEnd: Date) {
         // Spark and other model-scoped limits use separate windows; only the main Codex limit names the account.
         let events = observations.compactMap { observation -> (Date, Date)? in
-            let weekly = [observation.snapshot.secondary, observation.snapshot.primary].compactMap(\.self)
+            let weekly = [observation.secondary, observation.primary].compactMap(\.self)
                 .first { $0.windowMinutes == Self.weeklyWindowMinutes && $0.resetsAt != nil }
             guard let reset = weekly?.resetsAt else { return nil }
-            return (observation.snapshot.updatedAt, reset)
+            return (observation.capturedAt, reset)
         }
         self.init(events: events, coverageStart: coverageStart, coverageEnd: coverageEnd)
     }

@@ -18,7 +18,51 @@ final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate
         self.button = button
         self.didClose = didClose
         super.init(nibName: nil, bundle: nil)
+        for controller in controllers {
+            controller.hiddenPresentationApplied = { [weak self] in
+                guard let self else { return false }
+                self.scheduleHiddenRender()
+                return true
+            }
+        }
     }
+
+    private var hiddenRenderTask: Task<Void, Never>?
+
+    /// An opening shows what is already drawn: `NSPopover.show` lays its content out before the window appears,
+    /// and drawing three pages of dials and charts there took a quarter of a second or more after mouse-down.
+    /// So the pages are drawn here, while the popup is closed, whenever what they show has changed.
+    private func scheduleHiddenRender() {
+        guard self.hiddenRenderTask == nil else { return }
+        self.hiddenRenderTask = Task { @MainActor [weak self] in
+            // Every service lands on the same beat; draw once for all of them.
+            try? await Task.sleep(for: .milliseconds(300))
+            guard let self else { return }
+            self.hiddenRenderTask = nil
+            self.renderWhileHidden()
+        }
+    }
+
+    /// Prepares the pages exactly as an opening would and draws them off screen. Also used once after launch, so
+    /// the first opening does not build everything from nothing.
+    func renderWhileHidden() {
+        guard self.popover?.isShown != true else { return }
+        // Until the popup has been shown once it is drawn with the ignition armed, as its first opening shows it.
+        if !self.startupLaunch.hasShown {
+            for controller in self.controllers {
+                controller.prearmCombinedStartup()
+            }
+        }
+        self.preparePages()
+        self.loadViewIfNeeded()
+        self.offscreenHost.render(
+            self.view,
+            size: self.preferredContentSize,
+            screen: self.button?.window?.screen,
+            appearance: self.popover?.effectiveAppearance)
+    }
+
+    private let offscreenHost = NativePopupOffscreenHost()
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
@@ -28,6 +72,11 @@ final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate
         for controller in self.controllers {
             controller.beginCombinedPresentation()
         }
+        self.preparePages()
+    }
+
+    /// The page inventory, size and opening position for the next showing. Safe to repeat while closed.
+    private func preparePages() {
         let sources = self.controllers.map { $0.combinedSource() }
         let model = NativeCombinedAccounts(connections: sources.map {
             .init(provider: $0.provider, accounts: $0.state.accounts, hasSavedAccounts: true)
@@ -37,8 +86,12 @@ final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate
             pageCount: self.pageCount,
             maximumWidth: self.maximumWidth,
             preferredWidth: Self.chosenWidth)
-        self.toolbar.layoutColumns = NativeCombinedPopupView.layoutColumns(width: self.preferredContentSize.width)
-        self.toolbar.accounts = self.controllers.flatMap(\.orbitState.accounts)
+        // Nothing below is written unless it changed: a write invalidates the pages, and an opening that resumes
+        // where the popup was left must find them exactly as they were drawn.
+        let columns = NativeCombinedPopupView.layoutColumns(width: self.preferredContentSize.width)
+        if self.toolbar.layoutColumns != columns { self.toolbar.layoutColumns = columns }
+        let accounts = self.controllers.flatMap(\.orbitState.accounts)
+        if self.toolbar.accounts != accounts { self.toolbar.accounts = accounts }
         let ids = [NativeCombinedAccounts.overviewID] + model.pages.map(\.id)
         let resumed = self.showing.resumed(validIDs: ids, now: Date())
         self.showing.begin(
@@ -107,6 +160,25 @@ final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate
             for controller in self.controllers {
                 controller.armCombinedStartup()
             }
+        } else {
+            for controller in self.controllers {
+                controller.releasePrearm()
+            }
+        }
+        self.resumeLapseTask?.cancel()
+        self.resumeLapseTask = nil
+    }
+
+    private var resumeLapseTask: Task<Void, Never>?
+
+    /// Left closed past the resume interval, the popup opens on the most recently used account instead of where it
+    /// was left. Draw that as soon as it becomes true, not inside the opening that finds it out.
+    private func scheduleResumeLapseRender() {
+        self.resumeLapseTask?.cancel()
+        self.resumeLapseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(NativeCombinedShowing.resumeInterval + 2))
+            guard let self, !Task.isCancelled else { return }
+            self.renderWhileHidden()
         }
     }
 
@@ -115,6 +187,7 @@ final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate
             controller.combinedPresentationDidShow()
         }
         self.showing.shown()
+        self.offscreenHost.releaseIfVacated(by: self.view)
         if self.startupLaunch.shown(self.startupOwner) {
             for controller in self.controllers {
                 controller.runCombinedStartup(in: self.view)
@@ -131,6 +204,9 @@ final class NativeCombinedPopoverController: NSViewController, NSPopoverDelegate
         // Release the pages built off screen now, while nothing is drawn, so the next opening updates only its own.
         self.showing.closed()
         if self.isViewLoaded { self.view.layoutSubtreeIfNeeded() }
+        // Draw the pages for where the popup was left, so reopening it at once is as immediate as later.
+        self.scheduleHiddenRender()
+        self.scheduleResumeLapseRender()
         self.didClose()
     }
 }
@@ -163,12 +239,85 @@ extension StatusItemController {
         let shown = combined ? Array(NativeCombinedAccounts(connections: connections, now: Date())
             .recentAccounts.prefix(2)) : []
         self.drawNativeCombinedGauges(shown)
+        if !combined { self.prewarmNativeServicePopupsOnce() }
         guard combined, let button = self.statusItem.button else { return }
         self.statusItem.menu = nil
         button.target = self
         button.action = #selector(self.nativeCombinedClicked(_:))
         button.sendAction(on: [.leftMouseDown, .rightMouseUp])
         button.setAccessibilityIdentifier("CodexBar.CombinedAccounts")
+        self.prewarmNativeCombinedPopupOnce()
+        self.runNativeCombinedOpenProbeIfRequested()
+    }
+
+    private static var didPrewarmCombinedPopup = false
+
+    /// Builds and draws the combined popup shortly after launch, off screen, so the first click finds it ready
+    /// instead of constructing every page while the person waits.
+    private func prewarmNativeCombinedPopupOnce() {
+        guard !Self.didPrewarmCombinedPopup, !SettingsStore.isRunningTests else { return }
+        Self.didPrewarmCombinedPopup = true
+        Task { @MainActor [weak self] in
+            // After the launch refresh has published its first readings.
+            try? await Task.sleep(for: .seconds(12))
+            guard let self, self.nativeCombinedPopover?.isShown != true, let button = self.statusItem.button,
+                  let (_, controller) = self.nativeCombinedPopover(button: button) else { return }
+            controller.renderWhileHidden()
+        }
+    }
+
+    private static var didPrewarmServicePopups = false
+
+    /// Without the combined popup each service has a popup of its own: build and draw those after launch too,
+    /// one at a time so the menu bar stays responsive in between.
+    private func prewarmNativeServicePopupsOnce() {
+        guard !Self.didPrewarmServicePopups, !SettingsStore.isRunningTests else { return }
+        Self.didPrewarmServicePopups = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(12))
+            for id in Array((self?.nativeServicePopovers ?? [:]).keys) {
+                guard let self, self.nativeCombinedProviders.isEmpty else { return }
+                (self.nativeServicePopovers[id]?.contentViewController as? NativeServicePopoverController)?
+                    .renderWhileHidden(loading: true)
+                try? await Task.sleep(for: .milliseconds(400))
+            }
+        }
+    }
+
+    private static var didStartCombinedOpenProbe = false
+
+    /// Opt-in (`--native-combined-open-probe`): opens and closes the combined popup through the click handler
+    /// itself, a few times after launch, so a sampler can see where an open spends its time on live data.
+    /// `CODEXBAR_OPEN_PROBE_HOLD` keeps each opening on screen that many seconds, and
+    /// `CODEXBAR_OPEN_PROBE_REFRESH=1` presses the toolbar's refresh as it opens, to sample a refresh under an
+    /// open popup.
+    private func runNativeCombinedOpenProbeIfRequested() {
+        guard !Self.didStartCombinedOpenProbe, CommandLine.arguments.contains("--native-combined-open-probe")
+        else { return }
+        Self.didStartCombinedOpenProbe = true
+        let environment = ProcessInfo.processInfo.environment
+        let delay = environment["CODEXBAR_OPEN_PROBE_DELAY"].flatMap(Double.init) ?? 60
+        let count = environment["CODEXBAR_OPEN_PROBE_COUNT"].flatMap(Int.init) ?? 6
+        let hold = environment["CODEXBAR_OPEN_PROBE_HOLD"].flatMap(Double.init) ?? 3
+        let refreshes = environment["CODEXBAR_OPEN_PROBE_REFRESH"] == "1"
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            for _ in 0..<count {
+                guard let self, let button = self.statusItem.button else { return }
+                self.nativeCombinedClicked(button)
+                if refreshes {
+                    try? await Task.sleep(for: .seconds(1))
+                    for controller in (self.nativeCombinedPopover?.contentViewController
+                        as? NativeCombinedPopoverController)?.controllers ?? []
+                    {
+                        controller.refreshUsage()
+                    }
+                }
+                try? await Task.sleep(for: .seconds(hold))
+                if self.nativeCombinedPopover?.isShown == true { self.nativeCombinedClicked(button) }
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
     }
 
     /// One button holds the full gauges of the one or two most recently used accounts, side by side.
@@ -210,13 +359,17 @@ extension StatusItemController {
         let waited = Self.clickWaitMilliseconds()
         guard let provider = self.nativeCombinedProviders.first,
               let (popover, controller) = self.nativeCombinedPopover(button: sender) else { return }
+        let found = opening.duration(to: .now)
         controller.prepareForShowing()
         popover.contentSize = controller.preferredContentSize
         self.nativeUsagePopover = popover
         self.nativeServiceRoute.toggle(provider)
         self.lastMenuProvider = provider.instanceID
+        let prepared = opening.duration(to: .now)
         NSApp.activate()
+        let activated = opening.duration(to: .now)
         popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+        let presented = opening.duration(to: .now)
         controller.view.window?.makeKey()
         self.nativePopoverOpened(provider: provider, popover: popover)
         let shown = opening.duration(to: .now)
@@ -229,6 +382,10 @@ extension StatusItemController {
                     "width": String(Int(controller.preferredContentSize.width)),
                     "waitedMilliseconds": String(format: "%.1f", waited),
                     "showMilliseconds": String(format: "%.1f", Self.milliseconds(shown)),
+                    // Where the handler spent it: finding the kept popup, preparing its pages, activating the
+                    // app, `NSPopover.show`, then making the window key and noting the open.
+                    "phases": [found, prepared - found, activated - prepared, presented - activated, shown - presented]
+                        .map { String(format: "%.0f", Self.milliseconds($0)) }.joined(separator: "/"),
                     "drawnMilliseconds": String(format: "%.1f", Self.milliseconds(opening.duration(to: .now))),
                 ])
         }
@@ -302,8 +459,13 @@ final class NativeCombinedShowing {
     @ObservationIgnored private(set) var closedAt: Date?
 
     func begin(openingID: String, leadingID: String? = nil, pageOrder: [String], width: CGFloat) {
+        // A showing that opens exactly where the last one was prepared changes nothing, and so redraws nothing.
+        let leading = leadingID ?? openingID
+        guard self.generation == 0 || self.openingID != openingID || self.openingLeadingID != leading
+            || self.pageOrder != pageOrder || self.width != width
+        else { return }
         self.openingID = openingID
-        self.openingLeadingID = leadingID ?? openingID
+        self.openingLeadingID = leading
         self.pageOrder = pageOrder
         self.width = width
         self.generation += 1

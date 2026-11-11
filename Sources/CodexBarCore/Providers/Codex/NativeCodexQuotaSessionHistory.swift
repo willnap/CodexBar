@@ -1,6 +1,98 @@
 import CoreFoundation
 import Foundation
 
+/// What one rate-limit event in a session log says: when, and the windows it reported.
+///
+/// A month of session logs holds tens of thousands of these, and the scanner keeps them all between scans. A whole
+/// `UsageSnapshot` for each (about 1.7 KB, nearly all of it fields a log event never fills) came to hundreds of
+/// megabytes, so only what an event carries is stored and the snapshot is made on request.
+struct NativeCodexQuotaSessionReading: Sendable {
+    /// The three numbers a log event gives for a window. A whole `RateWindow` is 128 bytes, most of it labels and
+    /// allowances no log event carries; two of them per reading were four fifths of what a reading weighed.
+    private struct Window: Sendable {
+        static let absent: Int32 = -1
+        static let withoutDuration: Int32 = -2
+        /// The window has fields this form cannot hold and is kept whole in `Rest`.
+        static let whole: Int32 = -3
+
+        var usedPercent = 0.0
+        /// Seconds since the reference date; not a number when the event gives no reset.
+        var resetsAt = Double.nan
+        var minutes = Window.absent
+
+        init(_ window: RateWindow?) {
+            guard let window else { return }
+            guard window.title == nil, window.resetDescription == nil, window.quotaLimit == nil,
+                  window.quotaUnit == nil, window.nextRegenPercent == nil, !window.isSyntheticPlaceholder,
+                  window.windowMinutes.map({ $0 >= 0 && $0 <= Int(Int32.max) }) ?? true
+            else {
+                self.minutes = Window.whole
+                return
+            }
+            self.usedPercent = window.usedPercent
+            self.resetsAt = window.resetsAt?.timeIntervalSinceReferenceDate ?? .nan
+            self.minutes = window.windowMinutes.map(Int32.init) ?? Window.withoutDuration
+        }
+
+        var window: RateWindow? {
+            guard self.minutes != Window.absent else { return nil }
+            return RateWindow(
+                usedPercent: self.usedPercent,
+                windowMinutes: self.minutes >= 0 ? Int(self.minutes) : nil,
+                resetsAt: self.resetsAt.isNaN ? nil : Date(timeIntervalSinceReferenceDate: self.resetsAt),
+                resetDescription: nil)
+        }
+    }
+
+    /// What few readings have: named extra windows, or a window that does not fit the compact form.
+    private final class Rest: Sendable {
+        let primary: RateWindow?
+        let secondary: RateWindow?
+        let extraRateWindows: [NamedRateWindow]?
+
+        init(primary: RateWindow?, secondary: RateWindow?, extraRateWindows: [NamedRateWindow]?) {
+            self.primary = primary
+            self.secondary = secondary
+            self.extraRateWindows = extraRateWindows
+        }
+    }
+
+    let updatedAt: Date
+    private let first: Window
+    private let second: Window
+    private let rest: Rest?
+
+    init(updatedAt: Date, primary: RateWindow?, secondary: RateWindow?, extraRateWindows: [NamedRateWindow]?) {
+        self.updatedAt = updatedAt
+        self.first = Window(primary)
+        self.second = Window(secondary)
+        let wholePrimary = self.first.minutes == Window.whole ? primary : nil
+        let wholeSecondary = self.second.minutes == Window.whole ? secondary : nil
+        self.rest = wholePrimary == nil && wholeSecondary == nil && extraRateWindows == nil ? nil : Rest(
+            primary: wholePrimary, secondary: wholeSecondary, extraRateWindows: extraRateWindows)
+    }
+
+    var primary: RateWindow? {
+        self.first.minutes == Window.whole ? self.rest?.primary : self.first.window
+    }
+
+    var secondary: RateWindow? {
+        self.second.minutes == Window.whole ? self.rest?.secondary : self.second.window
+    }
+
+    var extraRateWindows: [NamedRateWindow]? {
+        self.rest?.extraRateWindows
+    }
+
+    var snapshot: UsageSnapshot {
+        UsageSnapshot(
+            primary: self.primary,
+            secondary: self.secondary,
+            extraRateWindows: self.extraRateWindows,
+            updatedAt: self.updatedAt)
+    }
+}
+
 public struct NativeCodexQuotaSessionObservation: Equatable, Hashable, Sendable {
     /// Session quota events omit their authenticated account. The creator is never an event owner.
     public var workspaceAccountID: String? {
@@ -9,28 +101,58 @@ public struct NativeCodexQuotaSessionObservation: Equatable, Hashable, Sendable 
 
     /// Used solely to undo the old importer’s creator-based attribution; never identifies a reading’s owner.
     public let legacyCreatorAccountID: String?
-    public let snapshot: UsageSnapshot
+    let reading: NativeCodexQuotaSessionReading
+
+    public var snapshot: UsageSnapshot {
+        self.reading.snapshot
+    }
+
+    /// When the event was logged.
+    public var capturedAt: Date {
+        self.reading.updatedAt
+    }
+
+    public var primary: RateWindow? {
+        self.reading.primary
+    }
+
+    public var secondary: RateWindow? {
+        self.reading.secondary
+    }
+
+    init(legacyCreatorAccountID: String?, reading: NativeCodexQuotaSessionReading) {
+        self.legacyCreatorAccountID = legacyCreatorAccountID
+        self.reading = reading
+    }
+
+    public init(legacyCreatorAccountID: String?, snapshot: UsageSnapshot) {
+        self.init(legacyCreatorAccountID: legacyCreatorAccountID, reading: NativeCodexQuotaSessionReading(
+            updatedAt: snapshot.updatedAt,
+            primary: snapshot.primary,
+            secondary: snapshot.secondary,
+            extraRateWindows: snapshot.extraRateWindows))
+    }
 
     public static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.legacyCreatorAccountID == rhs.legacyCreatorAccountID && lhs.snapshot.updatedAt == rhs.snapshot.updatedAt
-            && lhs.snapshot.primary?.usedPercent == rhs.snapshot.primary?.usedPercent
-            && lhs.snapshot.primary?.windowMinutes == rhs.snapshot.primary?.windowMinutes
-            && lhs.snapshot.primary?.resetsAt == rhs.snapshot.primary?.resetsAt
-            && lhs.snapshot.secondary?.usedPercent == rhs.snapshot.secondary?.usedPercent
-            && lhs.snapshot.secondary?.windowMinutes == rhs.snapshot.secondary?.windowMinutes
-            && lhs.snapshot.secondary?.resetsAt == rhs.snapshot.secondary?.resetsAt
-            && lhs.snapshot.extraRateWindows == rhs.snapshot.extraRateWindows
+        lhs.legacyCreatorAccountID == rhs.legacyCreatorAccountID && lhs.reading.updatedAt == rhs.reading.updatedAt
+            && lhs.reading.primary?.usedPercent == rhs.reading.primary?.usedPercent
+            && lhs.reading.primary?.windowMinutes == rhs.reading.primary?.windowMinutes
+            && lhs.reading.primary?.resetsAt == rhs.reading.primary?.resetsAt
+            && lhs.reading.secondary?.usedPercent == rhs.reading.secondary?.usedPercent
+            && lhs.reading.secondary?.windowMinutes == rhs.reading.secondary?.windowMinutes
+            && lhs.reading.secondary?.resetsAt == rhs.reading.secondary?.resetsAt
+            && lhs.reading.extraRateWindows == rhs.reading.extraRateWindows
     }
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(self.legacyCreatorAccountID)
-        hasher.combine(self.snapshot.updatedAt)
-        for window in [self.snapshot.primary, self.snapshot.secondary] {
+        hasher.combine(self.reading.updatedAt)
+        for window in [self.reading.primary, self.reading.secondary] {
             hasher.combine(window?.usedPercent)
             hasher.combine(window?.windowMinutes)
             hasher.combine(window?.resetsAt)
         }
-        for named in self.snapshot.extraRateWindows ?? [] {
+        for named in self.reading.extraRateWindows ?? [] {
             hasher.combine(named.id)
             hasher.combine(named.title)
             hasher.combine(named.usageKnown)
@@ -53,7 +175,7 @@ public enum NativeCodexQuotaSessionHistoryParser {
     fileprivate struct State {
         var owners: Set<String> = []
         var invalidOwner = false
-        var snapshots: [UsageSnapshot] = []
+        var snapshots: [NativeCodexQuotaSessionReading] = []
 
         mutating func ingest(_ line: Data, now: Date) {
             let metadata = line.range(of: Data("\"session_meta\"".utf8)) != nil
@@ -100,19 +222,22 @@ public enum NativeCodexQuotaSessionHistoryParser {
                             window: $0)
                     },
                 ].compactMap(\.self)
-                self.snapshots.append(UsageSnapshot(
-                    primary: nil, secondary: nil, extraRateWindows: extra, updatedAt: capturedAt))
+                self.snapshots.append(NativeCodexQuotaSessionReading(
+                    updatedAt: capturedAt, primary: nil, secondary: nil, extraRateWindows: extra))
                 return
             }
-            self.snapshots.append(UsageSnapshot(
-                primary: windows.primary, secondary: windows.secondary, updatedAt: capturedAt))
+            self.snapshots.append(NativeCodexQuotaSessionReading(
+                updatedAt: capturedAt,
+                primary: windows.primary,
+                secondary: windows.secondary,
+                extraRateWindows: nil))
         }
 
         func observations(now: Date) -> [NativeCodexQuotaSessionObservation] {
             let creator = !self.invalidOwner && self.owners.count == 1 ? self.owners.first : nil
             let cutoff = now.addingTimeInterval(-32 * 86400)
             return self.snapshots.filter { $0.updatedAt >= cutoff && $0.updatedAt <= now }.map {
-                NativeCodexQuotaSessionObservation(legacyCreatorAccountID: creator, snapshot: $0)
+                NativeCodexQuotaSessionObservation(legacyCreatorAccountID: creator, reading: $0)
             }
         }
 
@@ -325,16 +450,16 @@ public actor NativeCodexQuotaSessionHistoryScanner {
                 observations.formUnion(parser.observations(now: now))
             }
             sorted = observations.sorted {
-                if $0.snapshot.updatedAt != $1.snapshot.updatedAt {
-                    return $0.snapshot.updatedAt < $1.snapshot.updatedAt
+                if $0.capturedAt != $1.capturedAt {
+                    return $0.capturedAt < $1.capturedAt
                 }
                 return ($0.legacyCreatorAccountID ?? "") < ($1.legacyCreatorAccountID ?? "")
             }
             self.collected = endsMidLine ? nil : (states, sorted)
         }
         let cutoff = now.addingTimeInterval(-32 * 86400)
-        let lower = sorted.partitioningIndex { $0.snapshot.updatedAt >= cutoff }
-        let upper = sorted.partitioningIndex { $0.snapshot.updatedAt > now }
+        let lower = sorted.partitioningIndex { $0.capturedAt >= cutoff }
+        let upper = sorted.partitioningIndex { $0.capturedAt > now }
         return lower < upper ? Array(sorted[lower..<upper]) : []
     }
 }

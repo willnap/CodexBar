@@ -108,6 +108,13 @@ final class NativeOrbitPopupState {
         self.traceStartup("arm")
     }
 
+    /// An armed face drawn before the popup appeared measures hovers from where the pointer is as it appears.
+    /// Nothing observed changes, so nothing is drawn again.
+    func refreshArmedPointer(_ location: CGPoint? = nil) {
+        self.startupHoverPolicy = NativeOrbitStartupHoverPolicy(armedPosition: location ?? NSEvent.mouseLocation)
+        self.reportedStationaryStartupHover = false
+    }
+
     /// One shared transaction per stage, across every column; SwiftUI interpolates the prepared geometry.
     func runStartup() async {
         self.traceStartup("runStart")
@@ -191,6 +198,7 @@ final class NativeOrbitPopupState {
 
     /// Populate expensive chart caches before interaction, never once per animation frame.
     func prepareStartupArtwork(screen: NSScreen?, appearance: NSAppearance? = nil) {
+        NativeOrbitWarningHDRRaster.retainStartupFrames()
         for account in self.accounts {
             self.prepare(account)
             var startupAccount = account
@@ -777,7 +785,7 @@ struct NativeOrbitPopupView: View {
                     .opacity(use.isSwitching ? 0 : 1)
                     .overlay {
                         if use.isSwitching {
-                            ProgressView().controlSize(.mini).transition(.opacity)
+                            NativeOrbitSpinner(isSpinning: true, size: 10).transition(.opacity)
                         }
                     }
                     .animation(self.reduceMotion ? nil : .smooth(duration: 0.2), value: use.isSwitching)

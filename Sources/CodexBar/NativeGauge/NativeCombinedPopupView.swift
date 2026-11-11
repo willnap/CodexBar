@@ -211,11 +211,12 @@ struct NativeCombinedPopupView: View {
                 .onChange(of: self.sources.map(\.state.isRefreshing), initial: true) {
                     self.toolbar.isRefreshing = self.sources.contains { $0.state.isRefreshing }
                 }
-                .onChange(of: self.sources.map { $0.state.refreshIssue?.detail }, initial: true) {
-                    let issues = self.sources.compactMap(\.state.refreshIssue)
-                    self.toolbar.refreshIssue = issues.isEmpty ? nil : .init(
-                        kind: .failed,
-                        detail: issues.map(\.detail).joined(separator: "\n"))
+                .onChange(of: self.sources.map(\.state.refreshIssue), initial: true) {
+                    self.toolbar.refreshIssue = NativeOrbitRefreshIssue.combined(self.sources.map {
+                        (
+                            ProviderDescriptorRegistry.descriptor(for: $0.provider).metadata.displayName,
+                            $0.state.refreshIssue)
+                    })
                 }
     }
 

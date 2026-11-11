@@ -63,3 +63,61 @@ extension KeyedDecodingContainer {
         return rows
     }
 }
+
+/// The same transcripts are kept in two artifacts, one for each report window, and each row carries two request
+/// ids of about thirty bytes that no string can hold inline. Decoded separately those ids alone came to more than
+/// a hundred megabytes twice over. The second artifact decoded takes its strings from the first.
+final class CostUsageClaudeRowDonors: @unchecked Sendable {
+    static let key = CodingUserInfoKey(rawValue: "costUsageClaudeRowDonors")!
+    private let files: [[String: CostUsageClaudeCache.File]]
+
+    init(_ files: [[String: CostUsageClaudeCache.File]]) {
+        self.files = files
+    }
+
+    /// `rows` with every long string replaced by the byte-identical one the donor transcript at `path` holds.
+    func sharing(_ rows: [CostUsageScanner.ClaudeUsageRow], path: String) -> [CostUsageScanner.ClaudeUsageRow] {
+        guard !rows.isEmpty,
+              let donor = self.files.lazy.compactMap({ $0[path]?.usage?.claudeRows }).first(where: { !$0.isEmpty })
+        else { return rows }
+        var known: [String: String] = [:]
+        known.reserveCapacity(donor.count * 2 + 8)
+        func offer(_ value: String?) {
+            // Small strings store their bytes inline; there is nothing to share.
+            if let value, value.utf8.count > 15 { known[value] = value }
+        }
+        for row in donor {
+            offer(row.messageId)
+            offer(row.requestId)
+            offer(row.sessionId)
+            offer(row.organizationID)
+            offer(row.model)
+        }
+        func shared(_ value: String?) -> String? {
+            // String equality folds NFC/NFD spellings; artifact bytes must remain exact.
+            guard let value, value.utf8.count > 15, let donated = known[value],
+                  donated.utf8.elementsEqual(value.utf8) else { return value }
+            return donated
+        }
+        return rows.map { row in
+            CostUsageScanner.ClaudeUsageRow(
+                dayKey: row.dayKey,
+                model: shared(row.model) ?? row.model,
+                sessionId: shared(row.sessionId),
+                messageId: shared(row.messageId),
+                requestId: shared(row.requestId),
+                timestampUnixMs: row.timestampUnixMs,
+                isSidechain: row.isSidechain,
+                pathRole: row.pathRole,
+                input: row.input,
+                cacheRead: row.cacheRead,
+                cacheCreate: row.cacheCreate,
+                cacheCreate1h: row.cacheCreate1h,
+                output: row.output,
+                costNanos: row.costNanos,
+                costPriced: row.costPriced,
+                isIncomplete: row.isIncomplete,
+                organizationID: shared(row.organizationID))
+        }
+    }
+}

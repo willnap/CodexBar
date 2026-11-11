@@ -161,7 +161,24 @@ enum NativeOrbitWarningHDRRaster {
     private static var glyphs: [GlyphKey: Glyph] = [:]
     private static var preparedFrames: [(frame: Frame, pixels: [Float16])] = []
     private static var preparedBytes = 0
-    private static let preparedFrameLimit = 96
+    private static var preparedFrameLimit = 96
+    /// What recurs once the ignition has run: the lamps lit on each column, in either appearance.
+    private static let liveFrameLimit = 16
+
+    /// The ignition's checkpoints are drawn once per launch, a megabyte and a half each for every column and
+    /// appearance. Once it has run, only the frames on screen come round again; the rest are let go.
+    static func retainLiveFramesOnly() {
+        self.preparedFrameLimit = self.liveFrameLimit
+        while self.preparedFrames.count > self.liveFrameLimit {
+            self.preparedBytes -= self.preparedFrames.removeFirst().pixels.count * MemoryLayout<Float16>.stride
+        }
+    }
+
+    /// An ignition is about to be prepared again (an account switch replays it): make room for its checkpoints.
+    static func retainStartupFrames() {
+        self.preparedFrameLimit = 96
+    }
+
     private static let preparedByteLimit = 128 * 1024 * 1024
     private static let measuresPerformance = CommandLine.arguments.contains("--preview-performance")
     private static var displayHits = 0

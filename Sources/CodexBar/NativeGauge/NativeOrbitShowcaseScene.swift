@@ -535,6 +535,8 @@ enum NativeOrbitShowcaseScene {
         ])
         self.showService(card, now: Date(), title: "CodexBar Native Trouble") { state in
             state.refreshIssue = .init(kind: .failed, detail: "Codex: the service returned 503 Service Unavailable.")
+            // The toolbar's spinner instead of its failed arrow, to check it against light and dark glass.
+            state.isRefreshing = CommandLine.arguments.contains("--preview-refreshing")
         }
     }
 

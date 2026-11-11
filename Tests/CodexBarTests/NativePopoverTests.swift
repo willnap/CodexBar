@@ -51,6 +51,8 @@ struct NativePopoverTests {
         #expect(content.presentationClockTask == nil)
         content.orbitState.now = Date.distantPast
         content.popoverWillShow(Notification(name: NSPopover.willShowNotification))
+        #expect(content.orbitState.now == .distantPast, "Nothing is redrawn before the popup is on screen")
+        content.popoverDidShow(Notification(name: NSPopover.didShowNotification))
         #expect(abs(content.orbitState.now.timeIntervalSinceNow) < 2)
         content.popoverDidClose(Notification(name: NSPopover.didCloseNotification))
         #expect(controller.manualRefreshTasks.isEmpty)

@@ -362,4 +362,42 @@ struct NativeOrbitWarningLayoutTests {
             }
         }
     }
+
+    @Test
+    func `lamps left lit after the bulb check never share ground`() {
+        typealias Kind = NativeOrbitWarningLight.Kind
+        // The pair that sat on top of each other on a two-lane Claude dial, then every pair on every dial.
+        for lanes in 1...3 {
+            let pair: [Kind] = [.limit, .newSavedReset]
+            let kept = NativeOrbitWarningLayout.positions(
+                lit: pair,
+                testing: false,
+                keepingCatalogue: true,
+                lanes: lanes)
+            #expect(!NativeOrbitWarningLayout.collide(pair, at: kept), "lanes \(lanes)")
+            // As drawn on a dial: around its company mark, product mark and plan badge.
+            let marks = NativeOrbitWarningLayout.identityReservations(lanes: lanes, hasCompany: true, hasBadge: true)
+            let around = NativeOrbitWarningLayout.positions(
+                lit: pair, testing: false, keepingCatalogue: true, lanes: lanes, reservedRegions: marks)
+            #expect(!NativeOrbitWarningLayout.collide(pair, at: around), "lanes \(lanes) around the marks")
+            var collisions: [String] = []
+            for (index, first) in Kind.allCases.enumerated() {
+                for second in Kind.allCases.dropFirst(index + 1) {
+                    let lit = [first, second]
+                    let positions = NativeOrbitWarningLayout.positions(
+                        lit: lit, testing: false, keepingCatalogue: true, lanes: lanes)
+                    if NativeOrbitWarningLayout.collide(lit, at: positions) { collisions.append("\(first)+\(second)") }
+                }
+            }
+            #expect(collisions.isEmpty, "lanes \(lanes): \(collisions.prefix(8))")
+        }
+        // While the check runs, every lamp keeps the catalogue's spot, and a lamp that collides with nothing
+        // stays there afterwards.
+        let catalogue = NativeOrbitWarningLayout.positions(for: Kind.allCases, lanes: 1)
+        let testing = NativeOrbitWarningLayout.positions(
+            lit: [.limit, .newSavedReset], testing: true, keepingCatalogue: true, lanes: 1)
+        #expect(testing[.limit] == catalogue[.limit])
+        let alone = NativeOrbitWarningLayout.positions(lit: [.limit], testing: false, keepingCatalogue: true, lanes: 1)
+        #expect(alone[.limit] == catalogue[.limit])
+    }
 }

@@ -14,6 +14,9 @@ extension StatusItemController {
             }
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
+                // The redesign's signature rebuilds every account row. Tracking fires once per registration, so
+                // waiting for the shared beat before registering again folds a burst of changes into one pass.
+                if self?.settings.usesNativeGauges == true { await NativeStoreChangePacer.waitForNextBeat() }
                 guard let self else { return }
                 self.observeStoreIconChanges()
                 let signature = self.storeIconObservationSignature()

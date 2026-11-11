@@ -2,6 +2,9 @@ import Foundation
 
 /// Every selectable range is ready before a range click; refreshes retain the preceding complete set.
 struct NativeCombinedChartPresentation {
+    /// How long the accounts must stay unchanged before a drawn chart is prepared again. Zero under test.
+    @MainActor static var settleDelay: Duration = SettingsStore.isRunningTests ? .zero : .seconds(2)
+
     struct Source: Equatable {
         let now: Date
         let ids: [String]
@@ -58,26 +61,40 @@ struct NativeCombinedChartPresentation {
         return true
     }
 
+    /// All ranges in one pass away from the main actor; see `NativeCombinedTokenHistory.prepare`.
     @MainActor static func prepare(
         request: Request, model: NativeCombinedAccounts, labels: [String: String]) async -> [Snapshot]?
     {
-        var snapshots: [Snapshot] = []
-        for days in NativeOrbitRangeControl.ranges {
-            let costs = model.summary(days: days, now: request.now).costs
-            let currency = costs.count == 1 ? costs.keys.first : nil
-            guard let history = await NativeCombinedTokenHistory.prepare(
-                model: model, days: days, now: request.now, moneyCurrency: currency) else { return nil }
-            snapshots.append(.init(
+        struct Range: Sendable {
+            let days: Int
+            let currency: String?
+            let history: NativeCombinedTokenHistory.Prepared
+        }
+        let detached = model.detached()
+        let now = request.now
+        let ranges: [Range]? = await NativeCombinedTokenHistory.away {
+            let model = detached.model()
+            var ranges: [Range] = []
+            for days in NativeOrbitRangeControl.ranges {
+                let costs = model.summary(days: days, now: now).costs
+                let currency = costs.count == 1 ? costs.keys.first : nil
+                guard let history = NativeCombinedTokenHistory.plot(
+                    model: model, days: days, now: now, moneyCurrency: currency) else { return nil }
+                ranges.append(Range(days: days, currency: currency, history: history))
+            }
+            return ranges
+        }
+        return ranges?.map { range in
+            Snapshot(
                 request: .init(
                     now: request.now,
-                    days: days,
-                    moneyCurrency: currency,
+                    days: range.days,
+                    moneyCurrency: range.currency,
                     ids: request.ids,
                     accounts: request.accounts),
-                history: history,
+                history: range.history,
                 model: model,
-                labels: labels))
+                labels: labels)
         }
-        return snapshots
     }
 }

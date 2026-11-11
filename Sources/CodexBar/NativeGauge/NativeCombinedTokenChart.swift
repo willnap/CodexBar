@@ -5,7 +5,7 @@ import SwiftUI
 
 /// Recorded totals in trailing windows, all accounts sharing the selected absolute unit and scale.
 struct NativeCombinedTokenHistory {
-    struct Point: Identifiable, Equatable {
+    struct Point: Identifiable, Equatable, Sendable {
         let date: Date
         let value: Double
         let segment: Int
@@ -15,13 +15,13 @@ struct NativeCombinedTokenHistory {
         }
     }
 
-    struct Series: Identifiable, Equatable {
+    struct Series: Identifiable, Equatable, Sendable {
         let id: String
         let points: [Point]
     }
 
     /// Both units are prepared together so selecting a unit never empties the plot or starts new work.
-    struct Prepared {
+    struct Prepared: Sendable {
         let tokenSeries: [Series]
         let moneySeries: [Series]
         let moneyCurrency: String?
@@ -103,17 +103,31 @@ struct NativeCombinedTokenHistory {
         return preparation.finish(model: model).series(for: metric)
     }
 
-    /// Opening, scrolling and account refreshes can interrupt preparation between plotted instants.
+    /// Every plotted instant reads every account's usage, seconds of work across the ranges. It runs away from the
+    /// main actor, on accounts with caches of their own, so opening, scrolling and hovering never wait for it.
     @MainActor static func prepare(
         model: NativeCombinedAccounts, days: Int, now: Date, moneyCurrency: String?) async -> Prepared?
     {
+        let detached = model.detached()
+        return await self.away {
+            Self.plot(model: detached.model(), days: days, now: now, moneyCurrency: moneyCurrency)
+        }
+    }
+
+    /// Nil when the task it runs in is cancelled between plotted instants.
+    static func plot(model: NativeCombinedAccounts, days: Int, now: Date, moneyCurrency: String?) -> Prepared? {
         var preparation = Preparation(moneyCurrency: moneyCurrency)
         for (sampleIndex, date) in self.dates(days: days, now: now).enumerated() {
-            await Task.yield()
             guard !Task.isCancelled else { return nil }
             preparation.append(model: model, days: days, date: date, sampleIndex: sampleIndex)
         }
         return preparation.finish(model: model)
+    }
+
+    /// Runs `work` off the main actor and cancels it with the caller.
+    static func away<Value: Sendable>(_ work: @escaping @Sendable () -> Value) async -> Value {
+        let task = Task.detached(priority: .userInitiated, operation: work)
+        return await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
     }
 }
 
@@ -204,7 +218,19 @@ struct NativeCombinedTokenChart: View {
             let input = self.input
             let model = self.model
             let labels = self.labels
+            let hasPrepared = self.presentation.visible != nil
             self.presentation.begin(input)
+            // Preparing every range reads every account's usage at each sample of the chart: seconds of work,
+            // done away from the main thread. A refresh changes the accounts every second for half a minute and
+            // each change restarts it, so with a complete set already drawn, wait for the changes to settle and
+            // for the pointer to rest before starting again.
+            if hasPrepared, NativeCombinedChartPresentation.settleDelay > .zero {
+                do { try await Task.sleep(for: NativeCombinedChartPresentation.settleDelay) } catch { return }
+                let deadline = ContinuousClock.now + NativeStoreChangePacer.longestInteractionDeferral
+                while NativePopupInteraction.isActive, ContinuousClock.now < deadline {
+                    do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
+                }
+            }
             if let snapshots = await NativeCombinedChartPresentation.prepare(
                 request: input, model: model, labels: labels),
                 !Task.isCancelled, self.input.source == input.source

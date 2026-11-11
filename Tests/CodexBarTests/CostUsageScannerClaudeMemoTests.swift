@@ -563,6 +563,132 @@ struct CostUsageScannerClaudeMemoTests {
         #expect(CostUsageClaudeFileStamp.read(at: source) == sourceStamp)
     }
 
+    // MARK: A process that scans for hours
+
+    @Test(arguments: [false, true])
+    func `a process that keeps its rows does not decode the artifact again for the next scan`(retains: Bool) throws {
+        try CostUsageClaudeFragments.$shared.withValue(CostUsageClaudeFragments(retainsDecodedValues: retains)) {
+            let env = try CostUsageTestEnvironment()
+            defer { env.cleanup() }
+            let day = try env.makeLocalNoon(year: 2026, month: 7, day: 1)
+            _ = try self.writeEvent(env: env, day: day, path: "project/first.jsonl", id: "first", input: 10)
+            let options = self.options(env: env)
+            _ = self.load(day: day, options: options)
+            // A new transcript: the scan must take the artifact up again to add it.
+            _ = try self.writeEvent(env: env, day: day, path: "project/second.jsonl", id: "second", input: 20)
+            let (next, work) = self.recordedLoad(day: day, options: options)
+            #expect(work.cacheDecodes == (retains ? 0 : 1))
+            #expect(work.transcriptParses == 1)
+            #expect(next.summary?.totalInputTokens == 30)
+            var forced = options
+            forced.forceRescan = true
+            let oracle = self.load(day: day, options: forced)
+            #expect(next.data == oracle.data)
+            #expect(next.summary == oracle.summary)
+        }
+    }
+
+    @Test
+    func `memos held back between writes are written before the process exits`() throws {
+        let memo = CostUsageClaudeReportMemo()
+        memo.setPersistInterval(3600)
+        try CostUsageClaudeReportMemo.$shared.withValue(memo) {
+            let env = try CostUsageTestEnvironment()
+            defer { env.cleanup() }
+            let day = try env.makeLocalNoon(year: 2026, month: 7, day: 1)
+            _ = try self.writeEvent(env: env, day: day, path: "project/first.jsonl", id: "first", input: 10)
+            let options = self.options(env: env)
+            _ = self.load(day: day, options: options)
+            #expect(!memo.hasUnwritten)
+            _ = try self.writeEvent(env: env, day: day, path: "project/second.jsonl", id: "second", input: 20)
+            let latest = self.load(day: day, options: options)
+            // The second report is in memory only: its file still describes the artifact before this scan.
+            #expect(memo.hasUnwritten)
+            #expect(memo.persistUnwritten() == 1)
+            #expect(!memo.hasUnwritten)
+            #expect(memo.persistUnwritten() == 0)
+            // A new process finds the memo current with its artifact and does no work at all.
+            CostUsageScanner.evictClaudeReportMemoForTesting(provider: .claude, cacheRoot: env.cacheRoot)
+            let (restarted, work) = self.recordedLoad(day: day, options: options)
+            #expect(restarted.data == latest.data)
+            #expect(restarted.summary == latest.summary)
+            #expect(work == CostUsageScanner.ClaudeScanWorkMetrics())
+        }
+    }
+
+    @Test
+    func `rows decoded for a second artifact take their strings from the first`() throws {
+        func row(message: String, request: String?, session: String) -> CostUsageScanner.ClaudeUsageRow {
+            CostUsageScanner.ClaudeUsageRow(
+                dayKey: "2026-07-01",
+                model: "claude-sonnet-4-20250514",
+                sessionId: session,
+                messageId: message,
+                requestId: request,
+                timestampUnixMs: 1,
+                isSidechain: false,
+                pathRole: .parent,
+                input: 1,
+                cacheRead: 2,
+                cacheCreate: 3,
+                cacheCreate1h: nil,
+                output: 4,
+                costNanos: 5,
+                costPriced: true,
+                isIncomplete: nil,
+                organizationID: nil)
+        }
+        /// A string with storage of its own, as a separate decode produces.
+        func fresh(_ text: String) -> String { String(bytes: Array(text.utf8), encoding: .utf8) ?? text }
+        func address(_ text: String?) -> UnsafeRawPointer? {
+            var text = text ?? ""
+            return text.withUTF8 { UnsafeRawPointer($0.baseAddress) }
+        }
+        let message = "msg_01AbCdEfGhIjKlMnOpQrStUvWx"
+        let request = "req_011CabcdefghijklmnopqrstuV"
+        let session = "0f8fad5b-d9cb-469f-a165-70867728950e"
+        let donorRow = row(message: fresh(message), request: fresh(request), session: fresh(session))
+        let encoder = JSONEncoder()
+        var usage = CostUsageFileUsage(
+            mtimeUnixMs: 1, size: 1, days: [:], parsedBytes: 1, codexCostCacheComplete: true, claudeRows: [donorRow])
+        let donorFile = try CostUsageClaudeCache.File(usage: usage, sourceID: nil, sourceKey: nil, encoder: encoder)
+        usage.claudeRows = []
+        let emptyFile = try CostUsageClaudeCache.File(usage: usage, sourceID: nil, sourceKey: nil, encoder: encoder)
+        let donors = CostUsageClaudeRowDonors([["/empty": emptyFile], ["/a": donorFile, "/empty": emptyFile]])
+
+        let decoded = [
+            row(message: fresh(message), request: fresh(request), session: fresh(session)),
+            row(message: fresh("msg_01ZZZZZZZZZZZZZZZZZZZZZZZZ"), request: nil, session: "short"),
+        ]
+        #expect(address(decoded[0].messageId) != address(donorRow.messageId))
+        let shared = donors.sharing(decoded, path: "/a")
+        #expect(shared == decoded)
+        #expect(address(shared[0].messageId) == address(donorRow.messageId))
+        #expect(address(shared[0].requestId) == address(donorRow.requestId))
+        #expect(address(shared[0].sessionId) == address(donorRow.sessionId))
+        // A request the donor does not have keeps its own string; a transcript it does not have is left alone.
+        #expect(address(shared[1].messageId) == address(decoded[1].messageId))
+        #expect(address(donors.sharing(decoded, path: "/missing")[0].messageId) == address(decoded[0].messageId))
+        #expect(address(donors.sharing(decoded, path: "/empty")[0].messageId) == address(decoded[0].messageId))
+        // Canonically equal spellings are different bytes, and an artifact's bytes stay exactly its own.
+        let composed = "session-caf\u{E9}-0123456789abcdef"
+        let decomposed = "session-cafe\u{301}-0123456789abcdef"
+        let accented = try CostUsageClaudeRowDonors(
+            [["/a": CostUsageClaudeCache.File(
+                usage: CostUsageFileUsage(
+                    mtimeUnixMs: 1,
+                    size: 1,
+                    days: [:],
+                    parsedBytes: 1,
+                    codexCostCacheComplete: true,
+                    claudeRows: [row(message: fresh(message), request: nil, session: composed)]),
+                sourceID: nil,
+                sourceKey: nil,
+                encoder: encoder)]])
+        let kept = accented.sharing([row(message: fresh(message), request: nil, session: decomposed)], path: "/a")
+        #expect(kept[0].sessionId.map { Array($0.utf8) } == Array(decomposed.utf8))
+    }
+
     private func options(
         env: CostUsageTestEnvironment,
         calendar: Calendar = .current) -> CostUsageScanner.Options

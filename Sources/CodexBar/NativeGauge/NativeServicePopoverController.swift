@@ -55,6 +55,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     /// wait behind presentation rebuilds; an open popup follows them promptly.
     private var isInCombinedPresentation = false
     private var presentationDirty = false
+    private var lastPresentationAppliedAt: ContinuousClock.Instant?
     private var presentationRefreshTask: Task<Void, Never>?
     private let startupOwner = UUID()
     private let startupLaunch: NativeOrbitStartupLaunch
@@ -138,6 +139,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         guard !self.hasPreparedPresentation else { return }
         self.hasPreparedPresentation = true
         self.store.prepareNativeAccountInventory(for: self.provider)
+        if !SettingsStore.isRunningTests { NativePopupInteraction.startMonitoring() }
         self.observePresentation()
         self.reloadClaudeLocalArchive()
     }
@@ -156,18 +158,81 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         }
     }
 
+    /// How far the charts' clock may trail the wall clock while no reading changes.
+    static let clockStep: TimeInterval = 20
+
+    /// The archive lanes are a union of thousands of readings: built again only when what they are built from
+    /// changes, and otherwise returned in the same storage so nothing downstream sees a change.
+    struct ArchiveMemo {
+        struct Input: Equatable {
+            let files: [PlanUtilizationSeriesHistory]
+            let buckets: PlanUtilizationHistoryBuckets?
+            let excluded: Set<String>
+            let provider: UsageProvider
+        }
+
+        private var input: Input?
+        private var output: [PlanUtilizationSeriesHistory] = []
+
+        mutating func value(
+            _ input: Input, build: (Input) -> [PlanUtilizationSeriesHistory]) -> [PlanUtilizationSeriesHistory]
+        {
+            if self.input == input { return self.output }
+            self.output = build(input)
+            self.input = input
+            return self.output
+        }
+    }
+
+    private var claudeArchiveMemo = ArchiveMemo()
+    private var kimiArchiveMemo = ArchiveMemo()
+
+    /// The ignition's armed face, drawn while the popup is still closed so the first opening after launch shows
+    /// it at once. Readings keep arriving underneath it; only a run on screen holds them back.
+    private(set) var isPrearmed = false
+
+    private var startupHoldsPresentation: Bool {
+        self.orbitState.startup.isActive && !self.isPrearmed
+    }
+
     private func observePresentation() {
-        guard !self.orbitState.startup.isActive, !self.holdsPresentation else {
+        guard !self.startupHoldsPresentation, !self.holdsPresentation else {
             self.presentationDirty = true
             return
         }
         self.presentationDirty = false
+        self.lastPresentationAppliedAt = .now
         withObservationTracking {
             self.refreshPresentation()
         } onChange: { [weak self] in
             DispatchQueue.main.async { [weak self] in self?.schedulePresentationRefresh() }
         }
+        if self.popover?.isShown != true, !self.isInCombinedPresentation,
+           self.hiddenPresentationApplied?() != true
+        {
+            self.renderWhileHidden()
+        }
     }
+
+    /// Called after a change was applied while no popup shows this service, so whoever keeps its pages can draw
+    /// them now, off screen, instead of inside the next opening. True when a combined popup took it.
+    var hiddenPresentationApplied: (() -> Bool)?
+
+    /// Draws this service's own popup off screen, so its next opening shows what is already drawn. The view is
+    /// built here only when asked (`loading`): while the combined popup shows this service, a second copy of every
+    /// chart would be kept for nothing.
+    func renderWhileHidden(loading: Bool = false) {
+        guard self.popover?.isShown != true, !self.isInCombinedPresentation, loading || self.isViewLoaded
+        else { return }
+        self.loadViewIfNeeded()
+        self.offscreenHost.render(
+            self.view,
+            size: self.preferredContentSize,
+            screen: self.statusButton?.window?.screen,
+            appearance: self.popover?.effectiveAppearance)
+    }
+
+    private let offscreenHost = NativePopupOffscreenHost()
 
     /// The next show rebuilds the presentation, as after a background change (used by the opt-in benchmark).
     func invalidatePresentation() {
@@ -179,13 +244,36 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     /// once.
     var hiddenPresentationDelay: Duration = .seconds(30)
 
+    /// How often a popup on screen takes a background change. A refresh publishes many over half a minute, and each
+    /// one applied rebuilds every dial and chart; at the old 150 ms that kept the main thread busy for the whole
+    /// sweep. A press of the toolbar's refresh still shows its result at once.
+    var shownPresentationInterval: Duration = SettingsStore.isRunningTests ? .zero : .milliseconds(900)
+    /// The longest a change waits for the pointer to come to rest, so a reading never stays old under a hand that
+    /// keeps moving.
+    var longestInteractionDeferral: Duration = .seconds(8)
+
     private func schedulePresentationRefresh() {
         self.presentationDirty = true
         guard self.presentationRefreshTask == nil, !self.holdsPresentation else { return }
-        let delay: Duration = (self.popover?.isShown == true || self.isInCombinedPresentation) ? .milliseconds(150) :
+        let isShown = self.popover?.isShown == true || self.isInCombinedPresentation
+        // Every page of the combined popup lands on the same shared beat, so its overview and charts are
+        // prepared once for all of them instead of once per service.
+        let delay: Duration = if isShown {
+            max(
+                NativeStoreChangePacer.delayToNextBeat(minimum: .milliseconds(150)),
+                self.lastPresentationAppliedAt.map { self.shownPresentationInterval - $0.duration(to: .now) } ?? .zero)
+        } else {
             self.hiddenPresentationDelay
+        }
         self.presentationRefreshTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: delay)
+            // Never rebuild the columns under a moving pointer: wait for the hand to rest, within a bound.
+            if isShown, let deferral = self?.longestInteractionDeferral {
+                let deadline = ContinuousClock.now + deferral
+                while !Task.isCancelled, NativePopupInteraction.isActive, ContinuousClock.now < deadline {
+                    try? await Task.sleep(for: .milliseconds(200))
+                }
+            }
             guard let self, !Task.isCancelled else { return }
             self.presentationRefreshTask = nil
             if self.presentationDirty { self.observePresentation() }
@@ -195,7 +283,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     private func refreshPresentation() {
         // Account receipts and archive scans can publish several times during a sweep. Keep the prepared
         // chart and glass trees stable until it ends, then apply the latest complete presentation once.
-        guard !self.orbitState.startup.isActive, !self.holdsPresentation else {
+        guard !self.startupHoldsPresentation, !self.holdsPresentation else {
             self.presentationDirty = true
             return
         }
@@ -204,7 +292,9 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         let metadata = self.store.metadata(for: self.provider)
         let statusURL = metadata.statusPageURL ?? metadata.statusLinkURL
         let hasStatusPage = statusURL.flatMap(URL.init(string:)) != nil
-        self.orbitState.accounts = accounts.map { account in
+        // Nothing observed is written unless it changed. A refresh publishes dozens of store changes that leave
+        // this service's columns as they were, and each write here redrew every dial and chart of the service.
+        let rows = accounts.map { account in
             var row = account
             if let update {
                 row.warnings = NativeOrbitWarningLight.merged(row.warnings + [update])
@@ -217,35 +307,67 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
             }
             return row
         }
+        var changed = false
+        if self.orbitState.accounts != rows {
+            self.orbitState.accounts = rows
+            changed = true
+        }
         let switched = self.startupSelection.receive(
             activeID: self.startupAccountOwner)
         // Provider-specific by design: Claude excludes only the exact owners already shown by ClaudeSwap rows.
-        self.orbitState.claudeLocalArchiveHistory = NativeOrbitClaudeLocalArchive.mergedHistories(
-            fileHistories: self.claudeFileArchiveHistory,
+        let claudeArchive = self.claudeArchiveMemo.value(.init(
+            files: self.claudeFileArchiveHistory,
             buckets: self.store.nativeHistoryAvailable(.claude) ? self.store.planUtilizationHistory[.claude] : nil,
-            excludingOwnerKeys: Set(self.store.claudeSwapAccountSnapshots.compactMap(
-                UsageStore.nativeOrbitClaudeHistoryKey)),
-            provider: self.provider)
+            excluded: Set(self.store.claudeSwapAccountSnapshots.compactMap(UsageStore.nativeOrbitClaudeHistoryKey)),
+            provider: self.provider))
+        {
+            NativeOrbitClaudeLocalArchive.mergedHistories(
+                fileHistories: $0.files, buckets: $0.buckets, excludingOwnerKeys: $0.excluded, provider: $0.provider)
+        }
+        if self.orbitState.claudeLocalArchiveHistory != claudeArchive {
+            self.orbitState.claudeLocalArchiveHistory = claudeArchive
+            changed = true
+        }
         // Provider-specific by design: anonymous Codex log readings stay outside every named account column.
-        self.orbitState.codexLocalArchiveHistory = self.provider == .codex && self.store.nativeHistoryAvailable(.codex)
+        let codexArchive = self.provider == .codex && self.store.nativeHistoryAvailable(.codex)
             ? (self.store.planUtilizationHistory[.codex]?.unscoped ?? []) : []
+        if self.orbitState.codexLocalArchiveHistory != codexArchive {
+            self.orbitState.codexLocalArchiveHistory = codexArchive
+            changed = true
+        }
         // Provider-specific by design: Kimi archives exclude only the accepted credential owner's bucket.
-        self.orbitState.kimiLocalArchiveHistory = self.provider == .kimi && self.store.nativeHistoryAvailable(.kimi)
-            ? NativeOrbitKimiLocalArchive.histories(
-                self.store.planUtilizationHistory[.kimi] ?? .init(),
-                excludingAcceptedOwnerKey: self.store.snapshot(for: UsageProvider.kimi.instanceID)
-                    .flatMap(UsageStore.nativeKimiHistoryAccountKey)) : []
-        self.orbitState.now = Date()
+        let kimiArchive = self.provider == .kimi && self.store.nativeHistoryAvailable(.kimi)
+            ? self.kimiArchiveMemo.value(.init(
+                files: [],
+                buckets: self.store.planUtilizationHistory[.kimi] ?? .init(),
+                excluded: Set([self.store.snapshot(for: UsageProvider.kimi.instanceID)
+                        .flatMap(UsageStore.nativeKimiHistoryAccountKey)].compactMap(\.self)),
+                provider: self.provider))
+            {
+                NativeOrbitKimiLocalArchive.histories(
+                    $0.buckets ?? .init(), excludingAcceptedOwnerKey: $0.excluded.first)
+            } : []
+        if self.orbitState.kimiLocalArchiveHistory != kimiArchive {
+            self.orbitState.kimiLocalArchiveHistory = kimiArchive
+            changed = true
+        }
+        // The clock moves with the readings, and otherwise in steps: every chart is drawn against it.
+        let date = Date()
+        if changed || date.timeIntervalSince(self.orbitState.now) >= Self.clockStep || date < self.orbitState.now {
+            self.orbitState.now = date
+        }
         // The spinner follows the toolbar's own load; background refreshes publish without one.
-        self.orbitState.isRefreshing = self.manualRefresh.isLoading
+        if self.orbitState.isRefreshing != self.manualRefresh.isLoading {
+            self.orbitState.isRefreshing = self.manualRefresh.isLoading
+        }
         if self.orbitState.refreshIssue != nil, !self.manualRefresh.isLoading {
-            self.orbitState.refreshIssue = Self.refreshIssue(
-                self.orbitState.accounts,
-                requestedAt: self.manualLoadStartedAt)
+            let issue = Self.refreshIssue(self.orbitState.accounts, requestedAt: self.manualLoadStartedAt)
+            if self.orbitState.refreshIssue != issue { self.orbitState.refreshIssue = issue }
         }
         self.updateSwitchingAvailability()
         let color = self.settings.accentColor(for: self.provider)
-        self.orbitState.accent = Color(red: color.red, green: color.green, blue: color.blue)
+        let accent = Color(red: color.red, green: color.green, blue: color.blue)
+        if self.orbitState.accent != accent { self.orbitState.accent = accent }
         let badgeKey = NativeOrbitBadgeResolver.identityKey(self.orbitState.accounts)
         if NativeOrbitBadgeResolver.shouldResolve(self.orbitState.accounts, previousKey: self.badgeIdentityKey) {
             self.badgeIdentityKey = badgeKey
@@ -255,11 +377,13 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
                 await NativeOrbitBadgeResolver.resolve(self.orbitState)
             }
         }
-        self.orbitState.startupHistoryReady = self.store.nativeHistoryAvailable(self.provider)
-        self.orbitState.startupStatusReady = !self.settings.statusChecksEnabled
+        let historyReady = self.store.nativeHistoryAvailable(self.provider)
+        if self.orbitState.startupHistoryReady != historyReady { self.orbitState.startupHistoryReady = historyReady }
+        let statusReady = !self.settings.statusChecksEnabled
             || (metadata.statusPageURL == nil && metadata.statusWorkspaceProductID == nil)
             || self.store.statuses[self.provider.instanceID] != nil
             || self.store.nativeStatusFetchFailures.contains(self.provider.instanceID)
+        if self.orbitState.startupStatusReady != statusReady { self.orbitState.startupStatusReady = statusReady }
         self.updateReadiness()
         let count = self.orbitState.layoutColumns
         let availableWidth = self.statusButton?.window?.screen?.visibleFrame.width ?? 1200
@@ -422,7 +546,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
         requestedAt: Date? = nil) -> NativeOrbitRefreshIssue?
     {
         var failed = false
-        let messages = accounts.compactMap { account -> String? in
+        let entries = accounts.compactMap { account -> NativeOrbitRefreshIssue.Entry? in
             let message: String
             if let status = account.statusText?.trimmingCharacters(in: .whitespacesAndNewlines), !status.isEmpty {
                 failed = true
@@ -434,10 +558,10 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
             } else {
                 return nil
             }
-            return accounts.count > 1 ? "\(account.label): \(message)" : message
+            return .init(account: accounts.count > 1 ? account.label : nil, message: message)
         }
-        guard !messages.isEmpty else { return nil }
-        return NativeOrbitRefreshIssue(kind: failed ? .failed : .stale, detail: messages.joined(separator: "\n"))
+        guard !entries.isEmpty else { return nil }
+        return NativeOrbitRefreshIssue(kind: failed ? .failed : .stale, entries: entries)
     }
 
     private static func freshnessTolerance(_ account: NativeOrbitAccountPresentation) -> TimeInterval {
@@ -448,10 +572,9 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     }
 
     private static func notRefreshedNotice(_ account: NativeOrbitAccountPresentation, measuredAt: Date) -> String {
-        let shown = L("Updated %@", NativeOrbitTooltip.moment(measuredAt, now: Date()))
         // Provider-specific by design: claude-swap paces Anthropic's usage API itself, so say why its row waited.
-        if case .claudeSwap = account.selection { return shown + "\n" + L("native_refresh_claude_swap_paced") }
-        return shown
+        if case .claudeSwap = account.selection { return L("native_refresh_claude_swap_paced") }
+        return L("Updated %@", NativeOrbitTooltip.moment(measuredAt, now: Date()))
     }
 
     func openSettings() {
@@ -491,9 +614,11 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
 
     func beginCombinedPresentation() {
         self.isInCombinedPresentation = true
-        self.cancelStartup()
+        // An armed face drawn ahead for this opening stays as it is.
+        if !self.isPrearmed { self.cancelStartup() }
         self.holdPendingPresentationWhileOpening()
-        self.orbitState.now = Date()
+        // The clock moves once the popup is on screen (`combinedPresentationDidShow`). Moving it here re-rendered
+        // every dial and chart inside `NSPopover.show`, before the window could appear.
         self.presentationClockTask?.cancel()
         self.presentationClockTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
@@ -508,13 +633,35 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     /// The combined popup's first opening after launch runs every service's ignition check together, as a
     /// service's own popup does: armed before it appears, run once it has.
     func armCombinedStartup() {
-        self.orbitState.armStartup(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        if self.isPrearmed, self.orbitState.startup == (reduceMotion ? .reduced : .armed) {
+            // Already drawn armed while closed: arming again would redraw every dial inside `NSPopover.show`.
+            self.orbitState.refreshArmedPointer()
+            return
+        }
+        self.orbitState.armStartup(reduceMotion: reduceMotion)
         self.orbitState.prepareStartupArtwork(
             screen: self.statusButton?.window?.screen,
             appearance: self.statusButton?.effectiveAppearance ?? NSApp.effectiveAppearance)
     }
 
+    /// Arms the ignition while the combined popup is closed and has not been shown since launch.
+    func prearmCombinedStartup() {
+        guard !self.isPrearmed, !self.isInCombinedPresentation, self.popover?.isShown != true else { return }
+        self.armCombinedStartup()
+        self.isPrearmed = true
+    }
+
+    /// Another popup ran the ignition first: return to the live face.
+    func releasePrearm() {
+        guard self.isPrearmed else { return }
+        self.isPrearmed = false
+        self.orbitState.finishStartup()
+        if self.presentationDirty { self.schedulePresentationRefresh() }
+    }
+
     func runCombinedStartup(in view: NSView) {
+        self.isPrearmed = false
         self.startupTask?.cancel()
         self.startupTask = Task { @MainActor [weak self] in
             view.layoutSubtreeIfNeeded()
@@ -525,12 +672,14 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
             await self.orbitState.runStartup()
             guard !Task.isCancelled else { return }
             self.startupTask = nil
+            NativeOrbitWarningHDRRaster.retainLiveFramesOnly()
             if self.presentationDirty { self.schedulePresentationRefresh() }
         }
     }
 
     /// The combined popup has finished appearing; see `popoverDidShow`.
     func combinedPresentationDidShow() {
+        self.orbitState.now = Date()
         self.applyPendingPresentationAfterShowing()
         self.reloadClaudeLocalArchive()
     }
@@ -563,9 +712,11 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     }
 
     func popoverWillShow(_ notification: Notification) {
-        self.orbitState.now = Date()
         if notification.object is NSPopover, self.startupLaunch.reserve(self.startupOwner) {
+            self.isPrearmed = false
             self.orbitState.armStartup(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        } else {
+            self.releasePrearm()
         }
         self.holdPendingPresentationWhileOpening()
         self.popover = notification.object as? NSPopover
@@ -594,6 +745,10 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     }
 
     func popoverDidShow(_ notification: Notification) {
+        // The clock moves once the popup is on screen. Moving it in `popoverWillShow` redrew every dial and
+        // chart inside `NSPopover.show`, before the window could appear.
+        self.orbitState.now = Date()
+        if self.isViewLoaded { self.offscreenHost.releaseIfVacated(by: self.view) }
         if notification.object is NSPopover, self.startupLaunch.shown(self.startupOwner) {
             self.startStartup()
         }
@@ -624,6 +779,7 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
             await self.orbitState.runStartup()
             guard !Task.isCancelled else { return }
             self.startupTask = nil
+            NativeOrbitWarningHDRRaster.retainLiveFramesOnly()
             if self.presentationDirty { self.observePresentation() }
         }
     }
@@ -633,10 +789,13 @@ final class NativeServicePopoverController: NSViewController, NSPopoverDelegate 
     }
 
     private func cancelStartup() {
+        self.isPrearmed = false
         self.startupTask?.cancel()
         self.startupTask = nil
         self.startupLaunch.cancel(self.startupOwner)
         self.orbitState.finishStartup()
+        // An ignition that was shown and then interrupted is over too.
+        if self.startupLaunch.hasShown { NativeOrbitWarningHDRRaster.retainLiveFramesOnly() }
         if self.presentationDirty { self.schedulePresentationRefresh() }
     }
 

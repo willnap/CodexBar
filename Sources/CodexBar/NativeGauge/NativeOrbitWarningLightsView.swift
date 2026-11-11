@@ -36,8 +36,9 @@ struct NativeOrbitWarningLightsView: View {
         let shown = NativeOrbitStartupChecks.shown(
             realLights: real, phase: phase, checkpoint: self.startupCheckpoint, readiness: self.startupReadiness)
         let positions = NativeOrbitWarningLayout.positions(
-            for: phase.testsLamps || self.keepsStartupPositions
-                ? NativeOrbitWarningLight.Kind.allCases : shown.map(\.kind),
+            lit: shown.map(\.kind),
+            testing: phase.testsLamps,
+            keepingCatalogue: self.keepsStartupPositions,
             lanes: self.lanes,
             reservedBounds: self.reservedBounds,
             reservedRegions: self.reservedRegions)

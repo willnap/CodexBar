@@ -20,6 +20,16 @@ extension CostUsageScanner {
             private let lock = NSLock()
             private var engines: [String: ClaudeReportEngine] = [:]
 
+            /// Forgets every engine. Each holds its transcripts' rows and the indexes over them, hundreds of
+            /// megabytes for a heavy history; the next scan builds what it needs again from the cache on disk.
+            func removeAll() -> Int {
+                self.lock.withLock {
+                    let count = self.engines.count
+                    self.engines.removeAll()
+                    return count
+                }
+            }
+
             func engine(cachePath: String, organizationID: String?) -> ClaudeReportEngine {
                 let key = cachePath + "\u{0}" + (organizationID ?? "")
                 return self.lock.withLock {
@@ -38,9 +48,31 @@ extension CostUsageScanner {
             let timeZoneIdentifier: String
         }
 
+        /// A row's place: its transcript, by number in `paths`, and its position there. Eight bytes instead of a
+        /// path string and an integer, for an index that holds one of these for every request ever scanned.
         private struct RowRef: Hashable {
-            let path: String
-            let index: Int
+            let file: UInt32
+            let index: UInt32
+        }
+
+        /// A request's identity in the index: 128 bits drawn from its canonical key. The key itself is two
+        /// strings; with a reference beside it the index cost 80 bytes a request, four times this, and several
+        /// engines each keep one. Two requests would have to agree on both halves to be confused, which at a
+        /// million requests is a chance of about one in 10^26. Order still comes from the keys themselves.
+        private struct RowID: Hashable {
+            let high: UInt64
+            let low: UInt64
+
+            init(_ key: ClaudeRowKey) {
+                var first = Hasher()
+                first.combine(0x9E37_79B9_7F4A_7C15 as UInt64)
+                first.combine(key)
+                var second = Hasher()
+                second.combine(0xC2B2_AE3D_27D4_EB4F as UInt64)
+                second.combine(key)
+                self.high = UInt64(bitPattern: Int64(first.finalize()))
+                self.low = UInt64(bitPattern: Int64(second.finalize()))
+            }
         }
 
         private struct FileState {
@@ -83,13 +115,17 @@ extension CostUsageScanner {
         private var catalog: ModelsDevCatalog?
         private var files: [String: FileState] = [:]
         private var sortedPaths: [String] = []
-        private var winners: [ClaudeRowKey: RowRef] = [:]
+        /// Every transcript the engine has seen since its last reset, numbered for `RowRef`.
+        private var paths: [String] = []
+        private var pathNumbers: [String: UInt32] = [:]
+        private var winners: [RowID: RowRef] = [:]
         /// Every transcript's best row, for the requests more than one transcript has.
-        private var sharedCandidates: [ClaudeRowKey: [RowRef]] = [:]
+        private var sharedCandidates: [RowID: [RowRef]] = [:]
         private var aggregates: [ClaudeDayModelKey: ClaudeReportAggregate] = [:]
         private var packedDays: [String: [String: [Int]]] = [:]
-        private var buckets = TemporalBuckets()
-        /// The buckets as the report lists them, in time order, kept in step with `buckets`.
+        /// The time buckets as the report lists them, in time order. A touched bucket is summed again from its
+        /// rows and replaced here; nothing else is kept of it. (A dictionary of every bucket beside these lists
+        /// was never read back, and with one entry per request instant it outweighed them several times over.)
         private var hourlyEntries: [CostUsageHourlyEntry] = []
         private var sliceEntries: [CostUsageTimedEntry] = []
 
@@ -148,11 +184,12 @@ extension CostUsageScanner {
             self.catalog = nil
             self.files = [:]
             self.sortedPaths = []
+            self.paths = []
+            self.pathNumbers = [:]
             self.winners = [:]
             self.sharedCandidates = [:]
             self.aggregates = [:]
             self.packedDays = [:]
-            self.buckets = TemporalBuckets()
             self.hourlyEntries = []
             self.sliceEntries = []
         }
@@ -196,23 +233,24 @@ extension CostUsageScanner {
                 if let replacement = replaced[path] { return replacement }
                 return self.files[path]
             }
-            var affected: Set<ClaudeRowKey> = []
-            var previousWinners: [ClaudeRowKey: ClaudeUsageRow] = [:]
-            func noteAffected(_ key: ClaudeRowKey) {
+            var affected: Set<RowID> = []
+            var previousWinners: [RowID: ClaudeUsageRow] = [:]
+            func noteAffected(_ key: RowID) {
                 guard affected.insert(key).inserted, let winner = self.winners[key] else { return }
-                previousWinners[key] = self.files[winner.path]?.rows[winner.index]
+                previousWinners[key] = self.files[self.paths[Int(winner.file)]]?.rows[Int(winner.index)]
             }
             // Withdraw every replaced transcript's rows before adding any, so a request moving between them is seen
             // once with all of its candidates.
             for (path, _) in replaced {
                 guard let old = self.files[path] else { continue }
+                let file = self.number(of: path)
                 for key in Self.localWinners(old).keys {
                     noteAffected(key)
                     if var shared = self.sharedCandidates[key] {
-                        shared.removeAll { $0.path == path }
+                        shared.removeAll { $0.file == file }
                         self.sharedCandidates[key] = shared.count > 1 ? shared : nil
                         self.winners[key] = shared.count == 1 ? shared[0] : self.winners[key]
-                    } else if self.winners[key]?.path == path {
+                    } else if self.winners[key]?.file == file {
                         self.winners[key] = nil
                     }
                 }
@@ -222,9 +260,10 @@ extension CostUsageScanner {
             }
             for (path, replacement) in replaced {
                 guard let new = replacement else { continue }
+                let file = self.number(of: path)
                 for (key, index) in Self.localWinners(new) {
                     noteAffected(key)
-                    let ref = RowRef(path: path, index: index)
+                    let ref = RowRef(file: file, index: UInt32(index))
                     if self.sharedCandidates[key] != nil {
                         self.sharedCandidates[key]?.append(ref)
                     } else if let current = self.winners[key] {
@@ -240,8 +279,10 @@ extension CostUsageScanner {
             for key in affected {
                 if let previous = previousWinners[key] { Self.touch(previous, range: range, into: &touched) }
                 let refs = self.sharedCandidates[key] ?? self.winners[key].map { [$0] } ?? []
-                let best = refs.compactMap { ref in state(ref.path).map { (ref: ref, row: $0.rows[ref.index]) } }
-                    .min { Self.precedes($0, $1) }
+                let best = refs.compactMap { ref -> (ref: RowRef, path: String, row: ClaudeUsageRow)? in
+                    let path = self.paths[Int(ref.file)]
+                    return state(path).map { (ref, path, $0.rows[Int(ref.index)]) }
+                }.min { Self.precedes($0, $1) }
                 self.winners[key] = best?.ref
                 if let best { Self.touch(best.row, range: range, into: &touched) }
             }
@@ -263,12 +304,7 @@ extension CostUsageScanner {
                 self.aggregates[key] = nil
                 self.packedDays[key.day]?[key.model] = nil
             }
-            for hour in touched.hours {
-                self.buckets.hourly[hour] = nil
-            }
-            for slice in touched.slices {
-                self.buckets.quotaSlices[slice] = nil
-            }
+            var buckets = TemporalBuckets()
             let hourTimes = touched.hours.map { hour -> ClosedRange<Int64> in
                 let start = Int64((hour.timeIntervalSince1970 * 1000).rounded(.down))
                 return start...(start + 3_600_000)
@@ -281,12 +317,14 @@ extension CostUsageScanner {
             var unkeyed: [ClaudeUsageRow] = []
             var keyed: [(key: ClaudeRowKey, row: ClaudeUsageRow)] = []
             for path in self.sortedPaths {
-                guard let state = self.files[path] else { continue }
+                guard let state = self.files[path], let file = self.pathNumbers[path] else { continue }
                 for index in state.indexes {
                     let row = state.rows[index]
                     guard mayCount(row) else { continue }
                     if let key = CostUsageScanner.claudeCanonicalRowKey(row) {
-                        if self.winners[key] == RowRef(path: path, index: index) { keyed.append((key, row)) }
+                        if self.winners[RowID(key)] == RowRef(file: file, index: UInt32(index)) {
+                            keyed.append((key, row))
+                        }
                     } else {
                         unkeyed.append(row)
                     }
@@ -324,10 +362,10 @@ extension CostUsageScanner {
                     }
                 }
                 if let hour, hourTouched {
-                    Self.add(row, cost: cost, to: &self.buckets.hourly[hour, default: HourlyBucket()])
+                    Self.add(row, cost: cost, to: &buckets.hourly[hour, default: HourlyBucket()])
                 }
                 if let timestamp, sliceTouched {
-                    Self.add(row, cost: cost, to: &self.buckets.quotaSlices[timestamp, default: HourlyBucket()])
+                    Self.add(row, cost: cost, to: &buckets.quotaSlices[timestamp, default: HourlyBucket()])
                 }
             }
             // A full rebuild keeps a day whose every total overflowed, and has no day without rows.
@@ -336,10 +374,10 @@ extension CostUsageScanner {
                 self.packedDays[day] = nil
             }
             self.hourlyEntries = Self.replacing(touched.hours, in: self.hourlyEntries, date: \.hour) { hour in
-                self.buckets.hourly[hour]?.hourlyEntry(hour: hour)
+                buckets.hourly[hour]?.hourlyEntry(hour: hour)
             }
             self.sliceEntries = Self.replacing(touched.slices, in: self.sliceEntries, date: \.timestamp) { time in
-                self.buckets.quotaSlices[time]?.timedEntry(timestamp: time)
+                buckets.quotaSlices[time]?.timedEntry(timestamp: time)
             }
         }
 
@@ -393,15 +431,24 @@ extension CostUsageScanner {
 
         /// Each request's best row in one transcript: as in a full rebuild, a later row replaces an earlier one only
         /// when it ranks better.
-        private static func localWinners(_ state: FileState) -> [ClaudeRowKey: Int] {
-            var winners: [ClaudeRowKey: Int] = [:]
+        private static func localWinners(_ state: FileState) -> [RowID: Int] {
+            var winners: [RowID: Int] = [:]
             for index in state.indexes {
                 let row = state.rows[index]
-                guard let key = CostUsageScanner.claudeCanonicalRowKey(row) else { continue }
+                guard let key = CostUsageScanner.claudeCanonicalRowKey(row).map(RowID.init) else { continue }
                 if let current = winners[key], Self.rank(state.rows[current]) <= Self.rank(row) { continue }
                 winners[key] = index
             }
             return winners
+        }
+
+        /// The transcript's number for `RowRef`, given on first sight and kept until the next reset.
+        private func number(of path: String) -> UInt32 {
+            if let number = self.pathNumbers[path] { return number }
+            let number = UInt32(self.paths.count)
+            self.paths.append(path)
+            self.pathNumbers[path] = number
+            return number
         }
 
         /// Smaller is better, in the full rebuild's order of tests: complete, then main conversation, then parent.
@@ -411,13 +458,13 @@ extension CostUsageScanner {
 
         /// The full rebuild's winner across transcripts: the best rank, then the earlier path, then the earlier row.
         private static func precedes(
-            _ lhs: (ref: RowRef, row: ClaudeUsageRow),
-            _ rhs: (ref: RowRef, row: ClaudeUsageRow)) -> Bool
+            _ lhs: (ref: RowRef, path: String, row: ClaudeUsageRow),
+            _ rhs: (ref: RowRef, path: String, row: ClaudeUsageRow)) -> Bool
         {
             let lhsRank = Self.rank(lhs.row)
             let rhsRank = Self.rank(rhs.row)
             if lhsRank != rhsRank { return lhsRank < rhsRank }
-            if lhs.ref.path != rhs.ref.path { return lhs.ref.path < rhs.ref.path }
+            if lhs.path != rhs.path { return lhs.path < rhs.path }
             return lhs.ref.index < rhs.ref.index
         }
     }

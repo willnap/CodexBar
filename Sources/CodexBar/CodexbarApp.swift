@@ -518,6 +518,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.dockIconController.start()
         self.memoryPressureMonitor.start()
         CostUsageLongRunningProcess.adopt()
+        self.installTerminationSignalHandler()
         Task { await OpenAIDashboardWebsiteDataStore.clearNetworkCaches() }
         #if DEBUG
         self.installDebugMemoryPressureObserverIfNeeded()
@@ -565,6 +566,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private var terminationSignalSource: (any DispatchSourceSignal)?
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !self.isWaitingForTerminationPersistence else { return .terminateLater }
         let serverStop = self.settings?.httpServer.stopForTermination()
@@ -575,11 +578,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let latestHistory = self.store.flatMap { store in
             store.planUtilizationHistoryLoaded ? store.planUtilizationHistory : nil
         }
-        guard save != nil || serverStop != nil || history != nil else { return .terminateNow }
+        // The scan's report memos are written at intervals while running; the last ones are written here.
+        let hasUnwrittenReports = CostUsageLongRunningProcess.hasUnwrittenReports
+        guard save != nil || serverStop != nil || history != nil || hasUnwrittenReports else {
+            return .terminateNow
+        }
         self.isWaitingForTerminationPersistence = true
         Task.detached {
             await save?.value
             await serverStop?.value
+            CostUsageLongRunningProcess.persistBeforeExit()
             if await history?.flushForTermination(latestSnapshot: latestHistory) == false {
                 CodexBarLog.logger("plan-history").error("Failed to persist latest quota history before termination")
             }
@@ -594,6 +602,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             CFRunLoopWakeUp(CFRunLoopGetMain())
         }
         return .terminateLater
+    }
+
+    /// A plain `kill` (and whatever else sends SIGTERM) quits the app the way its Quit command does, so what is
+    /// written on the way out is written then too. Left to the default action the process simply stopped: the
+    /// report memos stayed older than their artifacts, and the next launch parsed every Claude transcript again.
+    private func installTerminationSignalHandler() {
+        guard self.terminationSignalSource == nil, !SettingsStore.isRunningTests else { return }
+        signal(SIGTERM, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        source.setEventHandler {
+            MainActor.assumeIsolated { NSApp.terminate(nil) }
+        }
+        source.resume()
+        self.terminationSignalSource = source
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -852,6 +874,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ?? MemoryPressureCacheTrimSummary()
         summary.merge(statusSummary)
         summary.merge(storeSummary)
+        // The token-cost engines are the largest rebuildable state in the app.
+        CostUsageLongRunningProcess.releaseRebuildableScanState()
         return summary
     }
 

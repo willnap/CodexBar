@@ -1,3 +1,4 @@
+import AppKit
 import CodexBarCore
 import Foundation
 import Testing
@@ -250,13 +251,12 @@ struct NativePopoverRefreshTests {
             ], requested) == nil,
             "claude-swap measures an idle account every 10 minutes; within that schedule its reading is current")
         let overdue = requested.addingTimeInterval(-1200)
-        let overdueCaptured = L("Updated %@", NativeOrbitTooltip.moment(overdue, now: Date()))
         #expect(refreshIssue([
             account("Active", updatedAt: requested.addingTimeInterval(4)),
             account("Spare", updatedAt: overdue, claudeSwap: true),
         ], requested) == NativeOrbitRefreshIssue(
             kind: .stale,
-            detail: "Spare: \(overdueCaptured)\n\(L("native_refresh_claude_swap_paced"))"))
+            entries: [.init(account: "Spare", message: L("native_refresh_claude_swap_paced"))]))
         #expect(
             refreshIssue([account("Only", updatedAt: stale)], nil) == nil,
             "Age alone is no failure without a press")
@@ -286,7 +286,28 @@ struct NativePopoverRefreshTests {
         #expect(NativeServicePopoverController.refreshIssue([
             account("Work", status: " "),
             account("Home", status: "Rate limited"),
-        ]) == NativeOrbitRefreshIssue(kind: .failed, detail: "Home: Rate limited"))
+        ]) == NativeOrbitRefreshIssue(kind: .failed, entries: [.init(account: "Home", message: "Rate limited")]))
+    }
+
+    @Test func `one toolbar over several services names the service on every line and keeps the worst kind`() {
+        let stale = NativeOrbitRefreshIssue(kind: .stale, entries: [.init(account: "Spare", message: "Paced")])
+        let failed = NativeOrbitRefreshIssue(kind: .failed, detail: "Sign in required")
+        #expect(NativeOrbitRefreshIssue.combined([("Claude", nil), ("Codex", nil)]) == nil)
+        // A reading that was only left to its own pace is not reported as a failure.
+        let paced = NativeOrbitRefreshIssue.combined([("Claude", stale), ("Codex", nil)])
+        #expect(paced?.kind == .stale)
+        #expect(paced?.detail == "Claude Spare: Paced")
+        let both = NativeOrbitRefreshIssue.combined([("Claude", stale), ("Codex", failed)])
+        #expect(both?.kind == .failed)
+        #expect(both?.detail == "Claude Spare: Paced\nCodex: Sign in required")
+    }
+
+    @MainActor
+    @Test func `hover help keeps its text between redraws and takes no clicks`() {
+        let help = NativeOrbitHoverHelp.Anchor(frame: NSRect(x: 0, y: 0, width: 80, height: 30))
+        help.toolTip = "Codex: Sign in required"
+        #expect(help.hitTest(NSPoint(x: 10, y: 10)) == nil)
+        #expect(help.toolTip == "Codex: Sign in required")
     }
 }
 

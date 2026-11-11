@@ -98,6 +98,39 @@ enum NativeOrbitWarningLayout {
         }
     }
 
+    /// Where the lamps that are lit are drawn. During the bulb check that is the whole catalogue's map, and the
+    /// lamps left on afterwards stay where the check showed them so nothing moves as the test lamps go out. The
+    /// catalogue does not fit a dial with several lanes without sharing ground, though, and what the check may
+    /// spread across fifty lamps is not acceptable between two that stay lit: those take positions of their own.
+    static func positions(
+        lit: [Kind],
+        testing: Bool,
+        keepingCatalogue: Bool,
+        lanes: Int,
+        reservedBounds: CGRect? = nil,
+        reservedRegions: [CGRect] = []) -> [Kind: CGPoint]
+    {
+        func solve(_ kinds: [Kind]) -> [Kind: CGPoint] {
+            self.positions(for: kinds, lanes: lanes, reservedBounds: reservedBounds, reservedRegions: reservedRegions)
+        }
+        guard testing || keepingCatalogue else { return solve(lit) }
+        let catalogue = solve(Kind.allCases)
+        guard !testing, self.collide(lit, at: catalogue) else { return catalogue }
+        return solve(lit)
+    }
+
+    /// Whether any two of these lamps' ink comes within the layout's padding of each other at `positions`.
+    static func collide(_ kinds: [Kind], at positions: [Kind: CGPoint]) -> Bool {
+        let frames = Set(kinds).compactMap { kind in
+            positions[kind].map {
+                self.inkBounds(kind).offsetBy(dx: $0.x, dy: $0.y).insetBy(dx: -self.padding / 2, dy: -self.padding / 2)
+            }
+        }
+        return frames.indices.contains { a in
+            frames.indices.contains { b in a < b && frames[a].intersects(frames[b]) }
+        }
+    }
+
     /// Homes are proportional; actual 13 pt ink and padding are resolved at the current dial size.
     private static func canonicalPositions(
         for input: [Kind],

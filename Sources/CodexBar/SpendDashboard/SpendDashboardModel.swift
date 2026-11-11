@@ -49,7 +49,10 @@ struct SpendDashboardModel: Equatable, Sendable {
             self.provider = provider
             self.displayName = displayName
             self.modelProviderName = modelProviderName ?? displayName
-            self.snapshot = snapshot.droppingQuotaSlices()
+            // Provider-specific by design: the redesign splits a Codex home's requests between the accounts that
+            // served them by each request's own time, so Codex keeps its exact slices; every other capture
+            // releases them.
+            self.snapshot = provider == .codex ? snapshot : snapshot.droppingQuotaSlices()
             self.tokenActivityCache = tokenActivityCache
             self.sourceKind = sourceKind
         }

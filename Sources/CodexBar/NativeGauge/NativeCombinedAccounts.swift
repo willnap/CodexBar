@@ -149,6 +149,51 @@ struct NativeCombinedAccounts {
         }
     }
 
+    /// The same accounts for totals worked out away from the main actor. What a copy shares with the columns on
+    /// screen is storage nobody writes, and the day memo, which locks. The prepared history fills itself in as it
+    /// is read and is not safe from two threads, so the copy gives it up here and builds its own in `model`.
+    struct Detached: @unchecked Sendable {
+        fileprivate let pages: [Page]
+        fileprivate let recentAccounts: [Page]
+        fileprivate let capturedAt: Date
+        fileprivate let prepared: Set<String>
+
+        /// Call away from the main actor: rebuilding each prepared history is part of the work being moved.
+        func model() -> NativeCombinedAccounts {
+            func own(_ page: Page) -> Page {
+                guard self.prepared.contains(page.id) else { return page }
+                var account = page.account
+                account.metrics = account.metrics.preparingInspection(history: account.history)
+                return Page(provider: page.provider, account: account)
+            }
+            return NativeCombinedAccounts(
+                pages: self.pages.map(own), recentAccounts: self.recentAccounts, capturedAt: self.capturedAt)
+        }
+    }
+
+    func detached() -> Detached {
+        var prepared = Set<String>()
+        func released(_ page: Page) -> Page {
+            guard page.account.metrics.preparedHistory != nil else { return page }
+            prepared.insert(page.id)
+            var account = page.account
+            account.metrics.preparedHistory = nil
+            return Page(provider: page.provider, account: account)
+        }
+        return Detached(
+            pages: self.pages.map(released),
+            // Only the pages are read for totals; the recent pair keeps nothing prepared either.
+            recentAccounts: self.recentAccounts.map(released),
+            capturedAt: self.capturedAt,
+            prepared: prepared)
+    }
+
+    private init(pages: [Page], recentAccounts: [Page], capturedAt: Date) {
+        self.pages = pages
+        self.recentAccounts = recentAccounts
+        self.capturedAt = capturedAt
+    }
+
     /// The combined popup needs at least one connected provider to open, even when combining always.
     static func shouldCombine(_ connections: [Connection], always: Bool = false) -> Bool {
         let connected = Set(connections.filter(\.isConnected).map(\.provider)).count

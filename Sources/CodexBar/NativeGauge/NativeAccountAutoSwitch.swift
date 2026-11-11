@@ -204,7 +204,11 @@ final class NativeAccountSwitchController {
         let input = withObservationTracking {
             (self.currentAccounts(), self.automatic, self.allowed())
         } onChange: { [weak self] in
-            Task { @MainActor [weak self] in self?.observe() }
+            Task { @MainActor [weak self] in
+                // One evaluation per burst of store changes, on the beat the other row readers share.
+                await NativeStoreChangePacer.waitForNextBeat()
+                self?.observe()
+            }
         }
         self.evaluate(accounts: input.0, automatic: input.1, allowed: input.2)
     }

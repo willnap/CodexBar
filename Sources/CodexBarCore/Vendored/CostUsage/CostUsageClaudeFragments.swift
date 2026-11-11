@@ -52,8 +52,31 @@ final class CostUsageClaudeFragments: @unchecked Sendable {
     private let lock = NSLock()
     private let byteLimit: Int
     private var entries: [(url: URL, snapshot: Snapshot)] = []
+    private var retainsDecodedValues: Bool
 
-    init(byteLimit: Int = 512 * 1024 * 1024) { self.byteLimit = byteLimit }
+    init(byteLimit: Int = 512 * 1024 * 1024, retainsDecodedValues: Bool = false) {
+        self.byteLimit = byteLimit
+        self.retainsDecodedValues = retainsDecodedValues
+    }
+
+    /// A process that scans for hours keeps the decoded rows between scans. Its report engines hold the same rows
+    /// anyway, so letting go of them here freed nothing; it only made every scan read and decode the whole
+    /// artifact from disk again (a couple of hundred megabytes of JSON for a heavy user, tens of seconds of work
+    /// and as much allocation churn). A one-shot process keeps the default and releases them at once.
+    func setRetainsDecodedValues(_ retains: Bool) {
+        self.lock.withLock { self.retainsDecodedValues = retains }
+    }
+
+    /// Called once a report is published: the decoded rows go, unless this process keeps them between scans.
+    func releaseDecodedValues(at url: URL) {
+        guard !self.lock.withLock({ self.retainsDecodedValues }) else { return }
+        self.evict(at: url)
+    }
+
+    /// Everything decoded, for a process short of memory. The next scan reads its artifact again.
+    func evictAll() {
+        self.lock.withLock { self.entries.removeAll() }
+    }
 
     #if DEBUG
     var retainedDecodedHeaderCountForTesting: Int {
@@ -104,6 +127,12 @@ final class CostUsageClaudeFragments: @unchecked Sendable {
                 #endif
                 let decoder = JSONDecoder()
                 decoder.userInfo[CostUsageRowStringPool.key] = CostUsageRowStringPool()
+                // Another artifact already decoded holds most of the same requests: take its strings.
+                let donors = self.entries.filter { $0.url != url }
+                    .compactMap { $0.snapshot.values as? [String: CostUsageClaudeCache.File] }
+                if Value.self == CostUsageClaudeCache.File.self, !donors.isEmpty {
+                    decoder.userInfo[CostUsageClaudeRowDonors.key] = CostUsageClaudeRowDonors(donors)
+                }
                 guard let manifest = try? decoder.decode(Manifest.self, from: data) else {
                     return try legacy(data)
                 }
@@ -235,7 +264,10 @@ final class CostUsageClaudeFragments: @unchecked Sendable {
     private func remember(_ url: URL, _ snapshot: Snapshot) {
         self.entries.removeAll { $0.url == url }
         self.entries.append((url, snapshot))
-        while self.entries.count > 8 || self.entries.reduce(0, { $0 + $1.snapshot.cost * 3 }) > self.byteLimit {
+        // Kept values are the report engines' own storage, not a second copy to budget for.
+        while self.entries.count > 8 || (!self.retainsDecodedValues
+            && self.entries.reduce(0) { $0 + $1.snapshot.cost * 3 } > self.byteLimit)
+        {
             self.entries.removeFirst()
         }
     }

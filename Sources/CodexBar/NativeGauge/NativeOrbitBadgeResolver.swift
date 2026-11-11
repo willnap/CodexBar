@@ -189,8 +189,9 @@ enum NativeOrbitBadgeResolver {
     private static let defaultsKey = "nativeOrbitAccountBadges.v31"
     private static let available: [NativeOrbitBadgeCatalog.Entry] = {
         let original = Set(NativeOrbitBadgeCatalog.all.map(\.key))
-        return (NativeOrbitBadgeCatalog.all + NativeOrbitBadgeVocabulary.entries.filter { !original.contains($0.key) })
-            .filter { $0.isCustom || NSImage(systemSymbolName: $0.symbol, accessibilityDescription: nil) != nil }
+        let all = NativeOrbitBadgeCatalog.all + NativeOrbitBadgeVocabulary.entries.filter { !original.contains($0.key) }
+        let missing = NativeSymbolAvailability.missing(among: all.filter { !$0.isCustom }.map(\.symbol))
+        return all.filter { $0.isCustom || !missing.contains($0.symbol) }
     }()
 
     struct Refinement {

@@ -91,6 +91,39 @@ struct NativeOrbitStartupControllerTests {
         #expect(second.controller.orbitState.startup.isActive)
     }
 
+    @Test func `an ignition armed while closed is the one the first opening shows`() throws {
+        let fixture = try self.fixture(launch: NativeOrbitStartupLaunch(), installView: false)
+        defer { self.cleanUp(fixture) }
+        let controller = fixture.controller
+        controller.prepare()
+        controller.prearmCombinedStartup()
+        #expect(controller.isPrearmed)
+        #expect(controller.orbitState.startup.isActive)
+        // Opening neither returns the armed face to live nor arms it a second time.
+        controller.beginCombinedPresentation()
+        #expect(controller.orbitState.startup.isActive)
+        controller.armCombinedStartup()
+        #expect(controller.isPrearmed)
+        #expect(controller.orbitState.startup.isActive)
+        controller.endCombinedPresentation()
+        #expect(!controller.isPrearmed)
+        #expect(controller.orbitState.startup == .live)
+    }
+
+    @Test func `a face armed ahead returns to live when another popup ran the ignition`() throws {
+        let launch = NativeOrbitStartupLaunch()
+        let fixture = try self.fixture(launch: launch)
+        defer { self.cleanUp(fixture) }
+        fixture.controller.prearmCombinedStartup()
+        #expect(fixture.controller.orbitState.startup.isActive)
+        let other = UUID()
+        #expect(launch.reserve(other))
+        #expect(launch.shown(other))
+        fixture.controller.popoverWillShow(Notification(name: NSPopover.willShowNotification, object: NSPopover()))
+        #expect(!fixture.controller.isPrearmed)
+        #expect(fixture.controller.orbitState.startup == .live)
+    }
+
     private struct Fixture {
         let controller: NativeServicePopoverController
         let statusItem: NSStatusItem

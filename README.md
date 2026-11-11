@@ -14,7 +14,7 @@
   <img src="docs/screenshots/native-showcase/hero-light.png" alt="CodexBar's window under its menu bar item: an All page with a pie chart and every account's history, then a gauge, warning lights and chart for each account." width="100%" />
 </picture>
 
-CodexBar already tracks usage, limits and spend for 111 providers, and does it thoroughly. I kept all of that and
+CodexBar already tracks usage, limits and spend for 113 providers, and does it thoroughly. I kept all of that and
 designed a new interface on top, one that fits far more information into the same space and is still easier to read at
 a glance.
 

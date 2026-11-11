@@ -84,9 +84,11 @@ enum NativeOrbitBadgeModel {
         }
     }
 
-    static let entries = NativeOrbitBadgeVocabulary.entries.filter {
-        $0.isCustom || NSImage(systemSymbolName: $0.symbol, accessibilityDescription: nil) != nil
-    }
+    static let entries: [NativeOrbitBadgeCatalog.Entry] = {
+        let all = NativeOrbitBadgeVocabulary.entries
+        let missing = NativeSymbolAvailability.missing(among: all.filter { !$0.isCustom }.map(\.symbol))
+        return all.filter { $0.isCustom || !missing.contains($0.symbol) }
+    }()
 
     static func candidateKeys(
         for account: Account, peers: [String], source: String? = nil, query: String? = nil) -> Set<String>
