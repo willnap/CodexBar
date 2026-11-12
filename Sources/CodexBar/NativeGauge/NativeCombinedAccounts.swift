@@ -221,13 +221,20 @@ struct NativeCombinedAccounts {
         self.recentAccounts = Array(recent.prefix(3))
         // Accounts with usage left come first, most recently used first; drained ones follow. A provider's accounts
         // with usage left stay side by side, so they can be compared and switched; a drained one sorts on its own.
-        let available = Set(pages.filter { Self.hasUsageLeft($0.account, now: now) }.map(\.id))
+        // An account with no reading yet (still loading, or its read failed) is neither: nothing is known about
+        // it, so it waits behind every account that has been read instead of passing for one with usage left.
+        let unread = Set(pages.filter { $0.account.updatedAt == nil }.map(\.id))
+        let available = Set(pages.filter {
+            !unread.contains($0.id) && Self.hasUsageLeft($0.account, now: now)
+        }.map(\.id))
         let left = Dictionary(
             pages.compactMap { page in Self.usageLeft(page.account, now: now).map { (page.id, $0) } },
             uniquingKeysWith: { first, _ in first })
         let ranked = pages.sorted { lhs, rhs in
             let leftAvailable = available.contains(lhs.id)
             if leftAvailable != available.contains(rhs.id) { return leftAvailable }
+            let leftUnread = unread.contains(lhs.id)
+            if leftUnread != unread.contains(rhs.id) { return !leftUnread }
             let leftActivity = activity[lhs.id]
             let rightActivity = activity[rhs.id]
             if leftActivity != rightActivity {

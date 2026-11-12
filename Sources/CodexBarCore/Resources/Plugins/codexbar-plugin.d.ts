@@ -166,12 +166,42 @@ interface CodexBarUsageSnapshot {
   iconProvider?: string | null;
   /** Up to 8 ordered logo/percentage pairs in one status item. Requires ctx.env.supportsMenuBarItems === true. */
   menuBarItems?: CodexBarMenuBarItem[] | null;
+  /** Up to 50 limit resets, banked and used. */
+  resets?: CodexBarReset[] | null;
+  plan?: CodexBarPlan | null;
   subscriptionRenewsAt?: Date | string | null;
   subscriptionExpiresAt?: Date | string | null;
   subscriptionStatus?: string | null;
   subscriptionIsActive?: boolean | null;
   dataConfidence?: "exact" | "estimated" | "percentOnly" | "unknown";
   details?: CodexBarDetailSection[] | null;
+}
+
+/** A limit reset the account holds or has used. Omit `clears` for one that clears every limit. */
+interface CodexBarReset {
+  available: boolean;
+  expiresAt?: Date | string | null;
+  usedAt?: Date | string | null;
+  grantedAt?: Date | string | null;
+  /** IDs of the windows it clears: "primary", "secondary", "tertiary" or an extra window's id. */
+  clears?: string[] | null;
+  /** True when using it also returns the share of a wider window that its own windows used. */
+  givesBackWiderUsage?: boolean | null;
+  label?: string | null;
+}
+
+/** The account's plan. `price` is one month's cost in the currency the account is billed in. */
+interface CodexBarPlan {
+  company?: string | null;
+  name?: string | null;
+  formerNames?: string[] | null;
+  price?: {
+    monthlyAmount: number;
+    /** ISO 4217 code, e.g. "USD". */
+    currency: string;
+    billedEvery?: "month" | "year" | null;
+    includesTax?: boolean | null;
+  } | null;
 }
 
 /** Result metadata is validated by the host; card and persistence require a descriptor-owned allowlist. */

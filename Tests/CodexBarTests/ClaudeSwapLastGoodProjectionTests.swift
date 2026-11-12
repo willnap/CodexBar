@@ -111,6 +111,31 @@ struct ClaudeSwapLastGoodProjectionTests {
         #expect(cost.used == 12.5)
         #expect(cost.limit == 50)
         #expect(cost.currencyCode == "USD")
+        #expect(cost.isOutOfFunds == nil)
+    }
+
+    @Test
+    func `an allowance out of credit projects as set up with nothing left, not turned off`() throws {
+        let account = try #require(self.snapshots(for: ClaudeSwapAccountRow(
+            number: 1,
+            email: "a@b.c",
+            isActive: false,
+            usageStatus: .ok,
+            fiveHour: ClaudeSwapUsageWindow(usedPercent: 10, resetsAt: nil),
+            sevenDay: nil,
+            spend: ClaudeSwapSpendWindow(
+                used: 0,
+                limit: 200,
+                usedPercent: 0,
+                currencyCode: "USD",
+                resetsAt: nil,
+                period: "Monthly",
+                isOutOfCredits: true))).first)
+        let cost = try #require(account.snapshot?.providerCost)
+        #expect(cost.limit == 200)
+        #expect(cost.used == 0)
+        #expect(cost.isOutOfFunds == true)
+        #expect(cost.isDisabled == nil)
     }
 
     @Test

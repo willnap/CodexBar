@@ -158,7 +158,17 @@ struct NativeCombinedTokenChart: View {
             histories: [],
             now: self.displayedRequest.now,
             days: self.displayedRequest.days,
+            span: self.state.span,
             selectedDate: self.state.inspectionDate)
+    }
+
+    /// The axis the marks are drawn for: the live one, or while a pinch is under way the one last drawn.
+    private var plotAxis: NativeOrbitHistoryWidget {
+        NativeOrbitHistoryWidget(
+            histories: [],
+            now: self.displayedRequest.now,
+            days: self.displayedRequest.days,
+            span: self.state.plotSpan)
     }
 
     private var displayedSnapshot: NativeCombinedChartPresentation.Snapshot? {
@@ -189,20 +199,24 @@ struct NativeCombinedTokenChart: View {
             NativeCombinedStaticChart(
                 configuration: .init(
                     series: self.shownSeries,
-                    start: self.axis.start,
+                    start: self.plotAxis.start,
                     now: self.displayedRequest.now,
                     metric: self.metric,
                     maximum: self.maximum,
                     accents: self.accents,
-                    gridDates: self.axis.gridDates,
+                    gridDates: self.plotAxis.gridDates,
                     dark: self.colorScheme == .dark,
                     reduceMotion: self.reduceMotion,
                     hasPreparedData: self.displayedSnapshot != nil),
                 onSelect: {
-                    guard self.displayedRequest.days == self.state.days else { return }
+                    guard self.displayedRequest.days >= self.state.days else { return }
                     self.state.inspect($0, source: "hover")
                 },
                 onFrame: { if self.plotFrame != $0 { self.plotFrame = $0 } })
+                // Between redraws a pinch scales the drawn marks about now, at the trailing edge.
+                .scaleEffect(
+                    x: self.state.plotSpan / max(1, self.state.span), y: 1, anchor: UnitPoint(x: 1, y: 0.5))
+                .clipped()
                 .overlay(alignment: .topLeading) { self.marker }
             NativeOrbitChartAxisRow(
                 dates: self.axis.axisDates,
@@ -213,6 +227,7 @@ struct NativeCombinedTokenChart: View {
                 label: self.axis.axisLabel)
         }
         .padding(.horizontal, 14).padding(.bottom, 6)
+        .nativeOrbitRangePinch()
         .frame(width: 224, height: 224)
         .task(id: self.input.source) {
             let input = self.input

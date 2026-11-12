@@ -24,6 +24,10 @@ public struct ProviderCostSnapshot: Equatable, Hashable, Codable, Sendable {
     public let usageIsUnavailable: Bool?
     /// The provider reports this spend allowance as turned off (e.g. Claude extra usage disabled), not merely zero.
     public let isDisabled: Bool?
+    /// The allowance is set up, with `limit` its size, and what it draws on has run out (Claude `out_of_credits`),
+    /// so nothing of it is left whatever `used` says: Claude's `used` counts only money beyond the credits behind
+    /// the allowance and can be zero with the credits gone. Not the same as turned off.
+    public let isOutOfFunds: Bool?
     public let updatedAt: Date
     /// Codex-only unavailable observation. Optional for compatibility with successful and legacy snapshots.
     var balanceIsUnavailable: Bool?
@@ -41,6 +45,7 @@ public struct ProviderCostSnapshot: Equatable, Hashable, Codable, Sendable {
         balanceIsWorkspace: Bool? = nil,
         usageIsUnavailable: Bool? = nil,
         isDisabled: Bool? = nil,
+        isOutOfFunds: Bool? = nil,
         updatedAt: Date)
     {
         self.used = used
@@ -55,6 +60,7 @@ public struct ProviderCostSnapshot: Equatable, Hashable, Codable, Sendable {
         self.balanceIsWorkspace = balanceIsWorkspace
         self.usageIsUnavailable = usageIsUnavailable
         self.isDisabled = isDisabled
+        self.isOutOfFunds = isOutOfFunds
         self.updatedAt = updatedAt
         self.balanceIsUnavailable = nil
     }
@@ -101,6 +107,7 @@ public struct ProviderCostSnapshot: Equatable, Hashable, Codable, Sendable {
             balanceIsWorkspace: balanceIsWorkspace,
             usageIsUnavailable: self.usageIsUnavailable,
             isDisabled: self.isDisabled,
+            isOutOfFunds: self.isOutOfFunds,
             updatedAt: self.updatedAt)
         result.balanceIsUnavailable = balanceIsUnavailable
         return result

@@ -74,6 +74,11 @@ public struct UsageSnapshot: Codable, Sendable {
     public let grokResetCredits: GrokRateLimitResetCreditsSnapshot?
     /// Live-only display inventory. Claude grant identifiers are never decoded.
     public let claudeResetCredits: ClaudeRateLimitResetCreditsSnapshot?
+    /// Resets reported directly in the shared form (a plugin's, or any provider with no payload type of its own).
+    /// Read `resetInventory(for:)`, which also covers the provider-specific fields.
+    public let providerResets: ProviderResetInventory?
+    /// The account's plan and what it costs, where the provider reports it. Read `planDetails(for:planName:)`.
+    public var providerPlan: ProviderPlanDetails?
     /// Live-only provider credit state and reset eligibility, separate from inventory counts.
     public let claudeCloudCredits: ClaudeCloudCreditsSnapshot?
     public let claudeResetCreditsIneligibleReason: String?
@@ -108,6 +113,7 @@ public struct UsageSnapshot: Codable, Sendable {
         case tertiary
         case extraRateWindows
         case providerCost
+        case providerPlan
         case details
         case iconProvider
         case menuBarItems
@@ -153,6 +159,7 @@ public struct UsageSnapshot: Codable, Sendable {
         codexResetCredits: CodexRateLimitResetCreditsSnapshot? = nil,
         grokResetCredits: GrokRateLimitResetCreditsSnapshot? = nil,
         claudeResetCredits: ClaudeRateLimitResetCreditsSnapshot? = nil,
+        providerResets: ProviderResetInventory? = nil,
         claudeCloudCredits: ClaudeCloudCreditsSnapshot? = nil,
         claudeResetCreditsIneligibleReason: String? = nil,
         mistralUsage: MistralUsageSnapshot? = nil,
@@ -196,6 +203,7 @@ public struct UsageSnapshot: Codable, Sendable {
         self.codexResetCredits = codexResetCredits
         self.grokResetCredits = grokResetCredits
         self.claudeResetCredits = claudeResetCredits
+        self.providerResets = providerResets
         self.claudeCloudCredits = claudeCloudCredits
         self.claudeResetCreditsIneligibleReason = claudeResetCreditsIneligibleReason
         self.mistralUsage = mistralUsage
@@ -219,6 +227,12 @@ public struct UsageSnapshot: Codable, Sendable {
 
     public func with(extraRateWindows: [NamedRateWindow]?) -> UsageSnapshot {
         self.replacing(extraRateWindows: .value(extraRateWindows))
+    }
+
+    public func with(providerPlan: ProviderPlanDetails?) -> UsageSnapshot {
+        var snapshot = self
+        snapshot.providerPlan = providerPlan
+        return snapshot
     }
 
     public func with(details: [ProviderDetailSection]) -> UsageSnapshot {
@@ -322,6 +336,8 @@ public struct UsageSnapshot: Codable, Sendable {
             forKey: .codexResetCredits)
         self.grokResetCredits = nil // Live-only inventory; refresh without persisting redemption state.
         self.claudeResetCredits = nil // Live-only inventory; a reset used on claude.ai must not reappear.
+        self.providerResets = nil // Live-only, like every reset inventory.
+        self.providerPlan = try? container.decodeIfPresent(ProviderPlanDetails.self, forKey: .providerPlan)
         self.claudeCloudCredits = nil
         self.claudeResetCreditsIneligibleReason = nil
         self.mistralUsage = try container.decodeIfPresent(MistralUsageSnapshot.self, forKey: .mistralUsage)
@@ -364,6 +380,7 @@ public struct UsageSnapshot: Codable, Sendable {
         try container.encode(self.tertiary, forKey: .tertiary)
         try container.encodeIfPresent(self.extraRateWindows, forKey: .extraRateWindows)
         try container.encodeIfPresent(self.providerCost, forKey: .providerCost)
+        try container.encodeIfPresent(self.providerPlan, forKey: .providerPlan)
         try container.encodeIfPresent(self.iconProvider, forKey: .iconProvider)
         if !self.menuBarItems.isEmpty { try container.encode(self.menuBarItems, forKey: .menuBarItems) }
         if !self.details.isEmpty {
@@ -589,6 +606,7 @@ public struct UsageSnapshot: Codable, Sendable {
             codexResetCredits: codexResetCredits.resolving(self.codexResetCredits),
             grokResetCredits: grokResetCredits.resolving(self.grokResetCredits),
             claudeResetCredits: self.claudeResetCredits,
+            providerResets: self.providerResets,
             claudeCloudCredits: self.claudeCloudCredits,
             claudeResetCreditsIneligibleReason: self.claudeResetCreditsIneligibleReason,
             mistralUsage: self.mistralUsage,
@@ -611,6 +629,7 @@ public struct UsageSnapshot: Codable, Sendable {
             planObservation: self.planObservation,
             dataConfidence: dataConfidence.resolving(self.dataConfidence))
         snapshot.quotaWindowPresence = self.quotaWindowPresence
+        snapshot.providerPlan = self.providerPlan
         return snapshot
     }
 }

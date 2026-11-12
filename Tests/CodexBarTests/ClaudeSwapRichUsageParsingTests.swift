@@ -27,6 +27,35 @@ struct ClaudeSwapRichUsageParsingTests {
         #expect(noCap.accounts.first?.spend?.used == 0)
     }
 
+    @Test
+    func `an allowance out of credit keeps its size and reported figures and is not turned off`() throws {
+        let list = try self.parse(self.singleAccountPayload("""
+        {"number": 1, "email": "a@b.c", "active": false, "usageStatus": "ok",
+         "usage": {"spend": {"used": 0, "limit": 0, "pct": 0, "currency": "USD", "enabled": false,
+                           "period": "Monthly", "disabledReason": "out_of_credits", "configuredLimit": 200}}}
+        """))
+        let spend = try #require(list.accounts.first?.spend)
+        #expect(spend.limit == 200)
+        #expect(spend.used == 0)
+        #expect(spend.isOutOfCredits)
+        #expect(!spend.isDisabled)
+        // Any other reason, or no size to show, stays turned off.
+        for fields in [
+            #""disabledReason": "user_disabled", "configuredLimit": 200"#,
+            #""disabledReason": "out_of_credits""#,
+            #""disabledReason": "out_of_credits", "configuredLimit": 0"#,
+        ] {
+            let off = try self.parse(self.singleAccountPayload("""
+            {"number": 1, "email": "a@b.c", "active": false, "usageStatus": "ok",
+             "usage": {"spend": {"used": 0, "limit": 0, "pct": 0, "currency": "USD", "enabled": false, \(fields)}}}
+            """))
+            let spend = try #require(off.accounts.first?.spend)
+            #expect(spend.isDisabled)
+            #expect(!spend.isOutOfCredits)
+            #expect(spend.limit == 0)
+        }
+    }
+
     private func parse(_ json: String) throws -> ClaudeSwapAccountList {
         try ClaudeSwapListParser.parse(Data(json.utf8))
     }

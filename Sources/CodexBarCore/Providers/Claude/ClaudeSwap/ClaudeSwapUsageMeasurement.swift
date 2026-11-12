@@ -47,6 +47,8 @@ public struct ClaudeSwapSpendWindow: Equatable, Sendable {
     public let period: String?
     /// claude-swap reported `enabled: false`: extra usage is turned off for this account.
     public let isDisabled: Bool
+    /// The allowance is set up (`limit` is its size) and its credit has run out: nothing of it is left. Not off.
+    public let isOutOfCredits: Bool
 
     public init(
         used: Double,
@@ -55,7 +57,8 @@ public struct ClaudeSwapSpendWindow: Equatable, Sendable {
         currencyCode: String,
         resetsAt: Date?,
         period: String? = nil,
-        isDisabled: Bool = false)
+        isDisabled: Bool = false,
+        isOutOfCredits: Bool = false)
     {
         self.used = used
         self.limit = limit
@@ -64,5 +67,6 @@ public struct ClaudeSwapSpendWindow: Equatable, Sendable {
         self.resetsAt = resetsAt
         self.period = period
         self.isDisabled = isDisabled
+        self.isOutOfCredits = isOutOfCredits
     }
 }

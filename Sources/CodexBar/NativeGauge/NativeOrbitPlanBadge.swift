@@ -1,7 +1,10 @@
+import CodexBarCore
 import SwiftUI
 
-/// The plan's differentiator cut out of a small rounded square, the way `20.square.fill` carries its number: "20×",
-/// "5×", "Pro", "Plus". The square is the grey of the account name beside it, as that name looks: a solid shape in
+/// What the plan costs a month cut out of a small rounded square, the way `20.square.fill` carries its number:
+/// "$200", "£200". Plans are renamed and their allowances restated; the price is the figure that stays comparable.
+/// Without a reported price it is the plan's differentiator as before: "20×", "Pro", "Plus". The square is the grey of
+/// the account name beside it, as that name looks: a solid shape in
 /// the name's own colour reads darker than its thin strokes, whose rendered ink averages about three quarters of
 /// that colour's contrast, so the square is that much lighter.
 struct NativeOrbitPlanBadge: View {
@@ -30,6 +33,32 @@ struct NativeOrbitPlanBadge: View {
         let name = words.joined(separator: " ")
         if !name.isEmpty, name.count <= Self.longest { return name }
         return words.last.flatMap { $0.count <= Self.longest ? $0 : nil }
+    }
+
+    /// "$200", "£16.67": the narrow symbol of the currency the account is billed in, and no decimals unless the
+    /// price has them.
+    nonisolated static func text(price: ProviderPlanPrice) -> String {
+        let whole = price.monthlyAmount.rounded() == price.monthlyAmount
+        return price.monthlyAmount.formatted(
+            .currency(code: price.currencyCode)
+                .presentation(.narrow)
+                .precision(.fractionLength(whole ? 0 : 2))
+                .locale(Locale(identifier: "en_US")))
+    }
+
+    /// Who sells the plan and what it is called, with its price; then the names it used to go by.
+    /// "OpenAI ChatGPT Pro, £200 a month" / "Previously Pro 20x".
+    nonisolated static func help(_ details: ProviderPlanDetails?, plan: String?, service: String) -> String {
+        guard let details else { return plan ?? service }
+        var title = [details.company, details.name ?? plan].compactMap(\.self).joined(separator: " ")
+        if title.isEmpty { title = service }
+        if let price = details.price {
+            title += ", \(Self.text(price: price)) a month"
+            if price.billedEvery == .year { title += " billed yearly" }
+            if price.includesTax == false { title += " before tax" }
+        }
+        guard !details.formerNames.isEmpty else { return title }
+        return title + "\nPreviously " + details.formerNames.formatted(.list(type: .or))
     }
 
     var body: some View {

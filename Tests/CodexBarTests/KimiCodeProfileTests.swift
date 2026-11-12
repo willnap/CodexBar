@@ -18,6 +18,30 @@ struct KimiCodeProfileTests {
             == .init(email: nil, name: nil, plan: nil))
     }
 
+    @Test func `an overseas login's plan carries its published dollar price and any other region none`() throws {
+        let overseas = try #require(KimiUsageFetcher.parseCodeProfile(Data("""
+        {"user_id":"u1","nickname":"Example User","region":"REGION_OVERSEA","user_level_name":"Ultra"}
+        """.utf8)))
+        #expect(overseas.planCurrencyCode == "USD")
+        var snapshot = KimiUsageSnapshot(weekly: nil, rateLimit: nil, updatedAt: Date())
+        snapshot.planName = overseas.plan
+        snapshot.planCurrencyCode = overseas.planCurrencyCode
+        let plan = try #require(snapshot.toUsageSnapshot().providerPlan)
+        #expect(plan.name == "Kimi Ultra")
+        #expect(plan.price?.monthlyAmount == 199)
+        #expect(plan.price?.currencyCode == "USD")
+        #expect(plan.price?.source == .listed)
+        // Another region's prices are in another currency the table does not list, and an unnamed region is unknown.
+        for region in [#""region":"REGION_CN","#, ""] {
+            let profile = try #require(KimiUsageFetcher.parseCodeProfile(Data("""
+            {"user_id":"u1",\(region)"user_level_name":"Ultra"}
+            """.utf8)))
+            #expect(profile.planCurrencyCode == nil)
+            snapshot.planCurrencyCode = profile.planCurrencyCode
+            #expect(snapshot.toUsageSnapshot().providerPlan == nil)
+        }
+    }
+
     @Test func `profile names reach the identity without changing the history owner`() {
         var snapshot = KimiUsageSnapshot(weekly: nil, rateLimit: nil, updatedAt: Date())
         snapshot.historyOwnerID = "kimi-credential-v1:owner"

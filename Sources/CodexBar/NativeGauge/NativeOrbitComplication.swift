@@ -374,32 +374,286 @@ enum NativeOrbitResetCornerState: Equatable {
     /// One glyph per reset along the arc, filled while banked and outlined once used. An empty inventory is one
     /// outlined glyph, so zero reads the same for every provider.
     var glyphs: [Bool] {
+        self.slots(recentlyUsed: [], now: .distantPast).map { $0.state == .banked }
+    }
+
+    /// The places the corner draws: banked resets first, then the ones used. A reset just used is still plainly
+    /// there and fades over a week; what is left of it afterwards, like a corner with no reset at all, is an
+    /// empty place, the way an unused gauge is an empty track.
+    func slots(
+        recentlyUsed: [Date],
+        now: Date,
+        bankedLanes: [String?] = [],
+        usedLanes: [String?] = []) -> [NativeOrbitResetSlot]
+    {
         guard case let .inventory(available, used) = self else { return [] }
-        let banked = Array(repeating: true, count: available) + Array(repeating: false, count: used)
-        return banked.isEmpty ? [false] : banked
+        let ages = recentlyUsed.map { now.timeIntervalSince($0) }
+            .filter { $0 >= 0 && $0 < NativeOrbitResetSlot.fadeInterval }.sorted()
+        func lane(_ lanes: [String?], _ index: Int) -> String? {
+            lanes.indices.contains(index) ? lanes[index] : nil
+        }
+        var slots = (0..<available).map { NativeOrbitResetSlot(state: .banked, lane: lane(bankedLanes, $0)) }
+        // Places for spent resets stay few: the corner is an inventory, not a log.
+        for index in 0..<min(NativeOrbitResetSlot.maximumSpent, max(used, ages.count)) {
+            slots.append(NativeOrbitResetSlot(
+                state: index < ages.count
+                    ? .used(freshness: 1 - ages[index] / NativeOrbitResetSlot.fadeInterval) : .empty,
+                lane: lane(usedLanes, index)))
+        }
+        return slots.isEmpty ? [NativeOrbitResetSlot(state: .empty)] : slots
+    }
+}
+
+/// One place in the reset corner.
+struct NativeOrbitResetSlot: Equatable {
+    enum State: Equatable {
+        /// Banked and ready to use.
+        case banked
+        /// Used; `freshness` runs from 1 at the moment it was used to 0 a week later.
+        case used(freshness: Double)
+        /// Nothing there: used long ago, or no reset at all.
+        case empty
+    }
+
+    /// How long a used reset takes to fade to an empty place.
+    static let fadeInterval: TimeInterval = 7 * 86400
+    static let maximumSpent = 4
+
+    var state: State
+    /// The gauge this reset clears, when that is not everything the account's main gauge measures.
+    var lane: String?
+
+    /// A banked reset is a disc of the gauge's colour with the arrow cut out of it. A used one is its ghost: the
+    /// same arrow inside a dashed outline, in the same colour. The user chose this from a sheet of six after a
+    /// dimmed glyph read as switched off, a plain outline as still in stock, and an arrow or a tick on the empty
+    /// place as something other than a reset already used.
+    var isSpent: Bool {
+        if case .used = self.state { return true }
+        return false
+    }
+
+    /// How strongly the reset's own ink is drawn: full when banked or just used, then fading evenly over the
+    /// week, in step with its blur, so it is half gone by midweek and all but gone on its last day.
+    var inkOpacity: Double {
+        switch self.state {
+        case .banked: 1
+        case let .used(freshness): min(1, max(0, freshness))
+        case .empty: 0
+        }
+    }
+
+    /// How much of its gauge's colour a used reset keeps.
+    static let spentSaturation = 0.3
+    /// How far out of focus a used reset is by the end of its week, in points.
+    static let oldestBlur: CGFloat = 2.4
+
+    /// Sharp when just used, then steadily softer, so an older use is told from a recent one at a glance.
+    var blurRadius: CGFloat {
+        guard case let .used(freshness) = self.state else { return 0 }
+        return Self.oldestBlur * (1 - min(1, max(0, freshness)))
+    }
+
+    /// How much of the empty place shows: none under a banked or freshly used reset, all of it once the ghost
+    /// has gone.
+    var emptyOpacity: Double {
+        switch self.state {
+        case .banked: 0
+        case let .used(freshness): 1 - min(1, max(0, freshness))
+        case .empty: 1
+        }
+    }
+}
+
+/// One of the dial's gauges as the corners need it: which window it shows, what it is called, and its colour.
+struct NativeOrbitGaugeLane: Equatable {
+    let id: String
+    let title: String
+    let tint: Color
+}
+
+/// How a reset that clears only one of the dial's gauges is drawn: in that gauge's colour, and smaller when the
+/// gauge is not the outermost, since it then clears only part of what the main gauge measures.
+struct NativeOrbitResetLaneStyle: Equatable {
+    let tint: Color
+    let isOutermost: Bool
+
+    /// Half the area of a whole-account reset: perceptually half the size.
+    var scale: CGFloat {
+        self.isOutermost ? 1 : 0.5.squareRoot()
+    }
+}
+
+/// A reset's glyph in its drawn states, at full size or as a part reset.
+///
+/// A part reset is half the area of a full one with strokes exactly as thick. Scaling the symbol thins its arrow,
+/// and no symbol weight thickens it enough at that size: measured through this renderer at 17 pt, the full
+/// reset's arrow is 1.33 to 1.38 pt, bold at the smaller size 1.06 and even black 1.21. So the part reset is
+/// composed: a disc of half the area, with the same symbol's arrow cut out of it at the size and weight (black,
+/// 0.735 of the full size) whose arrow measures that same 1.33 to 1.38 pt.
+struct NativeOrbitResetGlyph {
+    static let symbol = "arrow.uturn.backward.circle.fill"
+    /// The symbol's disc is this many points across for each point of its font size, at medium weight.
+    static let discPerPoint: CGFloat = 1.01
+    static let partArrowScale: CGFloat = 0.735
+    /// The ghost's outline, as thick as the arrow inside it, for each point of the full reset's font size.
+    static let ghostLinePerPoint: CGFloat = 1.35 / 17
+    /// One dash and the space after it, for each point of the full reset's font size.
+    static let ghostDashPerPoint: CGFloat = 0.292
+
+    /// A full reset's font size.
+    let size: CGFloat
+    let isPart: Bool
+    let tint: Color
+
+    var discDiameter: CGFloat {
+        self.size * Self.discPerPoint * (self.isPart ? 0.5.squareRoot() : 1)
+    }
+
+    var ghostLineWidth: CGFloat {
+        self.size * Self.ghostLinePerPoint
+    }
+
+    /// The ghost's outline runs just inside where the disc's edge is.
+    var ghostDiameter: CGFloat {
+        self.discDiameter - self.ghostLineWidth
+    }
+
+    /// Even dashes with round ends, each a little longer than the space after it. A part reset has fewer of
+    /// them, not shorter ones.
+    var ghostStroke: StrokeStyle {
+        let around = CGFloat.pi * self.ghostDiameter
+        let count = max(5, (around / (self.size * Self.ghostDashPerPoint)).rounded())
+        let period = around / count
+        let dash = max(0.1, period * 0.72 - self.ghostLineWidth)
+        return StrokeStyle(lineWidth: self.ghostLineWidth, lineCap: .round, dash: [dash, period - dash])
+    }
+
+    /// The symbol with its disc left clear: only the arrow, where it is cut out.
+    private func arrow(_ style: some ShapeStyle) -> some View {
+        Image(systemName: Self.symbol)
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(style, Color.clear)
+            .font(self.isPart
+                ? .system(size: self.size * Self.partArrowScale, weight: .black)
+                : .system(size: self.size, weight: .medium))
+    }
+
+    /// In stock: a disc of the gauge's colour with the arrow cut out of it.
+    @ViewBuilder var banked: some View {
+        if self.isPart {
+            ZStack {
+                Circle().fill(self.tint).frame(width: self.discDiameter, height: self.discDiameter)
+                self.arrow(Color.black).blendMode(.destinationOut)
+            }
+            .compositingGroup()
+        } else {
+            Image(systemName: Self.symbol)
+                .font(.system(size: self.size, weight: .medium))
+                .foregroundStyle(self.tint)
+        }
+    }
+
+    /// How far a used reset's colour is lifted toward white on a dark surface.
+    static let darkGhostLift = 0.45
+
+    /// Used: the same arrow inside a dashed outline of the disc. A gauge's colour can be as dark as the dark
+    /// surface (Codex's blue); drained of saturation it then sinks into it, darker than the empty place under it.
+    /// Lifted toward white there, a ghost stands off the surface as it does in light mode, whatever its gauge.
+    func ghost(dark: Bool) -> some View {
+        let ink = dark ? self.tint.mix(with: .white, by: Self.darkGhostLift) : self.tint
+        return ZStack {
+            Circle()
+                .stroke(ink, style: self.ghostStroke)
+                .frame(width: self.ghostDiameter, height: self.ghostDiameter)
+            self.arrow(ink)
+        }
+    }
+
+    /// Where each reset sits along the corner's arc, in points either side of its middle. Evenly pitched centres
+    /// leave more room round a part reset than round a full one; what reads as even is the room between
+    /// neighbours. Two full resets keep the pitch's own gap, and a smaller neighbour takes a little less of it
+    /// (by the square root of the pair's size), since the same gap looks wider beside smaller things.
+    static func places(parts: [Bool], size: CGFloat, pitch: CGFloat) -> [CGFloat] {
+        let diameters = parts.map { NativeOrbitResetGlyph(size: size, isPart: $0, tint: .clear).discDiameter }
+        let full = size * Self.discPerPoint
+        let gap = max(0, pitch - full)
+        var places: [CGFloat] = []
+        for (index, diameter) in diameters.enumerated() {
+            guard let previous = places.last else {
+                places.append(0)
+                continue
+            }
+            let pair = (diameters[index - 1] + diameter) / 2
+            places.append(previous + pair + gap * (pair / full).squareRoot())
+        }
+        let middle = ((places.first ?? 0) + (places.last ?? 0)) / 2
+        return places.map { $0 - middle }
+    }
+
+    /// Nothing there: the disc alone, faint.
+    func empty(_ style: some ShapeStyle) -> some View {
+        Circle().fill(style).frame(width: self.discDiameter, height: self.discDiameter)
     }
 }
 
 struct NativeOrbitResetComplication: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     static let symbol = "arrow.uturn.backward.circle"
+    static let emptyOpacity = 0.2
     let state: NativeOrbitResetCornerState
     let accent: Color
     let help: String
+    /// When each recently used reset was used, for the fade; `now` is the instant the corner shows.
+    var recentlyUsed: [Date] = []
+    var now = Date.distantPast
+    /// The gauge each banked and each used reset belongs to; nil for one that clears the dial's main gauge.
+    var bankedLanes: [String?] = []
+    var usedLanes: [String?] = []
+    var laneStyles: [String: NativeOrbitResetLaneStyle] = [:]
 
     var body: some View {
         NativeOrbitInstrumentElement(corner: .bottomLeading, help: self.help) {
             ZStack {
                 switch self.state {
                 case .inventory:
-                    let glyphs = self.state.glyphs
-                    let pitch = min(25, 90 / CGFloat(max(1, glyphs.count - 1)))
+                    let slots = self.state.slots(
+                        recentlyUsed: self.recentlyUsed,
+                        now: self.now,
+                        bankedLanes: self.bankedLanes,
+                        usedLanes: self.usedLanes)
+                    let pitch = min(25, 90 / CGFloat(max(1, slots.count - 1)))
                     let iconSize = min(17, pitch * 0.85)
-                    ForEach(Array(glyphs.enumerated()), id: \.offset) { index, banked in
-                        Image(systemName: banked ? Self.symbol + ".fill" : Self.symbol)
-                            .font(.system(size: iconSize, weight: .medium))
-                            .foregroundStyle(banked ? self.accent : NativeOrbitComplicationStyle.idle)
-                            .position(Self.position(index, count: glyphs.count, pitch: pitch))
+                    // A gauge the dial does not draw still makes it a part reset: smaller, in the dial's colour.
+                    let styles = slots.map { slot in
+                        slot.lane.map {
+                            self.laneStyles[$0] ?? NativeOrbitResetLaneStyle(tint: self.accent, isOutermost: false)
+                        }
+                    }
+                    let places = NativeOrbitResetGlyph.places(
+                        parts: styles.map { $0.map { !$0.isOutermost } ?? false }, size: iconSize, pitch: pitch)
+                    ForEach(Array(slots.enumerated()), id: \.offset) { index, slot in
+                        let style = styles[index]
+                        let glyph = NativeOrbitResetGlyph(
+                            size: iconSize,
+                            isPart: style.map { !$0.isOutermost } ?? false,
+                            tint: style?.tint ?? self.accent)
+                        ZStack {
+                            glyph.empty(NativeOrbitComplicationStyle.idle.opacity(Self.emptyOpacity))
+                                .opacity(slot.emptyOpacity)
+                            if slot.isSpent {
+                                glyph.ghost(dark: self.colorScheme == .dark)
+                                    // Mostly drained of the gauge's colour: full colour is what a reset in
+                                    // stock has. What is left of the hue still says whose reset it was.
+                                        .saturation(NativeOrbitResetSlot.spentSaturation)
+                                        .opacity(slot.inkOpacity)
+                                        // Older is softer as well as fainter: it goes out of focus as it goes.
+                                        .blur(radius: slot.blurRadius)
+                            } else {
+                                glyph.banked.opacity(slot.inkOpacity)
+                            }
+                        }
+                        .position(Self.position(along: places[index]))
                     }
                 case .notApplicable:
                     NativeOrbitSlashableGlyph(
@@ -418,9 +672,20 @@ struct NativeOrbitResetComplication: View {
         }
     }
 
+    /// The gauge a reset belongs to: the outermost of the dial's gauges that it clears. Nil when that is the
+    /// dial's main (outermost) gauge, or the reset clears everything: then it is simply a reset.
+    static func lane(_ scope: ProviderReset.Scope, gauges: [String]) -> String? {
+        guard case let .windows(ids) = scope, let main = gauges.first, !ids.contains(main) else { return nil }
+        return gauges.first(where: ids.contains) ?? ids.first
+    }
+
     private static func position(_ index: Int, count: Int, pitch: CGFloat) -> CGPoint {
-        let degrees = 135 + (Double(index) - Double(count - 1) / 2) * Double(pitch)
-            / NativeOrbitComplicationStyle.radius * 180 / .pi
+        self.position(along: (CGFloat(index) - CGFloat(count - 1) / 2) * pitch)
+    }
+
+    /// A place along the corner's arc, in points either side of its middle.
+    private static func position(along offset: CGFloat) -> CGPoint {
+        let degrees = 135 + Double(offset) / NativeOrbitComplicationStyle.radius * 180 / .pi
         return NativeOrbitComplicationStyle.point(degrees: degrees)
     }
 }

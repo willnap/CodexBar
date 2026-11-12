@@ -36,11 +36,17 @@ struct NativeCombinedChartPresentation {
     private var latest: Snapshot?
 
     var visible: Snapshot? {
-        self.requested.flatMap { self.prepared[$0.days] } ?? self.latest
+        self.requested.flatMap { self.snapshot(prepared: $0.days) } ?? self.latest
     }
 
+    /// The prepared range that covers `days`: the narrowest of day, week and month that does.
     func snapshot(days: Int) -> Snapshot? {
-        self.prepared[days] ?? self.visible
+        let range = NativeOrbitRange.standard.first { $0 >= days } ?? NativeOrbitRange.standard.last ?? days
+        return self.prepared[range] ?? self.visible
+    }
+
+    private func snapshot(prepared days: Int) -> Snapshot? {
+        self.prepared[NativeOrbitRange.standard.first { $0 >= days } ?? days]
     }
 
     mutating func begin(_ request: Request) {

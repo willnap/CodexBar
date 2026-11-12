@@ -48,12 +48,77 @@ final class NativeOrbitPopupState {
     var days = 1 {
         didSet {
             guard self.days != oldValue else { return }
-            if [1, 7, 30].contains(self.days), [1, 7, 30].contains(oldValue) {
+            if (1...30).contains(self.days), (1...30).contains(oldValue) {
                 self.invalidateRangePreparation()
             } else {
                 self.invalidatePreparedHistory()
             }
         }
+    }
+
+    /// The time every chart shows when that is not `days` whole days: a pinch under way, or a span of hours. The
+    /// corners and everything prepared per range keep to `days`, which a pinch settles only when the fingers lift.
+    var visibleSpan: TimeInterval?
+
+    /// The time from every chart's start to now.
+    var span: TimeInterval {
+        self.visibleSpan ?? NativeOrbitChartAxis.span(days: self.days)
+    }
+
+    /// The span the charts' marks are drawn for while a pinch is under way; nil when that is `span` itself.
+    private(set) var renderedSpan: TimeInterval?
+    @ObservationIgnored private var redrawTask: Task<Void, Never>?
+
+    /// The span the marks are drawn for.
+    var plotSpan: TimeInterval {
+        self.renderedSpan ?? self.span
+    }
+
+    /// How much more time than is showing a zoom out draws at once, so the next stretch of it needs no redraw.
+    static let pinchOverscan = 2.0
+
+    /// One step of a pinch. The span follows the fingers at once; the marks are drawn again only when the pinch
+    /// shows time they do not cover, has magnified them past the overscan, or rests.
+    func track(span: TimeInterval) {
+        let drawn = self.plotSpan
+        self.visibleSpan = span
+        if span > drawn {
+            self.renderedSpan = min(NativeOrbitRange.longest, span * Self.pinchOverscan)
+        } else if drawn > span * Self.pinchOverscan * 1.5 {
+            self.renderedSpan = span
+        } else if self.renderedSpan == nil {
+            self.renderedSpan = drawn
+        }
+        self.redrawTask?.cancel()
+        self.redrawTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled, let self, self.renderedSpan != nil else { return }
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { self.renderedSpan = self.span }
+        }
+    }
+
+    /// Where a pinch came to rest: the span snaps to whole hours or days, and the range follows it.
+    func settle(span: TimeInterval) {
+        let snapped = NativeOrbitRange.snapped(span)
+        let days = NativeOrbitRange.days(covering: snapped)
+        self.redrawTask?.cancel()
+        self.renderedSpan = nil
+        self.visibleSpan = snapped == NativeOrbitChartAxis.span(days: days) ? nil : snapped
+        if self.days != days {
+            self.days = days
+        } else {
+            self.invalidateRangePreparation()
+        }
+    }
+
+    /// The range control's own choice: whole days, and no span of its own.
+    func select(days: Int) {
+        self.redrawTask?.cancel()
+        if self.renderedSpan != nil { self.renderedSpan = nil }
+        if self.visibleSpan != nil { self.visibleSpan = nil }
+        if self.days != days { self.days = days }
     }
 
     var accent = Color.primary
@@ -283,12 +348,11 @@ final class NativeOrbitPopupState {
     }
 
     var chartStart: Date {
-        self.isProjecting ? NativeOrbitChartAxis.projectingBounds(now: self.now, days: self.days).start
-            : NativeOrbitChartAxis.start(now: self.now, days: self.days)
+        NativeOrbitChartAxis.start(now: self.now, span: self.span)
     }
 
     var chartEnd: Date {
-        self.isProjecting ? NativeOrbitChartAxis.projectingBounds(now: self.now, days: self.days).end : self.now
+        self.isProjecting ? NativeOrbitChartAxis.projectingBounds(now: self.now, span: self.span).end : self.now
     }
 
     /// The lanes a column draws: the range's own lanes, or, while projecting, lanes reaching back the mirrored span.
@@ -525,6 +589,15 @@ struct NativeOrbitPopupView: View {
         }
         .tint(self.state.accent)
         .fixedSize(horizontal: false, vertical: true)
+        // On its own the popup's toolbar is its range control; among combined pages the shared toolbar is.
+        .transformEnvironment(\.nativeOrbitRangePinch) { [state = self.state, owns = self.showsToolbar] target in
+            if owns {
+                target = .init(
+                    span: { state.span },
+                    track: { state.track(span: $0) },
+                    settle: { state.settle(span: $0) })
+            }
+        }
         .onChange(of: self.state.days) {
             self.state.finishStartup(reason: "rangeChanged")
             self.state.inspectionDate = nil
@@ -616,6 +689,8 @@ struct NativeOrbitPopupView: View {
                     histories: account.history,
                     now: now,
                     days: days,
+                    span: self.state.visibleSpan,
+                    plotSpan: self.state.renderedSpan,
                     accent: liveAccent,
                     quotaLabels: account.quotaLabels,
                     quotaWindows: account.quotaWindows,
@@ -633,6 +708,7 @@ struct NativeOrbitPopupView: View {
                     dataDays: NativeOrbitPopupState.dataDays,
                     startup: self.state.startup)
             }
+            .nativeOrbitRangePinch()
             if self.showsAccountFooter(account)
                 || (account.updatedAt == nil && self.signIn != nil)
             {
@@ -732,12 +808,16 @@ struct NativeOrbitPopupView: View {
 
     @ViewBuilder
     private func planBadge(_ account: NativeOrbitAccountPresentation) -> some View {
-        if let plan = account.plan, let text = NativeOrbitPlanBadge.text(
-            plan: plan,
-            service: UsageProvider(rawValue: account.gauge.provider)
-                .map { ProviderDescriptorRegistry.descriptor(for: $0).metadata.displayName } ?? "")
-        {
-            NativeOrbitPlanBadge(text: text, plan: plan)
+        let service = UsageProvider(rawValue: account.gauge.provider)
+            .map { ProviderDescriptorRegistry.descriptor(for: $0).metadata.displayName } ?? ""
+        if let price = account.planDetails?.price {
+            NativeOrbitPlanBadge(
+                text: NativeOrbitPlanBadge.text(price: price),
+                plan: NativeOrbitPlanBadge.help(account.planDetails, plan: account.plan, service: service))
+        } else if let plan = account.plan, let text = NativeOrbitPlanBadge.text(plan: plan, service: service) {
+            NativeOrbitPlanBadge(
+                text: text,
+                plan: NativeOrbitPlanBadge.help(account.planDetails, plan: plan, service: service))
         }
     }
 
@@ -888,6 +968,7 @@ struct NativeOrbitGaugeWidget: View {
         let motionReduced = self.reduceMotion
         let windows = self.windows
         let monetaryMode = self.monetaryMode
+        let timed = NativeOrbitCountdown.timedLanes(Array(windows.prefix(3)))
         let moneyLanes = monetaryMode == .budgetRemaining ? min(3, windows.count) : 0
         let moneySize = NativeOrbitMoneyReading.size(lanes: moneyLanes)
         let moneyBounds = CGRect(
@@ -900,11 +981,13 @@ struct NativeOrbitGaugeWidget: View {
                     .prefix(3).enumerated()), id: \.element.id)
             { lane, window in
                 let countdown = NativeOrbitCountdown(window: window)
+                let isTimed = timed.contains(window.id)
                 NativeOrbitSymbol(
                     remaining: window.usedFraction.map { 1 - $0 },
-                    countdown: countdown.value(at: self.displayDate),
+                    countdown: isTimed ? countdown.value(at: self.displayDate) : nil,
                     segments: countdown.segments,
                     lane: lane,
+                    showsCountdown: isTimed,
                     size: 216,
                     accent: NativeOrbitPalette.color(accent: self.gaugeAccent, id: window.id, period: window.period),
                     startup: self.startup)
@@ -916,7 +999,7 @@ struct NativeOrbitGaugeWidget: View {
                     remaining: self.startup.fraction(window.usedFraction.map { 1 - $0 }))
                     .blur(radius: self.futureBlur)
                     .allowsHitTesting(false)
-                self.helpTargets(window, lane: lane)
+                self.helpTargets(window, lane: lane, isTimed: isTimed)
             }
             // The face softens ahead of now, labels included; the marks in the middle show no data, so barely.
             if let monetaryMode {
@@ -971,7 +1054,14 @@ struct NativeOrbitGaugeWidget: View {
                 inspectionDate: self.inspectionDate,
                 projection: self.projection,
                 liveNow: self.now,
-                countsFromZero: self.startup == .armed || self.startup == .sweeping)
+                countsFromZero: self.startup == .armed || self.startup == .sweeping,
+                gauges: windows.prefix(3).map {
+                    NativeOrbitGaugeLane(
+                        id: $0.id,
+                        title: Self.title($0),
+                        tint: NativeOrbitPalette.color(accent: self.gaugeAccent, id: $0.id, period: $0.period))
+                },
+                gaugeAccent: self.gaugeAccent)
                 .blur(radius: self.futureBlur)
                 .modifier(NativeOrbitStartupReveal(progress: self.startup.readingsReveal))
         }
@@ -1058,18 +1148,20 @@ struct NativeOrbitGaugeWidget: View {
         .foregroundStyle(.primary)
     }
 
-    private func helpTargets(_ window: UsageWindow, lane: Int) -> some View {
+    private func helpTargets(_ window: UsageWindow, lane: Int, isTimed: Bool) -> some View {
         ZStack {
             NativeOrbitHitRegion(lane: lane, countdown: false)
                 .fill(.clear)
                 .contentShape(NativeOrbitHitRegion(lane: lane, countdown: false))
                 .help(Self.usageHelp(window))
                 .accessibilityLabel(Self.usageHelp(window))
-            NativeOrbitHitRegion(lane: lane, countdown: true)
-                .fill(.clear)
-                .contentShape(NativeOrbitHitRegion(lane: lane, countdown: true))
-                .help(Self.resetHelp(window, now: self.displayDate))
-                .accessibilityLabel(Self.resetHelp(window, now: self.displayDate))
+            if isTimed {
+                NativeOrbitHitRegion(lane: lane, countdown: true)
+                    .fill(.clear)
+                    .contentShape(NativeOrbitHitRegion(lane: lane, countdown: true))
+                    .help(Self.resetHelp(window, now: self.displayDate))
+                    .accessibilityLabel(Self.resetHelp(window, now: self.displayDate))
+            }
         }
         .frame(width: 216, height: 216)
     }

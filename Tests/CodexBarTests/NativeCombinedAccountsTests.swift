@@ -190,6 +190,33 @@ struct NativeCombinedAccountsTests {
         #expect(showing.openingLeadingID == "a")
     }
 
+    @Test func `an account not read yet waits behind every account that has been read`() {
+        // Still loading, or its read failed: it has no windows, which must not pass for having usage left.
+        let unread = self.account(.kimi, id: "kimi", measured: false)
+        let drained = self.account(.codex, id: "codex", activity: -3600, left: 0)
+        let older = self.account(.claude, id: "claude", activity: -86400, left: 1)
+        var model = NativeCombinedAccounts(connections: [
+            .init(provider: .kimi, accounts: [unread], hasSavedAccounts: true),
+            .init(provider: .codex, accounts: [drained]),
+            .init(provider: .claude, accounts: [older]),
+        ], now: self.now)
+        #expect(model.pages.map(\.account.id) == ["codex", "claude", "kimi"])
+        // Read, with nothing left and unused the longest, it is last on its merits; with usage left it leads.
+        let read = self.account(.kimi, id: "kimi", activity: -14 * 86400, left: 0)
+        model = NativeCombinedAccounts(connections: [
+            .init(provider: .kimi, accounts: [read]),
+            .init(provider: .codex, accounts: [drained]),
+            .init(provider: .claude, accounts: [older]),
+        ], now: self.now)
+        #expect(model.pages.map(\.account.id) == ["codex", "claude", "kimi"])
+        let refilled = self.account(.kimi, id: "kimi", activity: -14 * 86400, left: 80)
+        model = NativeCombinedAccounts(connections: [
+            .init(provider: .codex, accounts: [drained]),
+            .init(provider: .kimi, accounts: [refilled]),
+        ], now: self.now)
+        #expect(model.pages.map(\.account.id) == ["kimi", "codex"])
+    }
+
     @Test func `drained accounts sort to the back while accounts with usage left stay together`() {
         let full = self.account(.claude, id: "full", activity: -600, left: 90)
         let drained = self.account(.claude, id: "drained", activity: -10, left: 2)

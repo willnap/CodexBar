@@ -493,6 +493,16 @@ Plugin cards show `resetsAt` using the app's countdown or absolute-time preferen
 available, `resetDescription` supplies the reset text through the same formatter as built-in providers. A refresh
 failure appears alongside the last successful usage until a subsequent refresh succeeds.
 
+`resets` lists the limit resets an account holds or has used, up to 50: `{ available, expiresAt?, usedAt?,
+grantedAt?, clears?, givesBackWiderUsage?, label? }`. Leave `clears` out for a reset that clears every limit; otherwise
+list the windows it clears by id (`primary`, `secondary`, `tertiary` or an extra window's `id`). The dial draws a reset
+in the colour of the gauge it clears, smaller when that is not the main gauge.
+
+`plan` describes the account's plan: `{ company?, name?, formerNames?, price? }`, where `price` is
+`{ monthlyAmount, currency, billedEvery?, includesTax? }`: one month's cost in the ISO 4217 currency the account is
+billed in. Report a price only when the provider's API states it for the account; the account footer then shows it in
+place of the plan's name. Do not convert currencies or assume a list price.
+
 Rate windows may include `quotaLimit` (a positive finite number) and `quotaUnit` (`credits`, `requests`, or an
 ISO currency code) alongside `usedPercent`. Built-in provider cards use these units for monthly daily targets;
 without an absolute allowance it retains percentage units. Do not invent an allowance or reset date.

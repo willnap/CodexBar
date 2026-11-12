@@ -12,6 +12,7 @@ enum NativeOrbitExtraUsageIconState: Equatable {
 struct NativeOrbitExtraUsageComplication: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     nonisolated static let symbol = "creditcard.rewards.fill"
+    nonisolated static let budgetTrackOpacity = 0.12
     let fraction: Double?
     let icon: NativeOrbitExtraUsageIconState
     let accent: Color
@@ -28,8 +29,13 @@ struct NativeOrbitExtraUsageComplication: View {
     var body: some View {
         NativeOrbitInstrumentElement(corner: .bottomTrailing, help: self.help) {
             ZStack {
+                // An allowance with a limit is a gauge like the dial's others: it draws what is left, full when
+                // none is used and down to its bare track when none is left. Without a limit there is only the
+                // faint groove.
                 NativeOrbitCornerGauge(fraction: 1)
-                    .stroke(Color.primary.opacity(0.035), style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                    .stroke(
+                        Color.primary.opacity(self.fraction == nil ? 0.035 : Self.budgetTrackOpacity),
+                        style: StrokeStyle(lineWidth: 6, lineCap: .round))
                 // Present at zero too, so a reading arriving draws its arc in from the origin.
                 if let fraction, fraction.isFinite {
                     NativeOrbitCornerGauge(fraction: min(1, max(0, fraction)))

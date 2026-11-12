@@ -521,6 +521,31 @@ public enum CodexOAuthUsageFetcher {
         }
     }
 
+    /// A read of ChatGPT's own account API, which exists only behind the ChatGPT backend base URL.
+    static func fetchBackend(
+        path: String,
+        query: [URLQueryItem] = [],
+        accessToken: String,
+        accountId: String,
+        env: [String: String],
+        timeout: TimeInterval = 10) async throws -> Data
+    {
+        let base = self.normalizeChatGPTBaseURL(self.resolveChatGPTBaseURL(env: env, configContents: nil))
+        guard base.contains("/backend-api"), var components = URLComponents(string: base + path) else {
+            throw CodexOAuthFetchError.invalidResponse
+        }
+        if !query.isEmpty { components.queryItems = query }
+        guard let url = components.url else { throw CodexOAuthFetchError.invalidResponse }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("CodexBar", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(accountId, forHTTPHeaderField: "ChatGPT-Account-Id")
+        return try await CodexAuthenticatedHTTPTransport.perform(
+            request: request, transport: CodexAuthenticatedHTTPTransport.current)
+    }
+
     public static func fetchRateLimitResetCredits(
         accessToken: String,
         accountId: String?,

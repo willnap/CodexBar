@@ -1039,8 +1039,12 @@ extension ClaudeUsageFetcher {
         loginMethod: String?,
         treatAsSpendLimit: Bool = false) -> ProviderCostSnapshot?
     {
-        guard let extra, extra.isEnabled == true else { return nil }
-        guard let used = extra.usedCredits,
+        // An allowance Claude paused because its credit ran out is still set up, with nothing of it left. One
+        // turned off is not reported.
+        let outOfCredits = extra?.isEnabled == false && extra?.disabledReason == "out_of_credits"
+            && (extra?.monthlyLimit ?? 0) > 0
+        guard let extra, extra.isEnabled == true || outOfCredits else { return nil }
+        guard let used = extra.usedCredits ?? (outOfCredits ? 0 : nil),
               let limit = extra.monthlyLimit
         else { return nil }
         let currency = extra.currency?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1053,6 +1057,7 @@ extension ClaudeUsageFetcher {
             currencyCode: code,
             period: isSpendLimit ? "Spend limit" : "Monthly cap",
             resetsAt: nil,
+            isOutOfFunds: outOfCredits ? true : nil,
             updatedAt: Date())
     }
 

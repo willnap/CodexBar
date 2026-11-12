@@ -131,13 +131,17 @@ extension UsageStore {
     /// The adaptive timer's loop. `store` is read anew for each brief decision and never held across a sleep, so
     /// the store can deallocate mid-wait, which ends the loop.
     nonisolated static func runAdaptiveRefreshTimer(for store: @escaping @Sendable () -> UsageStore?) async {
+        let activity = Self.beginScheduledRefreshActivity()
+        defer { ProcessInfo.processInfo.endActivity(activity) }
         while !Task.isCancelled {
             let startedAt = Date()
             guard var sleepDuration = await Self.nextAdaptiveTimerSleepDuration(for: store()) else { return }
             // A long wait is slept in slices and re-read against the live signals after each one, so it shortens
             // as soon as the person is back at the Mac.
             while sleepDuration > Self.adaptiveTimerSlice {
+                let sliceStartedAt = ContinuousClock.now
                 try? await Task.sleep(for: Self.adaptiveTimerSlice)
+                Self.noteTimerOversleep(ContinuousClock.now - sliceStartedAt, requested: Self.adaptiveTimerSlice)
                 guard !Task.isCancelled,
                       let remaining = await Self.remainingAdaptiveTimerSleep(for: store(), since: startedAt)
                 else { return }
@@ -149,6 +153,25 @@ extension UsageStore {
             guard !Task.isCancelled else { return }
             await store()?.refresh(enrichmentMode: .automatic)
         }
+    }
+
+    /// Polling on schedule is this app's job while nobody is looking at it. macOS may nap a menu bar app once the
+    /// person is away and defer its timers. Recording stopped every night for some eleven hours, on every provider
+    /// at once, although the Mac was awake and agents went on using the accounts; it resumed when the person came
+    /// back. Holding an activity exempts the timers from App Nap. It allows idle system sleep, so the Mac still
+    /// sleeps when it wants to.
+    nonisolated static func beginScheduledRefreshActivity() -> NSObjectProtocol {
+        ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep,
+            reason: "Scheduled usage refresh")
+    }
+
+    /// A wait that ran far past what was asked for means the process was held back (or the Mac slept); say so,
+    /// since a hole in recorded history is otherwise unexplained afterwards.
+    nonisolated static func noteTimerOversleep(_ slept: Duration, requested: Duration) {
+        guard slept > requested + .seconds(300) else { return }
+        CodexBarLog.logger(LogCategories.adaptiveRefresh).warning(
+            "timer overslept: \(slept.components.seconds)s for a \(requested.components.seconds)s wait")
     }
 
     /// A wait under way only ever shortens. Re-reading the signals part-way must not push a refresh back: a menu
@@ -210,6 +233,8 @@ extension UsageStore {
         refresh: @escaping @Sendable () async -> Void) async
     {
         precondition(interval > .zero)
+        let activity = Self.beginScheduledRefreshActivity()
+        defer { ProcessInfo.processInfo.endActivity(activity) }
         var scheduledAt = await now() + interval
         while !Task.isCancelled {
             let current = await now()

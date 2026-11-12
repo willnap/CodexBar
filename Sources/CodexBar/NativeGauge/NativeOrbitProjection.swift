@@ -495,6 +495,14 @@ enum NativeOrbitChartAxis {
         now.addingTimeInterval(-self.span(days: days))
     }
 
+    static func start(now: Date, span: TimeInterval) -> Date {
+        now.addingTimeInterval(-span)
+    }
+
+    static func projectingBounds(now: Date, span: TimeInterval) -> (start: Date, end: Date) {
+        (now.addingTimeInterval(-span), now.addingTimeInterval(span))
+    }
+
     /// The past span a projecting chart mirrors into the future: a whole day, week or month.
     static func span(days: Int) -> TimeInterval {
         Double(max(1, days)) * 86400

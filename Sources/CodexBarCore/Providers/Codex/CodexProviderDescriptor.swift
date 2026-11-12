@@ -463,7 +463,43 @@ struct CodexOAuthFetchStrategy: ProviderFetchStrategy {
             usage: usage,
             credentials: credentials,
             context: context)
-        return try await Self.replacingWithCLIMonthlyLimitIfAvailable(spendControlsResult, context: context)
+        let limited = try await Self.replacingWithCLIMonthlyLimitIfAvailable(spendControlsResult, context: context)
+        return await Self.applyingPlanPrice(limited, usage: usage, credentials: credentials, context: context)
+    }
+
+    /// The price of the account's subscription, from OpenAI's own subscription and pricing reads. It never fails
+    /// or delays a usage reading beyond its own short requests, and is read rarely.
+    private static func applyingPlanPrice(
+        _ result: ProviderFetchResult,
+        usage: CodexUsageResponse,
+        credentials: CodexOAuthCredentials,
+        context: ProviderFetchContext) async -> ProviderFetchResult
+    {
+        guard context.runtime == .app, !credentials.isAPIKey,
+              let accountId = self.firstNonEmptyAccountId(credentials.accountId, usage.accountId)
+        else { return result }
+        let token = credentials.accessToken
+        let env = context.env
+        let plan = await CodexPlanPriceCache.shared.details(
+            accountID: accountId,
+            subscription: {
+                let data = try await CodexOAuthUsageFetcher.fetchBackend(
+                    path: "/subscriptions",
+                    query: [URLQueryItem(name: "account_id", value: accountId)],
+                    accessToken: token,
+                    accountId: accountId,
+                    env: env)
+                return try JSONDecoder().decode(CodexPlanPrice.Subscription.self, from: data)
+            },
+            pricing: { country in
+                try await CodexOAuthUsageFetcher.fetchBackend(
+                    path: "/checkout_pricing_config/configs/\(country)",
+                    accessToken: token,
+                    accountId: accountId,
+                    env: env)
+            })
+        guard let plan else { return result }
+        return result.withUsage(result.usage.with(providerPlan: plan))
     }
 
     private static func prepareCredentialsForUsage(

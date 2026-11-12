@@ -96,6 +96,42 @@ extension StatusItemController {
                             encoding: .utf8)
                     }
                 }
+                // Timing audits of pinch zooming: `CODEXBAR_PREVIEW_PINCH` is "from,to" in days. Once launch settles the
+                // span sweeps from one to the other and back as a pinch's steps do, then settles like lifted fingers.
+                if let days = ProcessInfo.processInfo.environment["CODEXBAR_PREVIEW_PINCH"]?
+                    .split(separator: ",").compactMap({ Double($0) }), days.count == 2, days.allSatisfy({ $0 > 0 })
+                {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(30))
+                        let activity = ProcessInfo.processInfo.beginActivity(
+                            options: .userInitiated, reason: "Preview pinch")
+                        defer { ProcessInfo.processInfo.endActivity(activity) }
+                        let state = controller.orbitState
+                        var steps: [Int] = []
+                        var span = days[0] * 86400
+                        for (from, to) in [(days[0], days[1]), (days[1], days[0])] {
+                            for step in 0...150 {
+                                let started = ContinuousClock.now
+                                span = from * pow(to / from, Double(step) / 150) * 86400
+                                var transaction = Transaction(animation: nil)
+                                transaction.disablesAnimations = true
+                                withTransaction(transaction) { state.track(span: span) }
+                                try? await Task.sleep(for: .seconds(1.0 / 120))
+                                let elapsed = started.duration(to: .now).components
+                                steps.append(Int(elapsed.seconds) * 1000
+                                    + Int(elapsed.attoseconds / 1_000_000_000_000_000))
+                            }
+                        }
+                        withAnimation(.smooth(duration: 0.22)) { state.settle(span: span) }
+                        let sorted = steps.sorted()
+                        let marker = FileManager.default.temporaryDirectory
+                            .appendingPathComponent("codexbar-preview-pinch.txt")
+                        try? ("pinched \(days) median \(sorted[sorted.count / 2])ms p95 "
+                            + "\(sorted[sorted.count * 95 / 100])ms max \(sorted.last ?? 0)ms "
+                            + "settled days \(state.days) span \(state.span)\n").write(
+                            to: marker, atomically: true, encoding: .utf8)
+                    }
+                }
                 Task { @MainActor [weak self] in
                     guard let store = self?.store else { return }
                     await NativeOrbitPopupBenchmark.runRefreshProbeIfRequested(

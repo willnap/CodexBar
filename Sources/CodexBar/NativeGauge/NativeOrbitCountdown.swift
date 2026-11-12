@@ -21,4 +21,9 @@ struct NativeOrbitCountdown {
         let remaining = min(period, max(0, deadline.timeIntervalSince(now)))
         return ceil(remaining / (period / Double(self.segments))) / Double(self.segments)
     }
+
+    /// The lanes that keep time of their own: see `UsageWindow.timedLanes`.
+    static func timedLanes(_ windows: [UsageWindow]) -> Set<String> {
+        UsageWindow.timedLanes(windows)
+    }
 }

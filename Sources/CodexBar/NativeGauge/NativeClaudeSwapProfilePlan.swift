@@ -14,14 +14,26 @@ enum NativeClaudeSwapProfilePlan {
             let userRateLimitTier: String?
             let billingType: String?
             let seatTier: String?
+            let planDisplayName: String?
         }
 
         let oauthAccount: Account?
     }
 
-    private static var cache: [URL: (modified: Date, plan: String?)] = [:]
+    private static var cache: [URL: (modified: Date, plan: String?, displayName: String?)] = [:]
 
     static func plan(email: String?, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> String? {
+        self.profile(email: email, home: home)?.plan
+    }
+
+    /// What Claude itself now calls the plan ("Ultra"), which the tier ("default_claude_max_20x") no longer says.
+    static func displayName(
+        email: String?, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> String?
+    {
+        self.profile(email: email, home: home)?.displayName
+    }
+
+    private static func profile(email: String?, home: URL) -> (plan: String, displayName: String?)? {
         guard !SettingsStore.isRunningTests,
               let email = email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !email.isEmpty
         else { return nil }
@@ -29,15 +41,17 @@ enum NativeClaudeSwapProfilePlan {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else { return nil }
         for name in names where name.hasPrefix(".claude-config-") && name.lowercased().hasSuffix("-\(email).json") {
             let url = directory.appendingPathComponent(name)
-            if let plan = self.plan(at: url, email: email) { return plan }
+            if let profile = self.profile(at: url, email: email) { return profile }
         }
         return nil
     }
 
-    private static func plan(at url: URL, email: String) -> String? {
+    private static func profile(at url: URL, email: String) -> (plan: String, displayName: String?)? {
         guard let modified = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate]
             as? Date else { return nil }
-        if let cached = self.cache[url], cached.modified == modified { return cached.plan }
+        if let cached = self.cache[url], cached.modified == modified {
+            return cached.plan.map { ($0, cached.displayName) }
+        }
         let account = (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(Profile.self, from: $0) }?
             .oauthAccount
         let plan: String? = if let account,
@@ -50,7 +64,9 @@ enum NativeClaudeSwapProfilePlan {
         } else {
             nil
         }
-        self.cache[url] = (modified, plan)
-        return plan
+        let displayName = plan == nil ? nil : account?.planDisplayName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        self.cache[url] = (modified, plan, displayName)
+        return plan.map { ($0, displayName) }
     }
 }

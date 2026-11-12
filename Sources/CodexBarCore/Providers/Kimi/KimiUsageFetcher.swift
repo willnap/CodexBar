@@ -85,6 +85,7 @@ public struct KimiUsageFetcher: Sendable {
             snapshot.accountEmail = profile.email
             snapshot.accountName = profile.name
             if snapshot.planName == nil { snapshot.planName = profile.plan }
+            snapshot.planCurrencyCode = profile.planCurrencyCode
         }
         snapshot.historyOwnerID = self.historyOwnerID(
             endpoint: endpoint, credential: apiKey, enrichmentCredential: webCredential?.token)
@@ -285,6 +286,8 @@ public struct KimiUsageFetcher: Sendable {
         let email: String?
         let name: String?
         let plan: String?
+        /// The currency Kimi sells this account's plans in: its overseas plans are priced in US dollars.
+        var planCurrencyCode: String?
     }
 
     /// Kimi Code's own profile (`/me`, beside `/usages`), as its CLI reads it. A phone login has no email; its
@@ -295,7 +298,11 @@ public struct KimiUsageFetcher: Sendable {
         func text(_ key: String) -> String? {
             (object[key] as? String).flatMap { SettingsValue.cleaned($0) }
         }
-        return CodeProfile(email: text("email"), name: text("nickname"), plan: text("user_level_name"))
+        return CodeProfile(
+            email: text("email"),
+            name: text("nickname"),
+            plan: text("user_level_name"),
+            planCurrencyCode: text("region") == "REGION_OVERSEA" ? "USD" : nil)
     }
 
     private static func fetchCodeProfile(

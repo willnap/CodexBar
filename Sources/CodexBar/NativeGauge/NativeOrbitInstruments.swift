@@ -23,6 +23,10 @@ struct NativeOrbitInstruments: View {
     var liveNow: Date?
     /// While the startup sweeps, each reading shows its zero; settling rolls the real values up from there.
     var countsFromZero = false
+    /// The dial's gauges, outermost first: a reset that clears only an inner one is drawn in its colour.
+    var gauges: [NativeOrbitGaugeLane] = []
+    /// The accent the gauges are tinted from, when it differs from the instruments' own.
+    var gaugeAccent: Color?
 
     /// The prediction the corners show while the pointer is ahead of now.
     private var future: (date: Date, now: Date, projection: NativeOrbitAccountProjection)? {
@@ -103,26 +107,59 @@ struct NativeOrbitInstruments: View {
 
     private func resetReading(_ displayed: NativeOrbitAccountMetrics) -> some View {
         let state = NativeOrbitResetCornerState.resolve(provider: self.provider, metrics: displayed)
-        // Counting from zero, every banked reset starts outlined and fills as the dial settles.
+        // Counting from zero, every banked reset starts as an empty place and fills as the dial settles.
         let shown: NativeOrbitResetCornerState = if self.countsFromZero, case let .inventory(available, used) = state {
             .inventory(available: 0, used: available + used)
         } else {
             state
         }
+        // The instant the corner shows: what was used in the week before it is still fading there.
+        let instant = self.inspectionDate ?? self.liveNow ?? self.now
+        let prepared = self.account.metrics.preparedHistory
+        let week = NativeOrbitResetEvent.redemptions(
+            in: self.account.history, days: 7, now: instant, prepared: prepared)
+        let recent = self.countsFromZero || self.future != nil
+            ? [] : week.flatMap { Array(repeating: $0.date, count: max(1, $0.quantity)) }
+        let ids = self.gauges.map(\.id)
+        let banked = displayed.bankedResetDetails.map { NativeOrbitResetComplication.lane($0.scope, gauges: ids) }
+        let used = displayed.usedResetDetails.map { NativeOrbitResetComplication.lane($0.scope, gauges: ids) }
         return NativeOrbitResetComplication(
             state: shown,
             accent: self.accent,
             help: Self.resetHelp(
                 state,
-                displayed: displayed,
-                redeemed: NativeOrbitResetEvent.redemptions(
-                    in: self.account.history,
-                    days: self.days,
-                    now: self.now,
-                    prepared: self.account.metrics.preparedHistory),
+                banked: displayed.bankedResetDetails,
+                used: displayed.usedResetDetails,
+                recentlyUsed: recent,
+                earlier: NativeOrbitResetEvent.redemptions(
+                    in: self.account.history, days: max(self.days, 30), now: instant, prepared: prepared)
+                    .map(\.date).max(),
+                gauges: self.gauges,
+                laneTitles: displayed.resetLaneTitles,
                 provider: self.provider,
                 moment: self.moment,
-                now: self.liveNow ?? self.now))
+                now: self.liveNow ?? self.now),
+            recentlyUsed: recent,
+            now: instant,
+            bankedLanes: self.countsFromZero ? [] : banked,
+            usedLanes: used,
+            laneStyles: self.resetLaneStyles(banked + used))
+    }
+
+    /// Each gauge's colour for the resets that clear it. A window the dial is not drawing just now (a model
+    /// allowance left unused for a week) keeps the colour its gauge has when it is drawn.
+    private func resetLaneStyles(_ lanes: [String?]) -> [String: NativeOrbitResetLaneStyle] {
+        var styles = Dictionary(
+            self.gauges.enumerated().map { index, gauge in
+                (gauge.id, NativeOrbitResetLaneStyle(tint: gauge.tint, isOutermost: index == 0))
+            },
+            uniquingKeysWith: { first, _ in first })
+        for case let lane? in lanes where styles[lane] == nil {
+            styles[lane] = NativeOrbitResetLaneStyle(
+                tint: NativeOrbitPalette.color(accent: self.gaugeAccent ?? self.accent, id: lane, period: 604_800),
+                isOutermost: false)
+        }
+        return styles
     }
 
     private var moment: NativeOrbitReadingMoment {
@@ -131,12 +168,17 @@ struct NativeOrbitInstruments: View {
         return self.account.updatedAt == nil ? .loading : .live
     }
 
-    /// The banked inventory as of the displayed instant, then one line on what changes it next: the latest
-    /// redemption in the range, else the next expiry. Window and provider resets never change the inventory.
+    /// What is in stock, one line for each kind with what a part reset refills straight under it; then the last
+    /// thing that happened: a use this week (naming the kind when that tells it apart), an earlier use, or when the
+    /// last one was given. An ordinary reset needs no explaining, so kinds are named only beside a part reset.
     static func resetHelp( // swiftlint:disable:this function_parameter_count
         _ state: NativeOrbitResetCornerState,
-        displayed: NativeOrbitAccountMetrics,
-        redeemed: [NativeOrbitResetEvent.Redemption],
+        banked: [ProviderReset],
+        used: [ProviderReset] = [],
+        recentlyUsed: [Date],
+        earlier: Date?,
+        gauges: [NativeOrbitGaugeLane],
+        laneTitles: [String: String] = [:],
         provider: UsageProvider?,
         moment: NativeOrbitReadingMoment,
         now: Date) -> String
@@ -147,22 +189,74 @@ struct NativeOrbitInstruments: View {
             return name.map { "\($0) has no banked resets" } ?? "No banked resets for this account"
         case .unknown:
             return moment == .inspecting ? "No banked-reset reading for this moment" : "Banked resets unavailable"
-        case let .inventory(available, used):
-            let noun = available == 1 ? "banked reset" : "banked resets"
-            var count = switch (available, moment) {
-            case (0, .projecting): "No banked resets left by then"
-            case (0, _): "No banked resets left"
-            case (_, .projecting): "\(available) \(noun) left by then"
-            default: "\(available) \(noun) available"
+        case let .inventory(available, _):
+            let left = moment == .projecting ? " left by then" : ""
+            let kinds = Self.resetKinds(banked, gauges: gauges, laneTitles: laneTitles)
+            let usedKinds = Self.resetKinds(used, gauges: gauges, laneTitles: laneTitles)
+            let hasParts = (kinds + usedKinds).contains { $0.name != nil }
+            var lines: [String] = []
+            if available == 0 {
+                lines.append("No resets left" + (moment == .projecting ? " by then" : ""))
+            } else if kinds.count == banked.count, kinds.contains(where: { $0.name != nil }) {
+                let mixed = Set(kinds.map(\.name)).count > 1
+                var seen: [String?] = []
+                for kind in kinds where !seen.contains(kind.name) {
+                    seen.append(kind.name)
+                    let same = zip(kinds, banked).filter { $0.0.name == kind.name }.map(\.1)
+                    let word = kind.name.map { "\($0) " } ?? (mixed ? "full " : "")
+                    lines.append(
+                        "\(same.count) \(word)" + (same.count == 1 ? "reset" : "resets") + left
+                            + Self.resetExpiry(same, now: now))
+                    guard let name = kind.name else { continue }
+                    let back = kind.givesBack ? " and the \(gauges.first?.title ?? "wider limit") it used" : " only"
+                    lines.append((same.count == 1 ? "It refills " : "Each refills ") + name + back)
+                }
+            } else {
+                lines.append(
+                    "\(available) " + (available == 1 ? "reset" : "resets") + left
+                        + Self.resetExpiry(banked, now: now))
             }
-            if used > 0 { count += ", \(used) used" }
-            if let latest = redeemed.max(by: { $0.date < $1.date }) {
-                return count + "\nLast used " + NativeOrbitTooltip.at(latest.date, now: now)
+            if let latest = recentlyUsed.max() {
+                let when = NativeOrbitTooltip.at(latest, now: now)
+                if recentlyUsed.count > 1 {
+                    lines.append("Used \(recentlyUsed.count) this week, last \(when)")
+                } else if hasParts, usedKinds.count == 1 {
+                    lines.append("Used a \(usedKinds[0].name ?? "full") reset \(when)")
+                } else {
+                    lines.append("Used one \(when)")
+                }
+            } else if let earlier {
+                lines.append("Last used " + NativeOrbitTooltip.at(earlier, now: now))
+            } else if let given = banked.compactMap(\.grantedAt).max(), given <= now {
+                lines.append("Last given " + NativeOrbitTooltip.at(given, now: now))
             }
-            if let expiry = displayed.nextResetCreditExpiry, expiry > now {
-                return count + "\nNext expires " + NativeOrbitTooltip.at(expiry, now: now)
-            }
-            return count
+            return lines.joined(separator: "\n")
+        }
+    }
+
+    /// ", expires Dec 10" for resets that lapse together, ", next expires Dec 10" when they do not, and nothing for
+    /// resets with no end.
+    private static func resetExpiry(_ resets: [ProviderReset], now: Date) -> String {
+        guard let soonest = resets.compactMap(\.expiresAt).min(), soonest > now else { return "" }
+        let date = NativeOrbitTooltip.moment(soonest, now: now)
+        guard Set(resets.map(\.expiresAt)).count == 1 else { return ", next expires \(date)" }
+        return resets.count == 1 ? ", expires \(date)" : ", expire \(date)"
+    }
+
+    /// What each banked reset is, in order: no name for an ordinary one that clears everything, otherwise the
+    /// name of the one gauge it clears ("Fable") and whether it also returns that gauge's share of the main one.
+    static func resetKinds(
+        _ banked: [ProviderReset],
+        gauges: [NativeOrbitGaugeLane],
+        laneTitles: [String: String] = [:]) -> [(name: String?, givesBack: Bool)]
+    {
+        let ids = gauges.map(\.id)
+        return banked.map { reset in
+            guard let lane = NativeOrbitResetComplication.lane(reset.scope, gauges: ids) else { return (nil, false) }
+            let title = gauges.first { $0.id == lane }?.title ?? laneTitles[lane] ?? "Partial"
+            // "Fable only" is the gauge's own title; the reset is a Fable reset.
+            let name = title.replacing(/\s+only$/.ignoresCase(), with: "")
+            return (name.isEmpty ? "Partial" : name, reset.givesBackWiderUsage)
         }
     }
 
@@ -214,7 +308,7 @@ struct NativeOrbitInstruments: View {
     /// The bottom-trailing corner is always the additional-usage gauge. Its arc fills only from a reported
     /// used/limit pair; amounts without a limit, a disabled window, balances and recorded credits stay in its help.
     private func extraUsageReading(_ displayed: NativeOrbitAccountMetrics) -> some View {
-        let fraction = displayed.reportedSpend?.isDisabled == true ? nil : displayed.extraUsageFraction
+        let fraction = displayed.reportedSpend?.isDisabled == true ? nil : displayed.extraUsageLeftFraction
         return NativeOrbitExtraUsageComplication(
             fraction: self.countsFromZero ? fraction.map { _ in 0 } : fraction,
             icon: Self.extraUsageIcon(
@@ -253,11 +347,16 @@ struct NativeOrbitInstruments: View {
         var lines: [String] = []
         if let spend = displayed.reportedSpend {
             if spend.isDisabled == true { return "Additional usage is off" }
-            let used = Self.money(spend.used, currency: spend.currencyCode)
             let cycle = spend.period?.localizedCaseInsensitiveContains("month") == true ? " this month" : ""
-            lines.append(spend.limit > 0
-                ? "\(used) of \(Self.money(spend.limit, currency: spend.currencyCode)) additional usage\(cycle)"
-                : "\(used) of additional usage\(cycle)")
+            if spend.limit > 0 {
+                // The gauge draws what is left, so the words lead with it.
+                let left = Self.money(max(0, spend.limit - spend.used), currency: spend.currencyCode)
+                let limit = Self.money(spend.limit, currency: spend.currencyCode)
+                lines.append("\(left) left of \(limit) additional usage\(cycle)")
+            } else {
+                lines.append("\(Self.money(spend.used, currency: spend.currencyCode)) of additional usage\(cycle)")
+            }
+            if spend.isOutOfFunds == true { lines.append("The provider has it paused: out of credits") }
             if let share = spend.personalUsed {
                 lines.append("Your share: \(Self.money(share, currency: spend.currencyCode))")
             }

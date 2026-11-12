@@ -104,6 +104,13 @@ struct NativeOrbitAccountMetrics {
     /// Instants where the account's own quota readings rose: measured consumption, wherever it happened.
     var quotaConsumption: [Date] = []
     var bankedResets: Int?
+    /// The resets behind those two counts, in the order the corner draws them: what each clears, when it was
+    /// given, when it lapses. Live readings only; a restored past instant has the counts alone.
+    var bankedResetDetails: [ProviderReset] = []
+    var usedResetDetails: [ProviderReset] = []
+    /// The provider's name for each window a reset clears that is not one of the three standard ones, so a reset
+    /// can say what it clears even while the dial does not draw that window.
+    var resetLaneTitles: [String: String] = [:]
     var nextResetCreditExpiry: Date?
     var resetInventoryObservedAt: Date?
 
@@ -163,6 +170,14 @@ struct NativeOrbitAccountMetrics {
         guard let spend = self.reportedSpend, spend.used.isFinite, spend.used >= 0,
               spend.limit.isFinite, spend.limit > 0 else { return nil }
         return min(1, spend.used / spend.limit)
+    }
+
+    /// How much of the additional-usage allowance is left, which is what its gauge draws, as every gauge on the
+    /// dial does: full with all of it left, empty with none. It follows the provider's own used and limit, as the
+    /// provider's own usage page does. Claude reports a plan's monthly credits as $0 used of $200 while flagging
+    /// them "out_of_credits"; reading that flag as nothing left emptied a gauge whose credits were all there.
+    var extraUsageLeftFraction: Double? {
+        self.extraUsageFraction.map { 1 - $0 }
     }
 
     func summary(
@@ -429,6 +444,9 @@ struct NativeOrbitAccountMetrics {
         result.reportedBalance = nil
         result.bankedResets = nil
         result.usedResets = 0
+        result.bankedResetDetails = []
+        result.usedResetDetails = []
+        result.resetLaneTitles = [:]
         result.nextResetCreditExpiry = nil
         result.resetInventoryObservedAt = nil
         result.reportedQuotaUsage = []
@@ -447,6 +465,8 @@ struct NativeOrbitAccountMetrics {
             result.bankedResets = available.count
             result.usedResets = inventory.used(at: date)
             result.nextResetCreditExpiry = available.compactMap(\.self).min()
+            // The ones that lapse first are the ones gone by then.
+            result.bankedResetDetails = result.bankedResetDetails.filter { $0.expiresAt.map { $0 > date } ?? true }
         }
         if let spend = result.reportedSpend, spend.isDisabled != true, let reset = spend.resetsAt, reset <= date {
             result.reportedSpend = ProviderCostSnapshot(
@@ -462,6 +482,7 @@ struct NativeOrbitAccountMetrics {
                 balanceIsWorkspace: spend.balanceIsWorkspace,
                 usageIsUnavailable: spend.usageIsUnavailable,
                 isDisabled: spend.isDisabled,
+                isOutOfFunds: spend.isOutOfFunds,
                 updatedAt: spend.updatedAt)
         }
         return result
@@ -562,7 +583,7 @@ struct NativeOrbitAccountMetrics {
         {
             result.reportedSpend = spend
         }
-        // Provider-specific by design: only these payloads report real redeemable reset inventories.
+        // Provider-specific by design: Codex reports dated credit usage and a credit balance.
         switch provider {
         case .codex:
             result.creditUsageEvents = (credits?.events ?? []).filter {
@@ -577,32 +598,24 @@ struct NativeOrbitAccountMetrics {
                     isWorkspace: credits.hasWorkspaceBalance,
                     updatedAt: credits.updatedAt)
             }
-            if let inventory = snapshot?.codexResetCredits?.availableInventory(at: now) {
-                result.resetInventoryObservedAt = snapshot?.codexResetCredits?.updatedAt
-                result.bankedResets = inventory.count
-                result.usedResets = snapshot?.codexResetCredits?.credits.filter {
-                    guard $0.status == .redeemed, let redeemed = $0.redeemedAt else { return false }
-                    return redeemed <= now && now.timeIntervalSince(redeemed) < 86400
-                }.count ?? 0
-                result.nextResetCreditExpiry = inventory.credits.compactMap(\.expiresAt).min()
-            }
-        // Provider-specific by design: Claude and Grok publish dated reset inventories in distinct payload fields.
-        case .claude:
-            if let expirations = snapshot?.claudeResetCredits?.availableExpirations(at: now) {
-                result.resetInventoryObservedAt = snapshot?.claudeResetCredits?.updatedAt
-                result.bankedResets = expirations.count
-                result.usedResets = snapshot?.claudeResetCredits?.usedExpirations.filter {
-                    $0.map { $0 > now } ?? true
-                }.count ?? 0
-                result.nextResetCreditExpiry = expirations.compactMap(\.self).min()
-            }
-        case .grok:
-            if let expirations = snapshot?.grokResetCredits?.availableExpirations(at: now) {
-                result.resetInventoryObservedAt = snapshot?.grokResetCredits?.updatedAt
-                result.bankedResets = expirations.count
-                result.nextResetCreditExpiry = expirations.min()
-            }
         default: break
+        }
+        // Every provider's resets arrive in one form: a provider's own payload or a plugin's list.
+        if let inventory = snapshot?.resetInventory(for: provider) {
+            let available = inventory.available(at: now)
+            let used = inventory.used(at: now)
+            result.resetInventoryObservedAt = inventory.updatedAt
+            result.bankedResets = available.count
+            result.usedResets = used.count
+            result.nextResetCreditExpiry = available.compactMap(\.expiresAt).min()
+            result.bankedResetDetails = available
+            result.usedResetDetails = used
+            let cleared = Set((available + used).flatMap { reset -> [String] in
+                if case let .windows(ids) = reset.scope { ids } else { [] }
+            })
+            result.resetLaneTitles = Dictionary(
+                (snapshot?.extraRateWindows ?? []).filter { cleared.contains($0.id) }.map { ($0.id, $0.title) },
+                uniquingKeysWith: { first, _ in first })
         }
         return result
     }
@@ -633,6 +646,9 @@ extension NativeOrbitAccountMetrics: Equatable {
             && lhs.usedResets == rhs.usedResets
             && lhs.quotaConsumption == rhs.quotaConsumption
             && lhs.bankedResets == rhs.bankedResets
+            && lhs.bankedResetDetails == rhs.bankedResetDetails
+            && lhs.usedResetDetails == rhs.usedResetDetails
+            && lhs.resetLaneTitles == rhs.resetLaneTitles
             && lhs.nextResetCreditExpiry == rhs.nextResetCreditExpiry
             && lhs.resetInventoryObservedAt == rhs.resetInventoryObservedAt
     }

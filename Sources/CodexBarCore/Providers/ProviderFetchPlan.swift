@@ -210,6 +210,27 @@ public struct ProviderFetchResult: Sendable {
             claudeOAuthKeychainCredentialUnavailable: self.claudeOAuthKeychainCredentialUnavailable)
     }
 
+    /// Returns a copy carrying `usage`, preserving every other field.
+    public func withUsage(_ usage: UsageSnapshot) -> ProviderFetchResult {
+        ProviderFetchResult(
+            usage: usage,
+            credits: self.credits,
+            dashboard: self.dashboard,
+            sourceLabel: self.sourceLabel,
+            strategyID: self.strategyID,
+            strategyKind: self.strategyKind,
+            supplementalUsageTask: self.supplementalUsageTask,
+            codexResetCreditsAttempted: self.codexResetCreditsAttempted,
+            codexMonthlyLimitEnrichmentFailed: self.codexMonthlyLimitEnrichmentFailed,
+            diagnostic: self.diagnostic,
+            claudeOAuthKeychainPersistentRefHash: self.claudeOAuthKeychainPersistentRefHash,
+            claudeOAuthHistoryOwnerIdentifier: self.claudeOAuthHistoryOwnerIdentifier,
+            claudeOAuthCredentialOwner: self.claudeOAuthCredentialOwner,
+            claudeOAuthKeychainCredentialMismatch: self.claudeOAuthKeychainCredentialMismatch,
+            claudeOAuthKeychainCredentialAbsent: self.claudeOAuthKeychainCredentialAbsent,
+            claudeOAuthKeychainCredentialUnavailable: self.claudeOAuthKeychainCredentialUnavailable)
+    }
+
     /// Returns a copy carrying `diagnostic`, preserving every other field.
     public func withDiagnostic(_ diagnostic: String) -> ProviderFetchResult {
         ProviderFetchResult(

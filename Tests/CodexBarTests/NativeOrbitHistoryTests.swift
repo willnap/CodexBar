@@ -40,6 +40,17 @@ struct NativeOrbitHistoryTests {
         let samples = NativeOrbitHistoryWidget(histories: [history], now: now, days: 7).points(history)
         #expect(samples.map(\.segment) == [0, 1, 2])
         #expect(samples.map(\.id) == history.entries)
+        // Only the stretch within one window gets a connector; the unexplained drop stays a plain break.
+        #expect(samples.map(\.followsUnrecordedGap) == [false, true, false])
+        let lane = NativeOrbitHistoryWidget.Lane(
+            history: history,
+            samples: samples,
+            resetEvents: [],
+            start: now.addingTimeInterval(-7 * 86400),
+            now: now,
+            styleIndex: 0)
+        #expect(lane.gapConnectors.map(\.available) == [80, 70])
+        #expect(Set(lane.gapConnectors.map(\.seriesID)).count == 1)
     }
 
     @Test

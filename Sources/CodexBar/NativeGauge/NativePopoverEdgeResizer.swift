@@ -73,10 +73,13 @@ final class NativePopoverEdgeResizer: NSView {
         self.gripAreas = [Edge.left, .right].map { edge in
             NSTrackingArea(
                 rect: self.gripRect(edge),
-                options: [.cursorUpdate, .activeAlways],
+                options: [.cursorUpdate, .mouseEnteredAndExited, .activeAlways],
                 owner: self,
                 userInfo: nil)
         }
+        // The whole popup: a pointer coming over it while it is still inert makes it the active, key popup.
+        self.gripAreas.append(NSTrackingArea(
+            rect: self.bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self, userInfo: nil))
         for area in self.gripAreas {
             self.addTrackingArea(area)
         }
@@ -84,8 +87,23 @@ final class NativePopoverEdgeResizer: NSView {
 
     override func cursorUpdate(with event: NSEvent) {
         let point = self.convert(event.locationInWindow, from: nil)
-        guard let edge = self.drag?.edge ?? self.edge(at: point) else { return super.cursorUpdate(with: event) }
+        // Leaving a grip sends this too. Nothing else there sets a cursor, so without the arrow the resize cursor
+        // stayed on over the popup's content.
+        guard let edge = self.drag?.edge ?? self.edge(at: point) else {
+            NSCursor.arrow.set()
+            return
+        }
         self.resizeCursor(edge).set()
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        NativePopupActivation.pointerEntered(self.window)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        guard self.drag == nil else { return }
+        let point = self.convert(event.locationInWindow, from: nil)
+        if self.edge(at: point) == nil { NSCursor.arrow.set() }
     }
 
     /// The system cursor for this edge, its arrows limited to the ways the width can still change.

@@ -305,6 +305,16 @@ extension StatusItemController {
             for _ in 0..<count {
                 guard let self, let button = self.statusItem.button else { return }
                 self.nativeCombinedClicked(button)
+                // Whether the popup came up as the active app's key window, as a pinch and its cursors need.
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .seconds(1.5))
+                    let window = self?.nativeCombinedPopover?.contentViewController?.view.window
+                    try? "active \(NSApp.isActive) popupKey \(window?.isKeyWindow == true)\n".write(
+                        to: FileManager.default.temporaryDirectory
+                            .appendingPathComponent("codexbar-open-probe-activation.txt"),
+                        atomically: true,
+                        encoding: .utf8)
+                }
                 if refreshes {
                     try? await Task.sleep(for: .seconds(1))
                     for controller in (self.nativeCombinedPopover?.contentViewController
@@ -366,11 +376,11 @@ extension StatusItemController {
         self.nativeServiceRoute.toggle(provider)
         self.lastMenuProvider = provider.instanceID
         let prepared = opening.duration(to: .now)
-        NSApp.activate()
+        NativePopupActivation.activate()
         let activated = opening.duration(to: .now)
         popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
         let presented = opening.duration(to: .now)
-        controller.view.window?.makeKey()
+        NativePopupActivation.confirm(controller.view.window)
         self.nativePopoverOpened(provider: provider, popover: popover)
         let shown = opening.duration(to: .now)
         // The first frame is committed by the time the main actor next runs.

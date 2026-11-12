@@ -63,13 +63,18 @@ struct NativeOrbitToolbar: View {
             self.refreshInfo
             NativeOrbitRangeControl(
                 days: Binding(get: { self.state.days }, set: {
-                    self.state.days = $0
+                    self.state.select(days: $0)
                     self.rangeChanged($0)
                 }),
+                span: self.state.visibleSpan,
                 accent: self.state.accent,
                 fullWords: self.state.layoutColumns > 1)
-                // Words where columns leave room; three even letter segments in a single 240 pt column.
-                    .frame(width: self.state.layoutColumns > 1 ? 180 : 102, height: Self.rowHeight)
+                // Words where columns leave room; even letter segments in a single 240 pt column.
+                    .frame(
+                        width: NativeOrbitRangeControl.width(
+                            span: self.state.span, fullWords: self.state.layoutColumns > 1),
+                        height: Self.rowHeight)
+                    .animation(self.reduceMotion ? nil : .smooth(duration: 0.28), value: self.state.span)
                     .help(L("native_orbit_range_help"))
             self.settingsButton
         }

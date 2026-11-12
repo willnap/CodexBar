@@ -103,9 +103,9 @@ extension StatusItemController {
         self.nativeUsagePopover = popover
         // Become the active app while the popup is open, so the transient popover receives the click elsewhere
         // that dismisses it, exactly like any other app's popover.
-        NSApp.activate()
+        NativePopupActivation.activate()
         popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-        popover.contentViewController?.view.window?.makeKey()
+        NativePopupActivation.confirm(popover.contentViewController?.view.window)
         let elapsed = opening.duration(to: .now).components
         let milliseconds = Double(elapsed.seconds) * 1000 + Double(elapsed.attoseconds) / 1e15
         CodexBarLog.logger("native-gauges").info(

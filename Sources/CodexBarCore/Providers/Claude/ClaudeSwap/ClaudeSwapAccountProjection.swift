@@ -333,6 +333,7 @@ public enum ClaudeSwapAccountProjection {
                 period: spend.period,
                 resetsAt: spend.resetsAt,
                 isDisabled: spend.isDisabled ? true : nil,
+                isOutOfFunds: spend.isOutOfCredits ? true : nil,
                 updatedAt: updatedAt)
         }
         guard primary != nil || secondary != nil || !scoped.isEmpty || providerCost != nil ||

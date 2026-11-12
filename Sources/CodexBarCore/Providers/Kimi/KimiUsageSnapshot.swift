@@ -18,6 +18,8 @@ public struct KimiUsageSnapshot: Sendable {
     /// From the Kimi Code profile (`/me`): display only, never part of the history owner.
     var accountEmail: String?
     var accountName: String?
+    /// The currency the account's plan is sold in, when the profile says; live-only.
+    var planCurrencyCode: String?
     var historyOwnerAliases: [String]?
 
     private static func clampedPercent(_ value: Double) -> Double {
@@ -172,7 +174,7 @@ extension KimiUsageSnapshot {
             Self.requestQuota(id: "secondary", title: "Rate limit", detail: self.rateLimit, window: rateLimitWindow),
         ].compactMap(\.self)
 
-        return UsageSnapshot(
+        let snapshot = UsageSnapshot(
             primary: weeklyWindow,
             secondary: rateLimitWindow,
             extraRateWindows: extraRateWindows.isEmpty ? nil : extraRateWindows,
@@ -193,6 +195,12 @@ extension KimiUsageSnapshot {
                 accountID: self.historyOwnerID,
                 historyOwnerAliases: self.historyOwnerAliases,
                 accountName: self.accountName))
+        // Kimi's API names the plan and the region it is sold in, never its price.
+        return snapshot.with(providerPlan: ProviderPlanCatalog.details(
+            provider: .kimi,
+            planName: self.planName,
+            currencyCode: self.planCurrencyCode,
+            updatedAt: self.updatedAt))
     }
 
     /// The shared monthly pool behind Total usage, with the Kimi Code share reported by the same source.

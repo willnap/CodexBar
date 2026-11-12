@@ -14,11 +14,46 @@ public struct ClaudeRateLimitResetCreditsSnapshot: Sendable, Equatable {
     public let expirations: [Date?]
     /// Provider-confirmed used resets in grants that are still current; no redemption identifiers.
     public let usedExpirations: [Date?]
+    /// The current grants themselves, with what each clears; empty when the source gave only the two lists above.
+    public let grants: [Grant]
     public let updatedAt: Date
 
-    public init(expirations: [Date?], updatedAt: Date, usedExpirations: [Date?] = []) {
+    /// One current grant, without its redemption handle.
+    public struct Grant: Sendable, Equatable {
+        public let startsAt: Date?
+        public let expiresAt: Date?
+        public let left: Int
+        public let used: Int
+        /// Claude's keys for the limits a reset from this grant clears (`seven_day`, `five_hour`, or a
+        /// model-scoped key); nil when the grant does not say.
+        public let clears: [String]?
+        /// Whether a reset from it also returns the weekly usage that went to the model it clears.
+        public let givesBackWeekly: Bool
+        public let label: String?
+
+        public init(
+            startsAt: Date? = nil,
+            expiresAt: Date?,
+            left: Int,
+            used: Int,
+            clears: [String]? = nil,
+            givesBackWeekly: Bool = false,
+            label: String? = nil)
+        {
+            self.startsAt = startsAt
+            self.expiresAt = expiresAt
+            self.left = max(0, left)
+            self.used = max(0, used)
+            self.clears = clears
+            self.givesBackWeekly = givesBackWeekly
+            self.label = label
+        }
+    }
+
+    public init(expirations: [Date?], updatedAt: Date, usedExpirations: [Date?] = [], grants: [Grant] = []) {
         self.expirations = expirations
         self.usedExpirations = usedExpirations
+        self.grants = grants
         self.updatedAt = updatedAt
     }
 
@@ -108,6 +143,7 @@ struct ClaudeLimitResetStatusResponse: Decodable {
         guard self.eligible, self.grantsReceived else { return nil }
         var expirations: [Date?] = []
         var used: [Date?] = []
+        var current: [ClaudeRateLimitResetCreditsSnapshot.Grant] = []
         for grant in self.grants {
             guard !grant.paused, grant.startsAt.map({ $0 <= updatedAt }) ?? true,
                   grant.endsAt.map({ $0 > updatedAt }) ?? true else { continue }
@@ -117,9 +153,17 @@ struct ClaudeLimitResetStatusResponse: Decodable {
             else { return nil }
             expirations.append(contentsOf: repeatElement(grant.endsAt, count: grant.resetsLeft))
             used.append(contentsOf: repeatElement(grant.endsAt, count: consumed))
+            current.append(.init(
+                startsAt: grant.startsAt,
+                expiresAt: grant.endsAt,
+                left: grant.resetsLeft,
+                used: consumed,
+                clears: grant.clears,
+                givesBackWeekly: grant.givesBackWeekly,
+                label: grant.label))
         }
         return ClaudeRateLimitResetCreditsSnapshot(
-            expirations: expirations, updatedAt: updatedAt, usedExpirations: used)
+            expirations: expirations, updatedAt: updatedAt, usedExpirations: used, grants: current)
     }
 
     private struct LossyGrant: Decodable {
@@ -138,6 +182,11 @@ struct ClaudeLimitResetGrantResponse: Decodable {
     let endsAt: Date?
     /// Required: a grant whose pause state is unknown is dropped rather than counted.
     let paused: Bool
+    /// What a reset from this grant clears. All three are additions to the payload: absent or malformed, the
+    /// grant still counts, and simply does not say.
+    let clears: [String]?
+    let givesBackWeekly: Bool
+    let label: String?
 
     private enum CodingKeys: String, CodingKey {
         case resetsLeft = "resets_left"
@@ -145,6 +194,9 @@ struct ClaudeLimitResetGrantResponse: Decodable {
         case startsAt = "starts_at"
         case endsAt = "ends_at"
         case paused
+        case clears
+        case givesBackWeekly = "gives_back_weekly"
+        case label
     }
 
     init(from decoder: Decoder) throws {
@@ -154,6 +206,13 @@ struct ClaudeLimitResetGrantResponse: Decodable {
         self.startsAt = try Self.decodeBound(container, forKey: .startsAt)
         self.endsAt = try Self.decodeBound(container, forKey: .endsAt)
         self.paused = try container.decode(Bool.self, forKey: .paused)
+        let clears = try? container.decodeIfPresent([String].self, forKey: .clears)
+        self.clears = clears.map { $0.filter { !$0.isEmpty && $0.utf8.count <= 64 } }.flatMap {
+            $0.isEmpty || $0.count > 16 ? nil : $0
+        }
+        self.givesBackWeekly = (try? container.decodeIfPresent(Bool.self, forKey: .givesBackWeekly)) ?? false
+        let label = try? container.decodeIfPresent(String.self, forKey: .label)
+        self.label = label.flatMap { $0.utf8.count <= 120 ? $0 : nil }
         guard self.resetsLeft >= 0, self.resetsTotal.map({ $0 >= self.resetsLeft }) ?? true else {
             throw DecodingError.dataCorruptedError(
                 forKey: .resetsLeft,

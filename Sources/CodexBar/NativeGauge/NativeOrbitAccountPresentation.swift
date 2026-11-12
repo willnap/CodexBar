@@ -28,6 +28,8 @@ struct NativeOrbitAccountPresentation: Identifiable {
     var isNamed = true
     /// The plan as the menu names it ("Claude Max 20x", "Pro 5x", "Plus").
     var plan: String?
+    /// Who sells the plan, its names and its price, where the provider reports them.
+    var planDetails: ProviderPlanDetails?
     var symbol: String
     let isActive: Bool
     let canActivate: Bool
@@ -481,6 +483,10 @@ extension UsageStore {
             let reportedPlan = snapshot?.loginMethod(for: .claude) == ClaudeSwapAccountProjection.sourceLabel
                 ? nil : row.plan
             row.plan = reportedPlan ?? NativeClaudeSwapProfilePlan.plan(email: account.accountEmail)
+            row.planDetails = snapshot?.planDetails(
+                for: .claude,
+                planName: row.plan,
+                currentName: NativeClaudeSwapProfilePlan.displayName(email: account.accountEmail))
             return row
         }
         return Self.nativeOrbitOrdered(rows)
@@ -552,6 +558,7 @@ extension UsageStore {
             email: self.settings.hidePersonalInfo ? nil : presentation.model.email,
             isNamed: automatic || !presentation.model.email.isEmpty || accountName != nil,
             plan: presentation.model.planText,
+            planDetails: snapshot?.planDetails(for: provider, planName: presentation.model.planText),
             symbol: "person.crop.circle",
             isActive: false,
             canActivate: false,
@@ -697,6 +704,7 @@ extension UsageStore {
             email: self.settings.hidePersonalInfo ? nil : email,
             isNamed: label != self.metadata(for: provider).displayName,
             plan: model.planText,
+            planDetails: snapshot?.planDetails(for: provider, planName: model.planText),
             symbol: "person.crop.circle",
             isActive: isActive,
             canActivate: canActivate,

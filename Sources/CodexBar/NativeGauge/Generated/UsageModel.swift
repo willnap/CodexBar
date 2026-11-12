@@ -41,6 +41,30 @@ public struct UsageWindow: Codable, Equatable, Identifiable, Sendable {
  }
 }
 
+public extension UsageWindow {
+ /// The lanes that keep time of their own, given outermost first. A limit with no reset schedule has no countdown
+ /// to draw, and one that resets with a lane further out (a model's share of the weekly limit) would only repeat
+ /// that lane's. Providers date one schedule's deadline for each limit separately, up to minutes apart.
+ static func timedLanes(_ windows:[UsageWindow])->Set<String> {
+  var timed:[UsageWindow]=[]
+  for window in windows {
+   guard window.recovery != .none,let countdown=window.countdown else{continue}
+   let period=Double(countdown.units)*countdown.secondsPerUnit
+   guard period.isFinite,period>=3600 else{continue}
+   let repeats=timed.contains { other in
+    guard other.period == window.period else{return false}
+    switch (other.countdown?.nextReset,countdown.nextReset) {
+    case let (first?,second?): return abs(first.timeIntervalSince(second))<=300
+    case (nil,nil): return true
+    default: return false
+    }
+   }
+   if !repeats {timed.append(window)}
+  }
+  return Set(timed.map(\.id))
+ }
+}
+
 public extension ComputeGauge.State {
  /// Longest window is outermost. Invalid configurations are visibly unknown;
  /// they never silently hide an additional limit or manufacture a reset.

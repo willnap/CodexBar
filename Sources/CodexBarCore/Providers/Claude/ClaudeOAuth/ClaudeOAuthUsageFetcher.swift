@@ -455,6 +455,7 @@ struct OAuthExtraUsage: Decodable {
     let usedCredits: Double?
     let utilization: Double?
     let currency: String?
+    let disabledReason: String?
 
     enum CodingKeys: String, CodingKey {
         case isEnabled = "is_enabled"
@@ -462,6 +463,7 @@ struct OAuthExtraUsage: Decodable {
         case usedCredits = "used_credits"
         case utilization
         case currency
+        case disabledReason = "disabled_reason"
     }
 }
 

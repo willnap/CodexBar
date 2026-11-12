@@ -16,6 +16,11 @@ struct NativeOrbitHistoryWidget: View {
     let histories: [PlanUtilizationSeriesHistory]
     let now: Date
     var days = 1
+    /// The time the chart shows when that is not `days` whole days: a pinch under way, or a span of hours.
+    var span: TimeInterval?
+    /// The span the marks were last drawn for, while a pinch is under way: Charts takes many frames' time to lay a
+    /// plot out again, so between redraws the drawn plot is scaled to the live span instead.
+    var plotSpan: TimeInterval?
     var accent = Color.primary
     /// Per-lane accents by history name, for a chart whose lanes belong to different services.
     var laneAccents: [String: Color] = [:]
@@ -47,10 +52,7 @@ struct NativeOrbitHistoryWidget: View {
 
     /// The range start; while projecting, a full range span before now, mirrored by the projected end.
     var start: Date {
-        if self.isProjecting {
-            return NativeOrbitChartAxis.projectingBounds(now: self.now, days: self.days, calendar: self.calendar).start
-        }
-        return NativeOrbitChartAxis.start(now: self.now, days: self.days, calendar: self.calendar)
+        NativeOrbitChartAxis.start(now: self.now, span: self.axisSpan)
     }
 
     /// Where the drawn data begins: the range start, or `dataDays` before now when that reaches further back.
@@ -199,6 +201,20 @@ struct NativeOrbitHistoryWidget: View {
             }, by: \.segment).values.compactMap { $0.count == 1 && $0.first?.isResetEdge == false ? $0.first : nil }
         }
 
+        /// A straight dashed connector across each stretch nothing was recorded in: its two ends are readings, the
+        /// path between them is not.
+        var gapConnectors: [NativeOrbitHistoryPlotPoint] {
+            let measured = self.samples.filter { $0.id.historicalPeriod == nil }
+            return zip(measured, measured.dropFirst()).flatMap { previous, next -> [NativeOrbitHistoryPlotPoint] in
+                guard next.followsUnrecordedGap, next.date >= self.start else { return [] }
+                let name = "\(self.id):gap:\(next.date.timeIntervalSince1970)"
+                return [
+                    .init(date: previous.date, available: previous.available, seriesID: name),
+                    .init(date: next.date, available: next.available, seriesID: name),
+                ]
+            }
+        }
+
         var periodSamples: [Sample] {
             self.samples.filter { $0.id.historicalPeriod != nil && $0.date >= self.start }
         }
@@ -321,6 +337,14 @@ struct NativeOrbitHistoryWidget: View {
                     .foregroundStyle(fill)
                     .alignsMarkStylesWithPlotArea()
                 LinePlot(
+                    lane.gapConnectors,
+                    x: .value("Time", \.date),
+                    y: .value("Available", \.available),
+                    series: .value("Window", \.seriesID))
+                    .interpolationMethod(.linear)
+                    .lineStyle(StrokeStyle(lineWidth: 1, lineCap: .round, dash: [1, 4]))
+                    .foregroundStyle(color.opacity(0.6))
+                LinePlot(
                     points,
                     x: .value("Time", \.date),
                     y: .value("Available", \.available),
@@ -404,12 +428,21 @@ struct NativeOrbitHistoryWidget: View {
         var marks = self
         marks.selectedDate = nil
         marks.preparedObservationDates = self.metricObservationDates
+        // The marks keep the span they were drawn for; only the layer they are drawn into follows the pinch.
+        marks.span = self.plotSpan ?? self.span
+        marks.plotSpan = nil
         return NativeOrbitStaticPlot(
             widget: marks,
             lanes: lanes,
-            key: self.plotKey(lanes),
+            key: marks.plotKey(lanes),
             onPlotFrame: { frame in if self.plotFrame != frame { self.plotFrame = frame } })
             .equatable()
+            // Now stays where it is: at the trailing edge, or in the middle while projecting.
+            .scaleEffect(
+                x: marks.axisSpan / max(1, self.axisSpan),
+                y: 1,
+                anchor: UnitPoint(x: self.isProjecting ? 0.5 : 1, y: 0.5))
+            .clipped()
             .overlay(alignment: .topLeading) { self.spendingScale }
     }
 
@@ -507,6 +540,7 @@ struct NativeOrbitHistoryWidget: View {
     }
 
     /// Recorded lines are always solid; dashed strokes belong only to the projection, so the two never read alike.
+    /// A stretch nothing was recorded in is dotted, finer than either.
     /// Lanes are told apart by their palette color.
     func stroke(_ lane: Lane) -> StrokeStyle {
         StrokeStyle(lineWidth: 1.75, lineCap: .round, lineJoin: .round)
@@ -533,9 +567,7 @@ struct NativeOrbitHistoryWidget: View {
     }
 
     var chartEnd: Date {
-        self.isProjecting
-            ? NativeOrbitChartAxis.projectingBounds(now: self.now, days: self.days, calendar: self.calendar).end
-            : self.now
+        self.isProjecting ? NativeOrbitChartAxis.projectingBounds(now: self.now, span: self.axisSpan).end : self.now
     }
 
     struct Sample: Identifiable {
@@ -552,6 +584,9 @@ struct NativeOrbitHistoryWidget: View {
         /// Drawn at a reset's instant, not observed: the last reading held until the reset (`id` is that reading),
         /// or the full window right after it (`id` is the first reading after it).
         var isResetEdge = false
+        /// The first reading after a stretch nothing was recorded in, within one window: the line is broken there
+        /// and a dashed connector spans the stretch.
+        var followsUnrecordedGap = false
         /// The first reading of this sample's unbroken run across the whole history: the line's name in every range.
         var seriesOrigin = Date.distantPast
 
@@ -598,7 +633,7 @@ struct NativeOrbitHistoryWidget: View {
             return Self.sourcePeriod(cadences[entry] ?? [], fallback: history.windowMinutes)
         }
         // How a reading continues the one before it: across a reset drawn at an instant, plainly, or not at all.
-        enum Join { case reset(Date), plain, broken }
+        enum Join { case reset(Date), plain, unrecorded, broken }
         func join(
             _ previous: PlanUtilizationHistoryEntry,
             _ previousPeriod: TimeInterval?,
@@ -623,12 +658,10 @@ struct NativeOrbitHistoryWidget: View {
             {
                 return .reset(instant)
             }
-            if instant != nil || crossedReset || unknownReset || !comparable
-                || entry.capturedAt.timeIntervalSince(previous.capturedAt) > gapLimit
-            {
-                return .broken
-            }
-            return .plain
+            if instant != nil || crossedReset || unknownReset || !comparable { return .broken }
+            // Nothing was recorded for a while, but the window did not start over: what was used in between
+            // is known, only not when.
+            return entry.capturedAt.timeIntervalSince(previous.capturedAt) > gapLimit ? .unrecorded : .plain
         }
         // A line is named by the first reading of its unbroken run across the whole history, which may lie before
         // the range: every range then gives the same stretch of data the same name, and Charts morphs each line into
@@ -643,8 +676,11 @@ struct NativeOrbitHistoryWidget: View {
             var nextPeriod = period(first)
             for earlier in valid.reversed() where earlier.capturedAt < first.capturedAt {
                 let earlierPeriod = period(earlier)
-                if case .broken = join(earlier, earlierPeriod, next, nextPeriod) { break }
-                origin = earlier.capturedAt
+                switch join(earlier, earlierPeriod, next, nextPeriod) {
+                case .broken, .unrecorded: break
+                case .plain, .reset: origin = earlier.capturedAt
+                }
+                guard origin == earlier.capturedAt else { break }
                 next = earlier
                 nextPeriod = earlierPeriod
             }
@@ -655,6 +691,7 @@ struct NativeOrbitHistoryWidget: View {
         var previousPeriod: TimeInterval?
         for entry in entries {
             let period = period(entry)
+            var followsGap = false
             if let previous {
                 switch join(previous, previousPeriod, entry, period) {
                 case let .reset(instant):
@@ -680,6 +717,10 @@ struct NativeOrbitHistoryWidget: View {
                     }
                 case .plain:
                     break
+                case .unrecorded:
+                    followsGap = true
+                    segment += 1
+                    origin = entry.capturedAt
                 case .broken:
                     segment += 1
                     origin = entry.capturedAt
@@ -693,6 +734,7 @@ struct NativeOrbitHistoryWidget: View {
                 available: max(0, 100 - entry.usedPercent),
                 segment: segment,
                 period: period,
+                followsUnrecordedGap: followsGap,
                 seriesOrigin: origin))
         }
         return samples
@@ -846,13 +888,16 @@ struct NativeOrbitHistoryWidget: View {
         formatter.locale = self.timeLocale
         formatter.timeZone = self.calendar.timeZone
         // The projecting day spans this time yesterday to this time tomorrow: name the days, not the same hour twice.
-        if self.isProjecting, self.days == 1, date == self.start || date == self.chartEnd {
+        if self.isProjecting, self.axisSpan == 86400, date == self.start || date == self.chartEnd {
             formatter.doesRelativeDateFormatting = true
             formatter.dateStyle = .medium
             formatter.timeStyle = .none
             return formatter.string(from: date)
         }
-        if self.days == 1 {
+        if self.axisSpan < 12 * 3600 {
+            return NativeOrbitChartTimeFormatter.minuteLabel(date, calendar: self.calendar, locale: self.timeLocale)
+        }
+        if self.axisSpan < 2 * 86400 {
             return NativeOrbitChartTimeFormatter.hourLabel(date, calendar: self.calendar, locale: self.timeLocale)
         }
         formatter.setLocalizedDateFormatFromTemplate("MMMd")
@@ -867,7 +912,7 @@ struct NativeOrbitHistoryWidget: View {
             dates: self.axisDates,
             now: self.now,
             frame: self.plotFrame,
-            accent: self.plotAccent,
+            accent: .primary,
             inspecting: self.selectedDate != nil,
             label: self.axisLabel)
     }
@@ -1196,7 +1241,7 @@ extension NativeOrbitHistoryWidget {
         } : nil
         return ZStack(alignment: .topLeading) {
             NativeOrbitChartMarkerLine(
-                accent: self.accent, inspecting: self.selectedDate != nil, height: frame.height)
+                accent: .primary, inspecting: self.selectedDate != nil, height: frame.height)
                 .position(x: x(date), y: frame.midY)
             if let spendingBar, self.selectedDate != nil, spendingBar.1.granularity != .event {
                 let (spending, bar) = spendingBar
@@ -1244,6 +1289,11 @@ extension NativeOrbitHistoryWidget {
 }
 
 extension NativeOrbitHistoryWidget {
+    /// The time from the chart's start to now.
+    var axisSpan: TimeInterval {
+        self.span ?? NativeOrbitChartAxis.span(days: self.days)
+    }
+
     enum ReadingBead {
         case recorded, projected, spending(emphasizesQuota: Bool)
     }

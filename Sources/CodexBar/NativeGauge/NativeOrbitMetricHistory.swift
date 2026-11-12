@@ -33,6 +33,7 @@ struct NativeOrbitMetricObservation: Codable, Hashable, Sendable {
                 usageIsUnavailable: $0.usageIsUnavailable,
                 // A recorded "turned off" reading must restore as off, not as an enabled zero allowance.
                 isDisabled: $0.isDisabled,
+                isOutOfFunds: $0.isOutOfFunds,
                 updatedAt: observationDate)
         }
     }
@@ -198,7 +199,17 @@ extension UsageStore {
                 append("resets", at: resets.updatedAt, observation: .init(resets: .init(
                     availableExpirations: resets.expirations.map { Optional($0) })))
             }
-        default: break
+        default:
+            // Any other provider's resets arrive in the shared form (a plugin's list): times of use when it gives
+            // them, otherwise the ones it counts as used.
+            if let resets = snapshot.providerResets {
+                let spent = resets.resets.filter { !$0.isAvailable }
+                let timed = spent.compactMap(\.usedAt)
+                append("resets", at: resets.updatedAt, observation: .init(resets: .init(
+                    availableExpirations: resets.available(at: resets.updatedAt).map(\.expiresAt),
+                    usedExpirations: timed.isEmpty ? spent.map(\.expiresAt) : nil,
+                    redeemedDates: timed.isEmpty ? nil : timed)))
+            }
         }
         return samples
     }

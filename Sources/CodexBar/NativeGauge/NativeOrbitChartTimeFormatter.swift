@@ -16,4 +16,14 @@ enum NativeOrbitChartTimeFormatter {
         formatter.setLocalizedDateFormatFromTemplate("j")
         return formatter.string(from: date)
     }
+
+    /// The time to the minute, for a span of a few hours whose marks do not fall on whole hours.
+    static func minuteLabel(_ date: Date, calendar: Calendar, locale: Locale) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.setLocalizedDateFormatFromTemplate("jmm")
+        return formatter.string(from: date)
+    }
 }

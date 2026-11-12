@@ -15,6 +15,8 @@ struct NativeOrbitSymbol: View {
     let countdown: Double?
     let segments: Int
     let lane: Int
+    /// Whether this lane keeps time of its own; without that it has no countdown rail at all.
+    var showsCountdown = true
     var size: CGFloat = 256
     var accent = Color.primary
     var startup: NativeOrbitStartupPhase = .live
@@ -25,8 +27,10 @@ struct NativeOrbitSymbol: View {
         ZStack {
             NativeOrbitArtworkShape(lane: self.lane)
                 .fill(Color.primary.opacity(self.reduceTransparency ? 0.10 : 0.035))
-            NativeOrbitCountdownShape(lane: self.lane, segments: self.segments, value: 1)
-                .fill(Color.primary.opacity(self.reduceTransparency ? 0.10 : 0.035))
+            if self.showsCountdown {
+                NativeOrbitCountdownShape(lane: self.lane, segments: self.segments, value: 1)
+                    .fill(Color.primary.opacity(self.reduceTransparency ? 0.10 : 0.035))
+            }
             // One container renders the lane's neighbouring glass together; glass cannot sample other glass.
             GlassEffectContainer(spacing: 0) {
                 ZStack {
@@ -38,18 +42,20 @@ struct NativeOrbitSymbol: View {
                                 transaction.animation = motionReduced ? nil : .smooth(duration: 0.22)
                             }
                         }
-                    NativeOrbitAnimatedGlass(
-                        lane: self.lane,
-                        value: self.startup.fraction(self.countdown),
-                        segments: self.segments,
-                        continuous: self.startup.isActive,
-                        accent: self.accent,
-                        reduceTransparency: self.reduceTransparency)
-                        .transaction(value: self.countdown) { [startupActive, motionReduced] transaction in
-                            if !startupActive, !transaction.disablesAnimations {
-                                transaction.animation = motionReduced ? nil : .smooth(duration: 0.22)
+                    if self.showsCountdown {
+                        NativeOrbitAnimatedGlass(
+                            lane: self.lane,
+                            value: self.startup.fraction(self.countdown),
+                            segments: self.segments,
+                            continuous: self.startup.isActive,
+                            accent: self.accent,
+                            reduceTransparency: self.reduceTransparency)
+                            .transaction(value: self.countdown) { [startupActive, motionReduced] transaction in
+                                if !startupActive, !transaction.disablesAnimations {
+                                    transaction.animation = motionReduced ? nil : .smooth(duration: 0.22)
+                                }
                             }
-                        }
+                    }
                 }
             }
         }

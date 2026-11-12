@@ -267,10 +267,13 @@ struct NativeOrbitResetEventTests {
             let date = self.now.addingTimeInterval(offset)
             let metrics = NativeOrbitAccountMetrics.empty.at(date, observedAt: self.now, history: histories)
             let state = NativeOrbitResetCornerState.resolve(provider: .claude, metrics: metrics)
+            let used = NativeOrbitResetEvent.redemptions(in: histories, days: 7, now: date)
             return (state, NativeOrbitInstruments.resetHelp(
                 state,
-                displayed: metrics,
-                redeemed: NativeOrbitResetEvent.redemptions(in: histories, days: 7, now: date),
+                banked: metrics.bankedResetDetails,
+                recentlyUsed: used.map(\.date),
+                earlier: nil,
+                gauges: [],
                 provider: .claude,
                 moment: .inspecting,
                 now: self.now))
@@ -278,11 +281,206 @@ struct NativeOrbitResetEventTests {
         #expect(corner(-3700).0 == .unknown)
         #expect(corner(-3700).1 == "No banked-reset reading for this moment")
         #expect(corner(-3500).0 == .inventory(available: 1, used: 0))
-        #expect(!corner(-3500).1.contains("Last used"))
+        #expect(corner(-3500).1 == "1 reset")
         let after = corner(-3200)
         #expect(after.0 == .inventory(available: 0, used: 1))
-        #expect(after.1.hasPrefix("No banked resets left, 1 used\nLast used "))
+        #expect(after.1.hasPrefix("No resets left\nUsed one at "))
         #expect(after.0.glyphs == [false])
+    }
+
+    @Test func `a used reset fades over a week into an empty place`() {
+        typealias Slot = NativeOrbitResetSlot
+        let inventory = NativeOrbitResetCornerState.inventory(available: 1, used: 1)
+        func slots(usedAgo days: Double?) -> [Slot] {
+            inventory.slots(recentlyUsed: days.map { [self.now.addingTimeInterval(-$0 * 86400)] } ?? [], now: self.now)
+        }
+        // Just used: the reset's dashed ghost in the same full colour. Spent, not switched off.
+        let fresh = slots(usedAgo: 0)
+        #expect(fresh == [Slot(state: .banked), Slot(state: .used(freshness: 1))])
+        #expect(fresh[1].isSpent)
+        #expect(!fresh[0].isSpent)
+        #expect(fresh[1].inkOpacity == 1)
+        #expect(fresh[1].emptyOpacity == 0)
+        #expect(fresh[0].emptyOpacity == 0)
+        // The ghost fades evenly with every day, in step with its blur, as the empty place comes through.
+        let midweek = slots(usedAgo: 3.5)
+        #expect(midweek[1].state == .used(freshness: 0.5))
+        #expect(midweek[1].inkOpacity == 0.5)
+        #expect(slots(usedAgo: 6.5)[1].inkOpacity < 0.1)
+        #expect(midweek[1].emptyOpacity == 0.5)
+        // It is in focus when just used and goes out of focus as it ages; a banked or absent reset never blurs.
+        #expect(fresh[1].blurRadius == 0)
+        #expect(midweek[1].blurRadius == Slot.oldestBlur / 2)
+        #expect(slots(usedAgo: 6.5)[1].blurRadius > midweek[1].blurRadius)
+        #expect(fresh[0].blurRadius == 0)
+        #expect(Slot(state: .empty).blurRadius == 0)
+        // Mostly drained of colour, so it cannot pass for one in stock.
+        #expect(Slot.spentSaturation < 0.5)
+        // The ghost's dashes close evenly round the circle. A part reset's are as thick and as long as a full
+        // one's: it has fewer of them.
+        let full = NativeOrbitResetGlyph(size: 17, isPart: false, tint: .orange)
+        let part = NativeOrbitResetGlyph(size: 17, isPart: true, tint: .orange)
+        for glyph in [full, part, NativeOrbitResetGlyph(size: 11, isPart: true, tint: .orange)] {
+            let dash = glyph.ghostStroke.dash
+            let count = (.pi * glyph.ghostDiameter / (dash[0] + dash[1])).rounded()
+            #expect(abs((dash[0] + dash[1]) * count - .pi * glyph.ghostDiameter) < 0.001)
+            #expect(count >= 5)
+            #expect(dash[0] > 0 && dash[1] > glyph.ghostLineWidth)
+        }
+        #expect(part.ghostLineWidth == full.ghostLineWidth)
+        #expect(abs(part.ghostStroke.dash[0] - full.ghostStroke.dash[0]) < 0.4)
+        #expect(Slot(state: .empty).emptyOpacity == 1)
+        #expect(slots(usedAgo: 7.5)[1] == Slot(state: .empty))
+        #expect(slots(usedAgo: nil)[1] == Slot(state: .empty))
+        #expect(Slot(state: .empty).inkOpacity == 0)
+        // A use the inventory no longer counts (Codex forgets after a day) still fades for its week.
+        let forgotten = NativeOrbitResetCornerState.inventory(available: 0, used: 0)
+            .slots(recentlyUsed: [self.now.addingTimeInterval(-2 * 86400)], now: self.now)
+        #expect(forgotten.count == 1)
+        #expect(forgotten[0].inkOpacity > 0)
+        // No resets at all is one empty place; a use dated after the shown instant has not happened yet.
+        let none = NativeOrbitResetCornerState.inventory(available: 0, used: 0)
+        #expect(none.slots(recentlyUsed: [], now: self.now) == [Slot(state: .empty)])
+        #expect(none.slots(recentlyUsed: [self.now.addingTimeInterval(60)], now: self.now) == [Slot(state: .empty)])
+        // The corner is an inventory, not a log of every use.
+        let many = (0..<9).map { self.now.addingTimeInterval(-Double($0) * 3600) }
+        #expect(none.slots(recentlyUsed: many, now: self.now).count == Slot.maximumSpent)
+        #expect(NativeOrbitResetCornerState.unknown.slots(recentlyUsed: many, now: self.now).isEmpty)
+    }
+
+    @Test func `the reset tooltip counts, dates, and names a kind only when it is not an ordinary reset`() {
+        let expiry = self.now.addingTimeInterval(20 * 86400)
+        let later = self.now.addingTimeInterval(40 * 86400)
+        let given = self.now.addingTimeInterval(-2 * 86400)
+        let gauges = [
+            NativeOrbitGaugeLane(id: "secondary", title: "Weekly", tint: .orange),
+            NativeOrbitGaugeLane(id: "claude-weekly-scoped-fable", title: "Fable", tint: .brown),
+        ]
+        func help(
+            _ banked: [ProviderReset],
+            used: [Date] = [],
+            earlier: Date? = nil,
+            moment: NativeOrbitReadingMoment = .live) -> [String]
+        {
+            NativeOrbitInstruments.resetHelp(
+                .inventory(available: banked.count, used: 0),
+                banked: banked,
+                recentlyUsed: used,
+                earlier: earlier,
+                gauges: gauges,
+                provider: .claude,
+                moment: moment,
+                now: self.now).components(separatedBy: "\n")
+        }
+        let ordinary = ProviderReset(isAvailable: true, expiresAt: expiry, grantedAt: given)
+        let when = NativeOrbitTooltip.moment(expiry, now: self.now)
+        // Ordinary resets: the count and when they lapse, then when the last was given. Nothing about kinds.
+        let two = help([ordinary, ordinary])
+        #expect(two == ["2 resets, expire \(when)", "Last given " + NativeOrbitTooltip.at(given, now: self.now)])
+        #expect(help([ordinary]).first == "1 reset, expires \(when)")
+        #expect(help([ordinary, ProviderReset(isAvailable: true, expiresAt: later)]).first
+            == "2 resets, next expires \(when)")
+        #expect(help([ProviderReset(isAvailable: true, expiresAt: nil)]) == ["1 reset"])
+        // What was used lately comes before when one was given; an older use is still the last use.
+        let hourAgo = self.now.addingTimeInterval(-3600)
+        #expect(help([ordinary], used: [hourAgo])[1] == "Used one " + NativeOrbitTooltip.at(hourAgo, now: self.now))
+        #expect(help([ordinary], used: [hourAgo, given])[1].hasPrefix("Used 2 this week, last "))
+        #expect(help([ordinary], earlier: given)[1] == "Last used " + NativeOrbitTooltip.at(given, now: self.now))
+        #expect(help([], used: [hourAgo]).first == "No resets left")
+        #expect(help([ordinary], moment: .projecting).first == "1 reset left by then, expires \(when)")
+        // A reset that clears the main gauge and an inner one with it is still an ordinary reset.
+        let full = ProviderReset(
+            isAvailable: true, expiresAt: expiry, scope: .windows(["secondary", "claude-weekly-scoped-fable"]))
+        #expect(help([full]).count == 1)
+        // One that clears only the inner gauge says so, and what it gives back.
+        let fable = ProviderReset(
+            isAvailable: true,
+            expiresAt: expiry,
+            scope: .windows(["claude-weekly-scoped-fable"]),
+            givesBackWiderUsage: true)
+        // Straight under its count: what it refills, and what it gives back.
+        let refills = "refills Fable and the Weekly it used"
+        #expect(help([fable]) == ["1 Fable reset, expires \(when)", "It \(refills)"])
+        #expect(help([fable, fable]) == ["2 Fable resets, expire \(when)", "Each \(refills)"])
+        // Beside ordinary ones each kind gets its own count and end, and the ordinary one is called full.
+        let last = ProviderReset(isAvailable: true, expiresAt: later, grantedAt: given)
+        #expect(help([last, fable, fable]) == [
+            "1 full reset, expires \(NativeOrbitTooltip.moment(later, now: self.now))",
+            "2 Fable resets, expire \(when)",
+            "Each \(refills)",
+            "Last given " + NativeOrbitTooltip.at(given, now: self.now),
+        ])
+        // With part resets about, the one used this week is named too.
+        let spent = ProviderReset(isAvailable: false, expiresAt: later)
+        let named = NativeOrbitInstruments.resetHelp(
+            .inventory(available: 1, used: 1),
+            banked: [fable],
+            used: [spent],
+            recentlyUsed: [hourAgo],
+            earlier: nil,
+            gauges: gauges,
+            provider: .claude,
+            moment: .live,
+            now: self.now).components(separatedBy: "\n")
+        #expect(named.last == "Used a full reset " + NativeOrbitTooltip.at(hourAgo, now: self.now))
+        // The gauge's own title is "Fable only" while it is off the dial; the reset is still a Fable reset.
+        let offDial = NativeOrbitInstruments.resetHelp(
+            .inventory(available: 1, used: 0),
+            banked: [ProviderReset(isAvailable: true, expiresAt: nil, scope: .windows(["claude-weekly-scoped-fable"]))],
+            recentlyUsed: [],
+            earlier: nil,
+            gauges: [gauges[0]],
+            laneTitles: ["claude-weekly-scoped-fable": "Fable only"],
+            provider: .claude,
+            moment: .live,
+            now: self.now)
+        #expect(offDial == "1 Fable reset\nIt refills Fable only")
+        // The corner draws it for that gauge; a full reset, or one for a gauge the dial lacks, for the main one
+        // or for a part of it.
+        let ids = gauges.map(\.id)
+        #expect(NativeOrbitResetComplication.lane(fable.scope, gauges: ids) == "claude-weekly-scoped-fable")
+        #expect(NativeOrbitResetComplication.lane(full.scope, gauges: ids) == nil)
+        #expect(NativeOrbitResetComplication.lane(.everything, gauges: ids) == nil)
+        #expect(NativeOrbitResetComplication.lane(.windows(["other"]), gauges: ids) == "other")
+        let slots = NativeOrbitResetCornerState.inventory(available: 2, used: 0).slots(
+            recentlyUsed: [], now: self.now, bankedLanes: [nil, "claude-weekly-scoped-fable"])
+        #expect(slots.map(\.lane) == [nil, "claude-weekly-scoped-fable"])
+    }
+
+    @Test func `a reset for an inner gauge takes that gauge's colour and is drawn smaller`() {
+        #expect(NativeOrbitResetLaneStyle(tint: .orange, isOutermost: true).scale == 1)
+        let inner = NativeOrbitResetLaneStyle(tint: .orange, isOutermost: false).scale
+        // Half the area: perceptually half the size.
+        #expect(abs(inner * inner - 0.5) < 0.03)
+        // Exactly half the area, with its arrow cut at the size and weight that measure a full reset's stroke.
+        let full = NativeOrbitResetGlyph(size: 17, isPart: false, tint: .orange)
+        let part = NativeOrbitResetGlyph(size: 17, isPart: true, tint: .orange)
+        #expect(abs(part.discDiameter * part.discDiameter / (full.discDiameter * full.discDiameter) - 0.5) < 0.001)
+        #expect(abs(full.discDiameter - 17.17) < 0.01)
+        #expect(NativeOrbitResetGlyph.partArrowScale == 0.735)
+    }
+
+    @Test func `resets are spaced by the room between them, not by their centres`() {
+        func gaps(_ parts: [Bool]) -> [CGFloat] {
+            let places = NativeOrbitResetGlyph.places(parts: parts, size: 17, pitch: 25)
+            let radii = parts.map { NativeOrbitResetGlyph(size: 17, isPart: $0, tint: .clear).discDiameter / 2 }
+            return (1..<places.count).map { places[$0] - places[$0 - 1] - radii[$0] - radii[$0 - 1] }
+        }
+        // Full resets alone sit exactly where the even pitch put them.
+        let full = NativeOrbitResetGlyph.places(parts: [false, false, false], size: 17, pitch: 25)
+        #expect(full.map { ($0 * 1000).rounded() / 1000 } == [-25, 0, 25])
+        // Beside or between part resets the room is about the same, a little less for the smaller pair, where
+        // even centres left two part resets almost twice the room of two full ones.
+        let mixed = gaps([true, true, false])
+        let even = gaps([false, false])[0]
+        #expect(mixed[0] < mixed[1] && mixed[1] < even)
+        #expect(mixed[0] > even * 0.8)
+        #expect(25 - NativeOrbitResetGlyph(size: 17, isPart: true, tint: .clear).discDiameter > even * 1.6)
+        // The run stays centred on the corner, and one reset sits at its middle.
+        let places = NativeOrbitResetGlyph.places(parts: [true, true, false], size: 17, pitch: 25)
+        #expect(abs((places.first ?? 0) + (places.last ?? 0)) < 0.001)
+        #expect(NativeOrbitResetGlyph.places(parts: [true], size: 17, pitch: 25) == [0])
+        #expect(NativeOrbitResetGlyph.places(parts: [], size: 17, pitch: 25).isEmpty)
     }
 
     @Test func `zero banked resets read the same for every provider and not applicable is distinct`() {
@@ -319,6 +517,24 @@ struct NativeOrbitResetEventTests {
         #expect(icon(metrics) == .zero)
         metrics.reportedSpend = .init(used: 5, limit: 50, currencyCode: "USD", updatedAt: self.now)
         #expect(icon(metrics) == .active)
+        // The gauge draws what is left, as the dial's other gauges do.
+        #expect(metrics.extraUsageFraction == 0.1)
+        #expect(metrics.extraUsageLeftFraction == 0.9)
+        metrics.reportedSpend = .init(used: 0, limit: 50, currencyCode: "USD", updatedAt: self.now)
+        #expect(metrics.extraUsageLeftFraction == 1)
+        // Claude reports a plan's monthly credits as nothing used of the cap while flagging them out of credits.
+        // The gauge follows used and limit, as Claude's own usage page does; the flag is reported in words.
+        metrics.reportedSpend = .init(
+            used: 0, limit: 200, currencyCode: "USD", period: "Monthly", isOutOfFunds: true, updatedAt: self.now)
+        #expect(icon(metrics) == .zero)
+        #expect(metrics.extraUsageFraction == 0)
+        #expect(metrics.extraUsageLeftFraction == 1)
+        let all = NativeOrbitInstruments.money(200, currency: "USD")
+        #expect(NativeOrbitInstruments.extraUsageHelp(metrics, days: 1, now: self.now)
+            == "\(all) left of \(all) additional usage this month\nThe provider has it paused: out of credits")
+        // Without a limit there is nothing to draw a share of.
+        metrics.reportedSpend = .init(used: 3, limit: 0, currencyCode: "USD", updatedAt: self.now)
+        #expect(metrics.extraUsageLeftFraction == nil)
         var balanceOnly = NativeOrbitAccountMetrics.empty
         balanceOnly.reportedBalance = .init(value: 0, unit: "Credits", isWorkspace: false, updatedAt: self.now)
         #expect(icon(balanceOnly) == .zero)

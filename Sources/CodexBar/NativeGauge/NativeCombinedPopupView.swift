@@ -194,6 +194,19 @@ struct NativeCombinedPopupView: View {
                 .onChange(of: self.toolbar.days, initial: true) {
                     self.synchronizeRange(self.toolbar.days)
                 }
+                .onChange(of: self.toolbar.visibleSpan) {
+                    self.synchronizeRange(self.toolbar.days)
+                }
+                // The shared toolbar and the columns in view take each pinch step in the same update.
+                .environment(\.nativeOrbitRangePinch, .init(
+                    span: { [toolbar = self.toolbar] in toolbar.span },
+                    track: { [toolbar = self.toolbar, sources = self.sources] span in
+                        toolbar.track(span: span)
+                        for source in sources where source.state.days == toolbar.days {
+                            source.state.track(span: span)
+                        }
+                    },
+                    settle: { [toolbar = self.toolbar] in toolbar.settle(span: $0) }))
                 .onChange(of: model.pages.map(\.id)) {
                     let ids = [NativeCombinedAccounts.overviewID] + model.pages.map(\.id)
                     self.navigation.inventoryChanged(
@@ -230,7 +243,9 @@ struct NativeCombinedPopupView: View {
             if source.state.inspectionDate != nil { source.state.inspectionDate = nil }
             // A provider's shared state also drives its warmed gauges and predictions. Keep hidden providers
             // dormant instead of rebuilding all of those views before the visible charts get their first frame.
-            if providers.contains(source.provider), source.state.days != days { source.state.days = days }
+            guard providers.contains(source.provider) else { continue }
+            if source.state.days != days { source.state.days = days }
+            if source.state.span != self.toolbar.span { source.state.settle(span: self.toolbar.span) }
         }
     }
 

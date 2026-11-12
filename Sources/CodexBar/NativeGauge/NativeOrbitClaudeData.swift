@@ -137,6 +137,7 @@ extension UsageStore {
             balanceIsWorkspace: balance.balanceIsWorkspace,
             usageIsUnavailable: spend.usageIsUnavailable,
             isDisabled: spend.isDisabled,
+            isOutOfFunds: spend.isOutOfFunds,
             updatedAt: spend.updatedAt)
     }
 }

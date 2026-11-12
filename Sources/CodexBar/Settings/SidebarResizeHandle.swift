@@ -70,9 +70,14 @@ final class SidebarResizeHandleView: NSView {
     /// every time they're invalidated, so the resize cursor survives SwiftUI's constant
     /// re-rendering. A one-shot `NSCursor.set()` does not — it wins only until the next
     /// render, which is what makes hand-rolled dividers flicker back to an arrow.
+    /// The system's column divider cursor, as every other sidebar shows; the plain left-right arrows before it.
+    private static var resizeCursor: NSCursor {
+        if #available(macOS 15.0, *) { .columnResize } else { .resizeLeftRight }
+    }
+
     override func resetCursorRects() {
         super.resetCursorRects()
-        self.addCursorRect(self.bounds, cursor: .resizeLeftRight)
+        self.addCursorRect(self.bounds, cursor: Self.resizeCursor)
     }
 
     override func layout() {
@@ -99,15 +104,15 @@ final class SidebarResizeHandleView: NSView {
     }
 
     override func cursorUpdate(with event: NSEvent) {
-        NSCursor.resizeLeftRight.set()
+        Self.resizeCursor.set()
     }
 
     override func mouseEntered(with event: NSEvent) {
-        NSCursor.resizeLeftRight.set()
+        Self.resizeCursor.set()
     }
 
     override func mouseMoved(with event: NSEvent) {
-        NSCursor.resizeLeftRight.set()
+        Self.resizeCursor.set()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -120,6 +125,6 @@ final class SidebarResizeHandleView: NSView {
         let directedDelta = self.layoutDirection == .rightToLeft ? -deltaX : deltaX
         self.setWidth?(self.dragStartWidth + Double(directedDelta))
         // Keep the resize cursor while the pointer strays outside the moving strip.
-        NSCursor.resizeLeftRight.set()
+        Self.resizeCursor.set()
     }
 }

@@ -18,7 +18,7 @@ enum ProviderPluginSnapshotMapper {
             value,
             allowed: [
                 "primary", "secondary", "tertiary", "extraWindows", "cost", "balance", "costUsage", "details",
-                "identity", "iconProvider", "menuBarItems",
+                "identity", "iconProvider", "menuBarItems", "resets", "plan",
                 "subscriptionRenewsAt", "subscriptionExpiresAt", "subscriptionStatus", "subscriptionIsActive",
                 "dataConfidence", "empty",
             ],
@@ -40,6 +40,8 @@ enum ProviderPluginSnapshotMapper {
         let identity = try self.identity(value, provider: provider)
         let iconProvider = try self.iconProvider(value)
         let menuBarItems = try self.menuBarItems(value)
+        let resets = try self.resets(value, now: now)
+        let plan = try self.plan(value, now: now)
         let subscriptionRenewsAt = try self.optionalDate(value, property: "subscriptionRenewsAt")
         let subscriptionStatus = try self.optionalString(value, property: "subscriptionStatus", path: "usage")
         let subscriptionIsActive = try self.optionalBoolean(value, property: "subscriptionIsActive", path: "usage")
@@ -55,13 +57,14 @@ enum ProviderPluginSnapshotMapper {
             || providerCost != nil
             || costUsage != nil
             || !details.isEmpty
+            || resets != nil
             || self.hasMeaningfulIdentity(identity)
         else {
             throw ProviderPluginError.invalidSnapshot(
                 "snapshot must contain a rate window, cost, detail section, or identity field, or declare empty: true")
         }
 
-        return UsageSnapshot(
+        let snapshot = UsageSnapshot(
             primary: primary,
             secondary: secondary,
             tertiary: tertiary,
@@ -71,6 +74,7 @@ enum ProviderPluginSnapshotMapper {
             details: details,
             iconProvider: iconProvider,
             menuBarItems: menuBarItems,
+            providerResets: resets,
             subscriptionStatus: subscriptionStatus,
             subscriptionIsActive: subscriptionIsActive,
             subscriptionExpiresAt: subscriptionExpiresAt,
@@ -78,6 +82,7 @@ enum ProviderPluginSnapshotMapper {
             updatedAt: now,
             identity: identity,
             dataConfidence: dataConfidence)
+        return snapshot.with(providerPlan: plan)
     }
 
     private static func iconProvider(_ root: any ProviderPluginValue) throws -> UsageProvider? {

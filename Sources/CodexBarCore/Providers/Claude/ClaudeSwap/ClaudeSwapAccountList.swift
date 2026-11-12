@@ -297,6 +297,21 @@ public enum ClaudeSwapListParser {
         let isDisabled = enabled.map { CFGetTypeID($0) == CFBooleanGetTypeID() && !$0.boolValue } ?? false
         guard limit > 0 || isDisabled else { return nil }
         let currency = (window["currency"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Claude pauses an allowance whose credit has run out. It is still set up, at its own size. The figures
+        // stay as Claude reports them: its `used` counts only money beyond the credits, so it can be zero while
+        // nothing of the allowance is left; `isOutOfCredits` says that.
+        if isDisabled, window["disabledReason"] as? String == "out_of_credits",
+           let configured = self.finiteDouble(window["configuredLimit"]), configured > 0
+        {
+            return ClaudeSwapSpendWindow(
+                used: used,
+                limit: configured,
+                usedPercent: min(max(100 * used / configured, 0), 100),
+                currencyCode: currency.flatMap { $0.isEmpty ? nil : $0 } ?? "USD",
+                resetsAt: ISO8601DateParser.parse(window["resetsAt"] as? String),
+                period: (window["period"] as? String) == "Monthly" ? "Monthly" : nil,
+                isOutOfCredits: true)
+        }
         return ClaudeSwapSpendWindow(
             used: used,
             limit: isDisabled ? 0 : limit,
@@ -328,7 +343,40 @@ public enum ClaudeSwapListParser {
             return result
         }
         guard let available = expirations(available), let used = expirations(used) else { return nil }
-        return .init(expirations: available, updatedAt: date, usedExpirations: used)
+        return .init(
+            expirations: available,
+            updatedAt: date,
+            usedExpirations: used,
+            grants: self.parseResetGrants(raw["grants"]))
+    }
+
+    /// Each current grant with what it clears, when the list carries them. Additive: a list without them, or
+    /// with a malformed one, still gives the counts above.
+    private static func parseResetGrants(_ raw: Any?) -> [ClaudeRateLimitResetCreditsSnapshot.Grant] {
+        guard let rows = raw as? [[String: Any]], rows.count <= ClaudeLimitResetStatusResponse.maximumGrantRecords
+        else { return [] }
+        var grants: [ClaudeRateLimitResetCreditsSnapshot.Grant] = []
+        for row in rows {
+            guard let left = row["left"] as? Int, let used = row["used"] as? Int, left >= 0, used >= 0,
+                  left + used <= ClaudeLimitResetStatusResponse.maximumResets else { return [] }
+            var expiresAt: Date?
+            if let text = row["endsAt"] as? String {
+                guard let date = ISO8601DateParser.parse(text) else { return [] }
+                expiresAt = date
+            }
+            let startsAt = (row["startsAt"] as? String).flatMap(ISO8601DateParser.parse)
+            let clears = (row["clears"] as? [String])?.filter { !$0.isEmpty && $0.utf8.count <= 64 }
+            let label = (row["label"] as? String).flatMap { $0.utf8.count <= 120 ? $0 : nil }
+            grants.append(.init(
+                startsAt: startsAt,
+                expiresAt: expiresAt,
+                left: left,
+                used: used,
+                clears: clears?.isEmpty == false && (clears?.count ?? 0) <= 16 ? clears : nil,
+                givesBackWeekly: row["givesBackWeekly"] as? Bool ?? false,
+                label: label))
+        }
+        return grants
     }
 
     private static func parseWindow(_ raw: Any?, slot: Int, name: String) throws -> ClaudeSwapUsageWindow? {
