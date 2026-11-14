@@ -460,7 +460,9 @@ public struct TTYCommandRunner {
         binary: String,
         send script: String,
         options: Options = Options(),
-        onURLDetected: (@Sendable () -> Void)? = nil) throws -> Result
+        onURLDetected: (@Sendable () -> Void)? = nil,
+        // Receives the recent output in which the first URL appeared, so a caller can offer the link itself.
+        onURLText: (@Sendable (String) -> Void)? = nil) throws -> Result
     {
         let baseEnv = options.baseEnvironment ?? ProcessInfo.processInfo.environment
         guard let resolved = Self.which(binary, environment: baseEnv) else {
@@ -780,6 +782,7 @@ public struct TTYCommandRunner {
                     if !urlSeen {
                         urlSeen = true
                         onURLDetected?()
+                        onURLText?(recentText)
                     }
                     if allowStop, options.stopOnURL {
                         return true

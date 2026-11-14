@@ -214,6 +214,30 @@ explicit “Switch Account…” action. No real credential, browser session, or
 Any further change to these decisions requires a new product/auth review before implementation because it changes
 storage, status item migration, process authority, or the credential boundary.
 
+### Redesign fork: adding and managing accounts (2026-11-14)
+
+The redesign fork reverses decision 2 for adding, renaming and removing accounts; automatic switching, import,
+export, purge and session launching stay out of scope. The credential boundary is unchanged: CodexBar still never
+reads or writes a credential, and every command is a fixed argument array.
+
+- **Add Account** (Settings → Providers → Claude → Accounts, the box under the header) runs
+  `claude auth login --claudeai` (with `--email <address>` only for Sign In Again) with `CLAUDE_CONFIG_DIR` set to a scratch profile
+  (`~/Library/Application Support/CodexBar/ClaudeAddAccount`, emptied before each sign-in and removed after), then
+  `cswap add` in the same environment. claude-swap reads that profile's identity and its hashed Keychain item, so the
+  login the user is working with is never replaced and no switch back is needed. claude-swap derives the active row
+  from the live login, not from the `activeAccountNumber` that `add` records.
+- Signing in with an account that is already saved renews its login in place (`Updated credentials for Account N`);
+  that is also how an expired saved login is repaired (**Sign In Again…**).
+- **Rename** runs `cswap alias <slot> <name>` (`--unset` when empty); **Remove** runs `cswap remove <slot>` and
+  answers its confirmation on standard input.
+- The scratch profile's Keychain item (`Claude Code-credentials-<hash>`) is reused, not deleted: the fixed path keeps
+  one item, and deleting it from CodexBar could prompt. CodexBar never runs `claude auth logout`, which may revoke the
+  login claude-swap just saved.
+- Adding an account turns on the claude-swap integration and stores the executable it found. When claude-swap is
+  missing, the Accounts box offers `uv tool install claude-swap` (or `pipx install claude-swap`), or explains how to
+  install it. There is no separate window: Add Account opens the browser at once, and the box shows the wait, the
+  result or the reason it failed.
+
 ## Implementation and validation sequence
 
 1. Add fixtures for schema v1, error payloads, unknown versions, invalid percentages/timestamps, output limits, and

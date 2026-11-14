@@ -29,6 +29,12 @@ struct ClaudeLoginRunner {
         timeout: TimeInterval = 120,
         binary: String = ClaudeProviderDescriptor.descriptor.cli.name,
         environment: [String: String]? = nil,
+        // Prefills the sign-in page, e.g. `--email`.
+        extraArguments: [String] = [],
+        // The sign-in link, as soon as the CLI prints it.
+        onLink: (@Sendable (String) -> Void)? = nil,
+        // Polled while the CLI waits; true ends the login (the result is then ignored by the caller).
+        isCancelled: (@Sendable () -> Bool)? = nil,
         onPhaseChange: @escaping @Sendable (Phase) -> Void) async -> Result
     {
         await Task(priority: .userInitiated) {
@@ -38,6 +44,9 @@ struct ClaudeLoginRunner {
                     timeout: timeout,
                     binary: binary,
                     environment: environment,
+                    extraArguments: extraArguments,
+                    onLink: onLink,
+                    isCancelled: isCancelled,
                     onPhaseChange: onPhaseChange)
                 let link = self.firstLink(in: runResult.output)
                 switch runResult.completion {
@@ -77,23 +86,36 @@ struct ClaudeLoginRunner {
         timeout: TimeInterval,
         binary: String,
         environment: [String: String]?,
+        extraArguments: [String] = [],
+        onLink: (@Sendable (String) -> Void)? = nil,
+        isCancelled: (@Sendable () -> Bool)? = nil,
         onPhaseChange: @escaping @Sendable (Phase) -> Void) throws -> PTYRunResult
     {
         let runner = TTYCommandRunner()
         var options = TTYCommandRunner.Options(rows: 50, cols: 160, timeout: timeout)
-        options.extraArgs = self.loginArguments
+        options.extraArgs = self.loginArguments + extraArguments
+        if let isCancelled {
+            options.cancellationCheck = { Task<Never, Never>.isCancelled || isCancelled() }
+        }
         options.baseEnvironment = environment
         options.stopOnURL = false // keep running until CLI confirms
         options.stopOnSubstrings = self.successMarkers
         options.sendOnSubstrings = ["press ENTER to open in browser": "\r"]
         options.settleAfterStop = 0.35
         options.returnOnEmptyProcessExit = true
+        var onURLText: (@Sendable (String) -> Void)?
+        if let onLink {
+            onURLText = { text in
+                if let link = Self.firstLink(in: text) { onLink(link) }
+            }
+        }
         do {
             let result = try runner.run(
                 binary: binary,
                 send: "",
                 options: options,
-                onURLDetected: { onPhaseChange(.waitingBrowser) })
+                onURLDetected: { onPhaseChange(.waitingBrowser) },
+                onURLText: onURLText)
             return PTYRunResult(output: result.text, completion: result.completion)
         } catch TTYCommandRunner.Error.binaryNotFound {
             throw LoginError.binaryNotFound
@@ -106,7 +128,7 @@ struct ClaudeLoginRunner {
         }
     }
 
-    private static func firstLink(in text: String) -> String? {
+    static func firstLink(in text: String) -> String? {
         let pattern = #"https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)

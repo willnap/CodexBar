@@ -467,6 +467,9 @@ Changing a cap changes the percentage, not its rollover. A stale observation doe
 The accepted multi-account design in
 [claude-multi-account-and-status-items.md](claude-multi-account-and-status-items.md).
 
+- Adding accounts: Settings → Providers → Claude → Accounts → **Add Account…** signs in through the browser into a
+  separate Claude Code profile and saves it with `cswap add`; the current login stays signed in. Each saved account offers **Use**, **Sign In Again…**, **Rename…** and **Remove…**.
+  See [adding and managing accounts](claude-multi-account-and-status-items.md#redesign-fork-adding-and-managing-accounts-2026-11-14).
 - Setup: Preferences → Providers → Claude → "Read accounts from claude-swap", then set the path to the
   [`cswap`](https://github.com/realiti4/claude-swap) executable (for example `~/.local/bin/cswap`) in the field
   directly beneath the enabled toggle. The path field and its help are hidden while the integration is off.

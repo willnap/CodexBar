@@ -96,8 +96,13 @@ struct ProvidersPane: View {
             onRefresh: {
                 self.triggerRefresh(for: self.provider)
             },
-            showsSupplementarySettingsContent: self.codexAccountsSectionState(for: self.provider) != nil,
+            showsSupplementarySettingsContent: self.codexAccountsSectionState(for: self.provider) != nil ||
+                self.claudeAccountsSectionState(for: self.provider) != nil,
+            supplementarySettingsContentLeads: self.claudeAccountsSectionState(for: self.provider) != nil,
             supplementarySettingsContent: {
+                if let state = self.claudeAccountsSectionState(for: self.provider) {
+                    ClaudeAccountsSectionView(state: state, store: self.store, settings: self.settings)
+                }
                 if let state = self.codexAccountsSectionState(for: self.provider) {
                     CodexAccountsSectionView(
                         state: state,
@@ -256,6 +261,13 @@ struct ProvidersPane: View {
         }
 
         return "\(detailLine)\n\(self.providerUsageText(provider))"
+    }
+
+    func claudeAccountsSectionState(for provider: UsageProvider) -> ClaudeAccountsSectionState? {
+        // Provider-specific by design: Claude's saved logins are kept by claude-swap.
+        guard provider == .claude else { return nil }
+        let state = ClaudeAccountsSectionState.make(store: self.store, settings: self.settings)
+        return state.canManageAccounts ? state : nil
     }
 
     func codexAccountsSectionState(for provider: UsageProvider) -> CodexAccountsSectionState? {

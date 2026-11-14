@@ -35,6 +35,8 @@ struct ProviderDetailView<SupplementaryContent: View>: View {
     let onRefresh: () -> Void
     let supplementarySettingsContent: SupplementaryContent
     let showsSupplementarySettingsContent: Bool
+    /// Accounts lead the page, as the second box under the header, instead of following the connection settings.
+    let supplementarySettingsContentLeads: Bool
 
     init(
         provider: UsageProvider,
@@ -58,6 +60,7 @@ struct ProviderDetailView<SupplementaryContent: View>: View {
         onCopyError: @escaping (String) -> Void,
         onRefresh: @escaping () -> Void,
         showsSupplementarySettingsContent: Bool = false,
+        supplementarySettingsContentLeads: Bool = false,
         @ViewBuilder supplementarySettingsContent: () -> SupplementaryContent)
     {
         self.provider = provider
@@ -81,6 +84,7 @@ struct ProviderDetailView<SupplementaryContent: View>: View {
         self.onCopyError = onCopyError
         self.onRefresh = onRefresh
         self.showsSupplementarySettingsContent = showsSupplementarySettingsContent
+        self.supplementarySettingsContentLeads = supplementarySettingsContentLeads
         self.supplementarySettingsContent = supplementarySettingsContent()
     }
 
@@ -150,6 +154,10 @@ struct ProviderDetailView<SupplementaryContent: View>: View {
                     versionText: Self.versionText(provider: self.provider, store: self.store),
                     model: self.model,
                     showsAccountInfo: self.accountUsageOverview == nil)
+            }
+
+            if self.showsSupplementarySettingsContent, self.supplementarySettingsContentLeads {
+                self.supplementarySettingsContent
             }
 
             if let overview = self.accountUsageOverview {
@@ -271,7 +279,7 @@ struct ProviderDetailView<SupplementaryContent: View>: View {
                 ProviderSettingsOrganizationsRowView(descriptor: organizations)
             }
 
-            if self.showsSupplementarySettingsContent {
+            if self.showsSupplementarySettingsContent, !self.supplementarySettingsContentLeads {
                 self.supplementarySettingsContent
             }
 
