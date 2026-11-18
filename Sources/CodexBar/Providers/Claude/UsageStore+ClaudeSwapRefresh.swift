@@ -337,6 +337,10 @@ extension UsageStore {
 
         let executablePath = self.settings.claudeSwapExecutablePath
         let configurationGeneration = self.claudeSwapTransientState.configurationGeneration
+        // The desktop app's login is filed under the account Claude Code is leaving.
+        let outgoing = self.claudeSwapAccountSnapshots.filter { $0.provider == .claude && $0.isActive }
+        let outgoingEmail = outgoing.count == 1 ? outgoing[0].accountEmail : nil
+        let incomingEmail = account.accountEmail
         self.claudeSwapTransientState.switchingAccountID = accountID
         self.claudeSwapTransientState.switchPhase = .activating
         self.claudeSwapTransientState.lastError = nil
@@ -355,6 +359,17 @@ extension UsageStore {
             }
 
             guard let self else { return }
+            // Every switch, from the popup, Settings or the menu, moves the Claude desktop app's login too, as soon
+            // as claude-swap has moved Claude Code's: nothing read afterwards may skip it.
+            if switchError == nil {
+                let desktop = if let follow = self._test_claudeDesktopFollowOverride {
+                    await follow(outgoingEmail, incomingEmail)
+                } else {
+                    await NativeClaudeDesktopHandoff().follow(
+                        outgoingEmail: outgoingEmail, incomingEmail: incomingEmail, mayQuit: true)
+                }
+                switchError = NativeClaudeDesktopHandoff.unfollowedReason(desktop)
+            }
             if self.isCurrentClaudeSwapConfiguration(
                 executablePath: executablePath,
                 source: .claudeSwap,

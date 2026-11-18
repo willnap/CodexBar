@@ -17,6 +17,8 @@ struct ClaudeAccountsSectionState: Equatable {
 
     let rows: [Row]
     let isSwitching: Bool
+    /// Why the last switch did not fully take, such as the Claude app staying on its account.
+    var switchError: String?
     let claudeSwapInstalled: Bool
     let isIntegrationOn: Bool
     /// tcr pools accounts behind a proxy and has no saved logins to add, rename or remove.
@@ -47,6 +49,7 @@ struct ClaudeAccountsSectionState: Equatable {
         return ClaudeAccountsSectionState(
             rows: rows,
             isSwitching: store.claudeSwapTransientState.switchingAccountID != nil,
+            switchError: canManage ? store.claudeSwapTransientState.lastError : nil,
             claudeSwapInstalled: ClaudeSwapSetup.executablePath(configured: settings.claudeSwapExecutablePath) != nil,
             isIntegrationOn: settings.claudeSwapEnabled,
             canManageAccounts: canManage)
@@ -85,7 +88,7 @@ struct ClaudeAccountsSectionView: View {
                 }
             }
 
-            if let failure {
+            if let failure = self.failure ?? self.state.switchError {
                 Text(failure)
                     .font(.footnote)
                     .foregroundStyle(.red)

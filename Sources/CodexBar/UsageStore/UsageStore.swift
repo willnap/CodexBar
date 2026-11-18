@@ -294,6 +294,9 @@ final class UsageStore {
     @ObservationIgnored var _test_codexResetCreditsFetcherOverride: CodexResetCreditsFetcher?
     @ObservationIgnored var _test_widgetSnapshotSaveOverride: (@MainActor (WidgetSnapshot) async -> Void)?
     @ObservationIgnored var _test_providerRefreshOverride: (@MainActor (UsageProvider) async -> Void)?
+    /// Stands in for moving the Claude desktop app's login: (outgoing email, incoming email) → outcome.
+    @ObservationIgnored var _test_claudeDesktopFollowOverride: (@MainActor (
+        String?, String?) async -> NativeClaudeDesktopHandoff.Outcome)?
     @ObservationIgnored var _test_nativeLocalUsageRefreshScheduledOverride: (@MainActor (UsageProvider) -> Void)?
     @ObservationIgnored var _test_providerFetchOutcomeOverride: (@MainActor (
         UsageProvider) async -> ProviderFetchOutcome)?

@@ -140,7 +140,7 @@ struct NativeOrbitWarningLight: Identifiable, Equatable {
             case .insecure: "lock.open.fill"
             case .signIn: "key.fill"
             case .keychain: "key.2.on.ring.fill"
-            case .wrongAccount: "person.text.rectangle.fill"
+            case .wrongAccount: "person.fill.questionmark"
             case .permission: "nosign"
             case .browserSession: "safari.fill"
             case .plan: "calendar"

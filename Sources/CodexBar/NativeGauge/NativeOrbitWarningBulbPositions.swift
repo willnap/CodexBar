@@ -74,6 +74,7 @@ enum NativeOrbitWarningBulbPositions {
         "insecure": CGPoint(x: -0.5, y: -1),
         "signIn": CGPoint(x: 0.5, y: 0),
         "permission": CGPoint(x: -3, y: -1),
+        "browserSession": CGPoint(x: 1, y: -0.5),
         "plan": CGPoint(x: 1, y: -3),
         "billing": CGPoint(x: 1, y: -3),
         "spend": CGPoint(x: 1, y: -3),

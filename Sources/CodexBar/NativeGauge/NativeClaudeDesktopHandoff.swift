@@ -5,15 +5,26 @@ import Foundation
 
 /// The Claude desktop app's login, kept per account so it can follow a Claude Code switch.
 ///
-/// Unlike Codex, the desktop app shares nothing with the CLI: it is signed in by its own Electron session cookie,
-/// stored in its profile's cookie database and encrypted with the app's own Keychain key ("Claude Safe Storage").
-/// That key is per Mac, not per account, so the database files can be set aside and put back whole. CodexBar
-/// never opens, decrypts or parses them; it only moves the files while the app is not running.
+/// Unlike Codex, the desktop app shares nothing with the CLI. It is signed in twice over: by its Electron session
+/// cookie, in its profile's cookie database, and by an OAuth token cache it keeps in `config.json`
+/// (`oauth:tokenCacheV2`, with `lastKnownAccountUuid` naming the account). Both are encrypted with the app's own
+/// Keychain key ("Claude Safe Storage"), which is per Mac, not per account, so they can be set aside and put back
+/// whole. The app trusts the token cache over the cookie, so moving the cookies alone leaves it on the old account.
+/// CodexBar never decrypts or parses either; it only moves them while the app is not running.
 struct NativeClaudeDesktopLoginVault {
     /// The cookie database and its rollback journal, in both places Electron has kept them.
     static let sessionFiles = ["Cookies", "Cookies-journal", "Network/Cookies", "Network/Cookies-journal"]
     /// Where an outgoing login goes when CodexBar cannot name the account it belongs to.
     static let unclaimedKey = "unclaimed"
+    /// The app's settings file, which also holds its OAuth token cache.
+    static let configFile = "config.json"
+    /// Where a slot keeps the login entries taken out of `config.json`.
+    static let configLoginFile = "config-login.json"
+
+    /// The `config.json` entries that belong to the signed-in account rather than to the Mac.
+    static func isLoginEntry(_ key: String) -> Bool {
+        key.hasPrefix("oauth:") || key == "lastKnownAccountUuid"
+    }
 
     enum Installed: Equatable {
         /// The account's saved login is in place.
@@ -41,10 +52,31 @@ struct NativeClaudeDesktopLoginVault {
     }
 
     func hasLogin(_ key: String) -> Bool {
-        Self.sessionFiles.contains { name in
-            !name.hasSuffix("-journal")
-                && FileManager.default.fileExists(atPath: self.slot(key).appendingPathComponent(name).path)
+        (Self.sessionFiles.filter { !$0.hasSuffix("-journal") } + [Self.configLoginFile]).contains { name in
+            FileManager.default.fileExists(atPath: self.slot(key).appendingPathComponent(name).path)
         }
+    }
+
+    private var configURL: URL {
+        self.profile.appendingPathComponent(Self.configFile)
+    }
+
+    private func readConfig() throws -> [String: Any]? {
+        guard FileManager.default.fileExists(atPath: self.configURL.path) else { return nil }
+        let object = try JSONSerialization.jsonObject(with: Data(contentsOf: self.configURL))
+        guard let config = object as? [String: Any] else { throw CocoaError(.fileReadCorruptFile) }
+        return config
+    }
+
+    private static func json(_ object: [String: Any]) throws -> Data {
+        try JSONSerialization.data(
+            withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+    }
+
+    /// The profile's current login entries from `config.json`, if it has any.
+    private func configLogin() throws -> [String: Any]? {
+        let login = try self.readConfig()?.filter { Self.isLoginEntry($0.key) } ?? [:]
+        return login.isEmpty ? nil : login
     }
 
     private func slot(_ key: String) -> URL {
@@ -58,7 +90,8 @@ struct NativeClaudeDesktopLoginVault {
         let present = Self.sessionFiles.filter {
             files.fileExists(atPath: self.profile.appendingPathComponent($0).path)
         }
-        guard present.contains(where: { !$0.hasSuffix("-journal") }) else { return }
+        let configLogin = try self.configLogin()
+        guard present.contains(where: { !$0.hasSuffix("-journal") }) || configLogin != nil else { return }
         try files.createDirectory(
             at: self.vault, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let staging = self.vault.appendingPathComponent(".\(key).incoming-\(UUID().uuidString)", isDirectory: true)
@@ -72,6 +105,13 @@ struct NativeClaudeDesktopLoginVault {
                 try files.copyItem(at: self.profile.appendingPathComponent(name), to: destination)
                 try files.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
             }
+            if let configLogin {
+                try files.createDirectory(
+                    at: staging, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+                let destination = staging.appendingPathComponent(Self.configLoginFile)
+                try Self.json(configLogin).write(to: destination, options: .atomic)
+                try files.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
+            }
             let slot = self.slot(key)
             if files.fileExists(atPath: slot.path) { try files.removeItem(at: slot) }
             try files.moveItem(at: staging, to: slot)
@@ -82,10 +122,11 @@ struct NativeClaudeDesktopLoginVault {
     }
 
     /// Replaces the profile's login with `key`'s saved one, or removes it when none was saved. Call only after the
-    /// outgoing login has been stashed: this deletes the profile's current cookie database.
+    /// outgoing login has been stashed: this deletes the profile's current cookie database and token cache.
     func install(_ key: String) throws -> Installed {
         let files = FileManager.default
         let restoring = self.hasLogin(key)
+        try self.installConfigLogin(key, restoring: restoring)
         for name in Self.sessionFiles {
             let live = self.profile.appendingPathComponent(name)
             if files.fileExists(atPath: live.path) { try files.removeItem(at: live) }
@@ -95,6 +136,23 @@ struct NativeClaudeDesktopLoginVault {
             try files.copyItem(at: saved, to: live)
         }
         return restoring ? .restored : .signedOut
+    }
+
+    /// Swaps only the login entries of `config.json`, leaving every other setting as the app wrote it. A login
+    /// saved before the app kept a token cache restores no entries, so the app falls back to its cookie.
+    private func installConfigLogin(_ key: String, restoring: Bool) throws {
+        let savedURL = self.slot(key).appendingPathComponent(Self.configLoginFile)
+        var saved: [String: Any] = [:]
+        if restoring, FileManager.default.fileExists(atPath: savedURL.path) {
+            let object = try JSONSerialization.jsonObject(with: Data(contentsOf: savedURL))
+            saved = (object as? [String: Any] ?? [:]).filter { Self.isLoginEntry($0.key) }
+        }
+        let current = try self.readConfig() ?? [:]
+        guard !saved.isEmpty || current.keys.contains(where: Self.isLoginEntry) else { return }
+        var config = current.filter { !Self.isLoginEntry($0.key) }
+        config.merge(saved) { _, new in new }
+        try Self.json(config).write(to: self.configURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: self.configURL.path)
     }
 }
 
@@ -120,14 +178,24 @@ struct NativeClaudeDesktopHandoff {
         case notApplicable
         /// The app is open and this switch may not quit it.
         case leftOpen
-        /// The app is running agent sessions that quitting it would end, so it was left open.
-        case sessionsRunning
         case restored
         case signedOut
         case failed(String)
     }
 
+    /// Why the app is not on the incoming account after Claude Code switched, or nil when it is (or has nothing to
+    /// follow). The app reopening signed out the first time an account is used is not a failure.
+    nonisolated static func unfollowedReason(_ outcome: Outcome) -> String? {
+        switch outcome {
+        case .notApplicable, .restored, .signedOut: nil
+        case .leftOpen: "Switched Claude Code. Claude was open, so it stayed on its account."
+        case let .failed(reason): "Switched Claude Code. \(reason)"
+        }
+    }
+
     var quitTimeout: TimeInterval = 20
+    /// Longer while the app hosts sessions: it may be waiting on its own confirmation to quit them.
+    var sessionsQuitTimeout: TimeInterval = 120
     var pollInterval: TimeInterval = 0.25
 
     static func liveVault() -> NativeClaudeDesktopLoginVault? {
@@ -147,8 +215,8 @@ struct NativeClaudeDesktopHandoff {
     }
 
     /// Whether the desktop app is hosting Claude Code sessions: processes started from the runtime it keeps in
-    /// its own profile. Quitting the app ends every one of them, so a login change never does that by itself.
-    /// An unreadable process list counts as hosting, because nothing then shows the quit is harmless.
+    /// its own profile. Quitting the app stops them (it saves and restores them on relaunch) and it may ask to
+    /// confirm first, so the switch waits longer for it. An unreadable process list counts as hosting.
     nonisolated static func hostsSessions(processes: [CodexProcessRecord]?, profile: URL) -> Bool {
         guard let processes else { return true }
         let runtimes = ["claude-code", "claude-code-vm"].map {
@@ -173,19 +241,18 @@ struct NativeClaudeDesktopHandoff {
         let bundlePath = running.first { $0.bundleIdentifier == Self.bundleIdentifier }?.bundleURL?.path
         if !running.isEmpty {
             guard mayQuit else { return .leftOpen }
-            guard !Self.hostsSessions(
+            let hostsSessions = Self.hostsSessions(
                 processes: CodexDesktopProcessProbe.sameUserProcesses(), profile: vault.profile)
-            else { return .sessionsRunning }
             // An ordinary quit: the app may ask to confirm, and the user can cancel it there.
             for app in running where app.bundleIdentifier == Self.bundleIdentifier {
                 _ = app.terminate()
             }
-            let deadline = Date().addingTimeInterval(self.quitTimeout)
+            let deadline = Date().addingTimeInterval(hostsSessions ? self.sessionsQuitTimeout : self.quitTimeout)
             while !Self.runningProcesses().isEmpty, Date() < deadline {
                 try? await Task.sleep(for: .seconds(self.pollInterval))
             }
             guard Self.runningProcesses().isEmpty else {
-                return .failed("Claude didn’t quit, so its login was left as it was. Quit it and switch again.")
+                return .failed("Claude didn’t quit, so it stayed on its account.")
             }
             // Give the exiting network process a moment to finish writing the cookie database.
             try? await Task.sleep(for: .milliseconds(500))

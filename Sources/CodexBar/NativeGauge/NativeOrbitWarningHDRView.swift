@@ -233,9 +233,11 @@ enum NativeOrbitWarningHDRRaster {
         let base = symbol.hasSuffix(".fill") ? String(symbol.dropLast(5)) : symbol
         let source = NSImage(systemSymbolName: filled, accessibilityDescription: nil)
             ?? NSImage(systemSymbolName: base, accessibilityDescription: nil)
+        // Monochrome, not a one-colour palette: a palette paints a glyph's inner layer (the ! in a warning
+        // triangle, the ✕ in an octagon) the same colour as its shape, leaving a solid blob. Only coverage is used.
         let image = source?
             .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold))?
-            .withSymbolConfiguration(.init(paletteColors: [.white]))
+            .withSymbolConfiguration(.preferringMonochrome())
         Self.images[symbol] = image
         return image
     }
@@ -525,7 +527,13 @@ final class NativeOrbitWarningHDRSurface: NSView {
                 let color = item.color.emission(headroom: 1, darkAppearance: darkAppearance)
                 let tint = NSColor(
                     srgbRed: Self.sRGB(color.x), green: Self.sRGB(color.y), blue: Self.sRGB(color.z), alpha: 1)
-                let tinted = symbol.withSymbolConfiguration(.init(paletteColors: [tint])) ?? symbol
+                // Tint the monochrome coverage; a palette would fill the glyph's cut-out inner layer.
+                let tinted = NSImage(size: symbol.size, flipped: false) { bounds in
+                    symbol.draw(in: bounds)
+                    tint.set()
+                    bounds.fill(using: .sourceAtop)
+                    return true
+                }
                 tinted.draw(in: CGRect(
                     x: rect.midX + item.position.x - symbol.size.width / 2,
                     y: rect.midY + item.position.y - symbol.size.height / 2,
